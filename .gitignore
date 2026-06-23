@@ -1,0 +1,21 @@
+node_modules
+/.next
+/out
+/build
+.DS_Store
+*.pem
+npm-debug.log*
+.env*.local
+.vercel
+next-env.d.ts
+*.tsbuildinfo
+
+# cypress — secrets + run artifacts
+cypress.env.json
+/cypress/screenshots
+/cypress/videos
+/cypress/downloads
+
+# internal planning / strategy — kept out of the public repo (remove these lines if the repo is private)
+/docs
+/design

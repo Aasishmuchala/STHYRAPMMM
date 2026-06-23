@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Required repo secrets (GitHub → Settings → Secrets and variables → Actions):
+#   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   CYPRESS_OWNER_EMAIL,  CYPRESS_OWNER_PASSWORD
+#   CYPRESS_LEAD_EMAIL,   CYPRESS_LEAD_PASSWORD
+#   CYPRESS_MEMBER_EMAIL, CYPRESS_MEMBER_PASSWORD
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: E2E (Cypress)
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          start: npm run start
+          wait-on: http://localhost:3000/login
+          wait-on-timeout: 120
+        env:
+          CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
+          CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
+          CYPRESS_LEAD_EMAIL: ${{ secrets.CYPRESS_LEAD_EMAIL }}
+          CYPRESS_LEAD_PASSWORD: ${{ secrets.CYPRESS_LEAD_PASSWORD }}
+          CYPRESS_MEMBER_EMAIL: ${{ secrets.CYPRESS_MEMBER_EMAIL }}
+          CYPRESS_MEMBER_PASSWORD: ${{ secrets.CYPRESS_MEMBER_PASSWORD }}
+
+      - name: Upload Cypress screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: cypress/screenshots
+          if-no-files-found: ignore

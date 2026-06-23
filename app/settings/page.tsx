@@ -1,0 +1,79 @@
+import { redirect } from "next/navigation";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { AppShell } from "@/components/shell/AppShell";
+import { SettingsView } from "@/components/settings/SettingsView";
+import { initials } from "@/lib/format";
+import type { DivisionOpt } from "@/lib/tasks-types";
+
+type Invite = { email: string; full_name: string | null; global_role: string; invite_division_id: string | null; invite_division_role: string | null };
+type Member = { id: string; full_name: string | null; email: string | null; global_role: string };
+type Membership = { id: string; user_id: string; division_id: string; role: string };
+
+export default async function SettingsPage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const [{ data: profile }, { data: myMemberships }, { data: divisions }] = await Promise.all([
+    supabase.from("profiles").select("full_name,email,global_role,theme,wallpaper").eq("id", user.id).maybeSingle(),
+    supabase.from("division_members").select("role,division_id"),
+    supabase.from("divisions").select("id,slug,name").order("slug"),
+  ]);
+  const isOwner = profile?.global_role === "owner";
+  const myMem = (myMemberships ?? []) as { role: string; division_id: string }[];
+  const isLeadAnywhere = myMem.some((m) => m.role === "lead");
+  const canSeeFinances = isOwner || isLeadAnywhere;
+  const canManageTeam = isOwner || isLeadAnywhere;
+
+  let invites: Invite[] = [];
+  let members: Member[] = [];
+  let memberships: Membership[] = [];
+  if (canManageTeam) {
+    const [{ data: inv }, { data: mem }, { data: mship }] = await Promise.all([
+      supabase.from("invite_allowlist").select("email,full_name,global_role,invite_division_id,invite_division_role").order("invited_at"),
+      supabase.from("profiles").select("id,full_name,email,global_role").eq("is_active", true).order("created_at"),
+      supabase.from("division_members").select("id,user_id,division_id,role"),
+    ]);
+    invites = (inv ?? []) as Invite[];
+    members = (mem ?? []) as Member[];
+    memberships = (mship ?? []) as Membership[];
+  }
+
+  const divs: DivisionOpt[] = (divisions ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
+  const leadableDivisions: DivisionOpt[] = isOwner ? divs : divs.filter((d) => myMem.some((m) => m.role === "lead" && m.division_id === d.id));
+
+  let omegaStatus: { configured: boolean; last4?: string; updated_at?: string } | null = null;
+  if (isOwner) {
+    const { data } = await supabase.rpc("omega_key_status");
+    omegaStatus = (data as typeof omegaStatus) ?? { configured: false };
+  }
+
+  return (
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+      <main>
+        <header className="subhead">
+          <div>
+            <div className="label" style={{ marginBottom: 9 }}>Settings</div>
+            <h1>Workspace</h1>
+            <p className="head-sub">Your account, your team, the AI key, and how the app looks.</p>
+          </div>
+        </header>
+        <SettingsView
+          profile={profile ?? { full_name: null, email: user.email ?? null, global_role: "member" }}
+          isOwner={isOwner}
+          canManageTeam={canManageTeam}
+          leadableDivisions={leadableDivisions}
+          invites={invites}
+          members={members}
+          memberships={memberships}
+          divisions={divs}
+          initialTheme={profile?.theme ?? "nyradna"}
+          initialWallpaper={profile?.wallpaper ?? null}
+          omegaStatus={omegaStatus}
+        />
+      </main>
+    </AppShell>
+  );
+}
