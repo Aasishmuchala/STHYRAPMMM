@@ -2,8 +2,13 @@
 
 import { useEffect, useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
-import ReactMarkdown from "react-markdown";
+import dynamic from "next/dynamic";
 import { useDismiss } from "@/lib/useDismiss";
+
+// react-markdown (+ its remark/rehype tree, ~38KB) is the heaviest dependency in the app
+// and only ever renders inside this drawer, behind a click + a 0.28s open animation. Loading
+// it on demand keeps it out of every route's initial bundle with no perceptible difference.
+const ReactMarkdown = dynamic(() => import("react-markdown"), { ssr: false });
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 import { updateDocument, deleteDocument } from "@/app/documents/actions";
