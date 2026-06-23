@@ -3,10 +3,14 @@ import { cookies } from "next/headers";
 import { Manrope, Inter, JetBrains_Mono, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 
+// Inter (body) + Manrope (display headings) are above-the-fold everywhere, so they preload.
+// Mono (numbers) and Cormorant (serif accents/wordmark) are non-critical — preload:false keeps
+// them off the render-blocking critical path; they swap in a beat later. Cormorant only ever
+// renders at weight 600, so the 500/700 cuts trim the build with zero visual change.
 const manrope = Manrope({ subsets: ["latin"], weight: ["300", "400", "500", "600"], variable: "--font-manrope", display: "swap" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono", display: "swap" });
-const cormorant = Cormorant_Garamond({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-cormorant", display: "swap" });
+const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono", display: "swap", preload: false });
+const cormorant = Cormorant_Garamond({ subsets: ["latin"], weight: ["600"], variable: "--font-cormorant", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   title: "Sthyra · Command Center",

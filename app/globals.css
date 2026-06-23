@@ -121,10 +121,13 @@
 
 * { box-sizing: border-box; }
 
+html {
+  background-color: var(--bg);
+}
+
 html, body {
   padding: 0;
   margin: 0;
-  background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -132,14 +135,25 @@ html, body {
 
 body {
   min-height: 100dvh;
-  /* ambient tint, then a bg-colored veil (keeps content readable), then the wallpaper.
-     Single values apply per-layer: --ambient is 1-2 gradients depending on theme, so an
-     explicit list would mis-map sizes; `cover` on every layer fills gradients AND url() images. */
+}
+
+/* The wallpaper/ambient as a single GPU-composited fixed layer behind everything.
+   This stays put on scroll like `background-attachment: fixed` did, but is painted
+   ONCE and not repainted on every scroll frame (the old `fixed` attachment janked
+   hard under the glass `backdrop-filter` surfaces). The glass layers still blur it
+   since it sits in the root stacking context behind the content.
+   --ambient is 1-2 gradients depending on theme, so `cover` on every layer fills
+   both the gradients AND the url() wallpaper without mis-mapping sizes. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image: var(--ambient), linear-gradient(var(--bg-veil), var(--bg-veil)), var(--wallpaper-image, none);
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
-  background-attachment: fixed;
 }
 
 a { color: inherit; text-decoration: none; }
@@ -152,8 +166,8 @@ a { color: inherit; text-decoration: none; }
 .display { font-family: var(--font-manrope), sans-serif; font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
 .glass {
   background: var(--glass);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-inset);
 }
@@ -167,7 +181,7 @@ a { color: inherit; text-decoration: none; }
 .side {
   position: sticky; top: 0; height: 100dvh; padding: 22px 16px;
   display: flex; flex-direction: column; gap: 26px;
-  background: var(--glass-2); backdrop-filter: blur(40px);
+  background: var(--glass-2); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
   border-right: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 11px; padding: 4px 8px; }
@@ -203,7 +217,7 @@ a { color: inherit; text-decoration: none; }
 .top {
   display: flex; align-items: center; gap: 18px; padding: 16px 30px;
   border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5;
-  background: var(--top-bg); backdrop-filter: blur(20px);
+  background: var(--top-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
 .search {
   flex: 1; max-width: 420px; display: flex; align-items: center; gap: 9px; padding: 9px 13px;
@@ -226,7 +240,7 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 .btn:active { transform: scale(0.97); }
 
 /* ---- finance tiles ---- */
-.fin { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--glass-2); backdrop-filter: blur(40px); margin-bottom: 26px; }
+.fin { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--glass-2); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); margin-bottom: 26px; }
 .fin .cell { padding: 20px 22px; border-right: 1px solid var(--line); }
 .fin .cell:last-child { border-right: none; }
 .fin .cell .label { margin-bottom: 12px; }
