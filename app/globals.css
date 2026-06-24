@@ -337,6 +337,7 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 .col-empty { font-size: 11.5px; color: var(--text-faint); text-align: center; padding: 14px 6px; }
 .col.dragover { outline: 1.5px dashed var(--glass-border); outline-offset: -4px; background: var(--accent-soft); }
 .col.dragging-stage { opacity: 0.56; }
+.col.drag-card-active .col-body { gap: 16px; }
 
 /* ---- clients pipeline ---- */
 .pipe { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; align-items: start; }
@@ -404,6 +405,30 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 .tgroup-name { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); white-space: nowrap; }
 .tgroup-line { flex: 1; height: 1px; background: var(--line); }
 .tgroup-cnt { font-family: var(--font-mono), monospace; font-size: 10px; color: var(--text-faint); }
+.task-stack { display: flex; flex-direction: column; gap: 14px; }
+.drop-placeholder {
+  min-height: 58px;
+  border: 1.5px dashed color-mix(in srgb, var(--text-faint) 55%, transparent);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--glass) 65%, transparent);
+  transition: all 0.18s ease;
+}
+.drop-placeholder.on {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.drop-placeholder.stage.on {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
 
 /* toolbar controls */
 .segctl { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }

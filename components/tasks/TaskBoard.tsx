@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createTaskStage,
@@ -80,6 +80,7 @@ export function TaskBoard({
   const [boardTasks, setBoardTasks] = useState(tasks);
   const [stageList, setStageList] = useState(stages.length ? stages : DEFAULT_TASK_STAGES);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [draggingStageKey, setDraggingStageKey] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<DrawerState>(null);
@@ -93,6 +94,9 @@ export function TaskBoard({
     after_key: "",
   });
   const today = new Date();
+  const isDraggingTask = draggingId !== null;
+  const isDraggingStage = draggingStageKey !== null;
+  const justDraggedRef = useRef(false);
 
   useEffect(() => {
     setBoardTasks(tasks);
@@ -138,6 +142,7 @@ export function TaskBoard({
     const previousTasks = boardTasks;
     setBoardError(null);
     setDraggingId(null);
+    setDragSourceStatus(null);
     setDragOverCol(null);
     setBoardTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status } : task)));
     start(async () => {
@@ -188,7 +193,7 @@ export function TaskBoard({
       return;
     }
 
-    const taskId = e.dataTransfer.getData(CARD_MIME) || draggingId;
+    const taskId = e.dataTransfer.getData(CARD_MIME) || e.dataTransfer.getData("text/plain") || draggingId;
     if (!taskId) {
       setDragOverCol(null);
       return;
@@ -197,6 +202,7 @@ export function TaskBoard({
     const task = boardTasks.find((item) => item.id === taskId);
     if (!task || task.status === targetKey) {
       setDraggingId(null);
+      setDragSourceStatus(null);
       setDragOverCol(null);
       return;
     }
@@ -276,16 +282,31 @@ export function TaskBoard({
         className={`tcard ${draggingId === task.id ? "dragging" : ""}`}
         draggable
         onDragStart={(e) => {
+          justDraggedRef.current = true;
           setDraggingId(task.id);
+          setDragSourceStatus(task.status);
           setDraggingStageKey(null);
           e.dataTransfer.effectAllowed = "move";
           e.dataTransfer.setData(CARD_MIME, task.id);
+          e.dataTransfer.setData("text/plain", task.id);
         }}
         onDragEnd={() => {
           setDraggingId(null);
+          setDragSourceStatus(null);
           setDragOverCol(null);
+          window.setTimeout(() => {
+            justDraggedRef.current = false;
+          }, 140);
         }}
-        onClick={() => setDrawer({ mode: "view", task })}
+        onClick={(e) => {
+          if (justDraggedRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            justDraggedRef.current = false;
+            return;
+          }
+          setDrawer({ mode: "view", task });
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") setDrawer({ mode: "view", task });
         }}
@@ -431,11 +452,14 @@ export function TaskBoard({
             const groups = groupItems(items);
             return (
               <section
-                className={`col ${dragOverCol === stage.key ? "dragover" : ""} ${draggingStageKey === stage.key ? "dragging-stage" : ""}`}
+                className={`col ${dragOverCol === stage.key ? "dragover" : ""} ${draggingStageKey === stage.key ? "dragging-stage" : ""} ${isDraggingTask ? "drag-card-active" : ""}`}
                 key={stage.key}
                 aria-label={stage.label}
                 onDragOver={(e) => {
+                  if (isDraggingTask && dragSourceStatus === stage.key) return;
+                  if (isDraggingStage && draggingStageKey === stage.key) return;
                   e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
                   setDragOverCol(stage.key);
                 }}
                 onDragLeave={(e) => {
@@ -460,7 +484,7 @@ export function TaskBoard({
                 >
                   <span className="ct"><span className="cdot" style={{ background: stage.color }} />{stage.label}</span>
                   <span className="col-head-right">
-                    {canManageWorkflow && <span className="col-grab">Drag</span>}
+                    {canManageWorkflow && <span className="col-grab">Tasks</span>}
                     <span className="cnt">{items.length}</span>
                   </span>
                 </div>
@@ -469,7 +493,7 @@ export function TaskBoard({
                     <div className="col-empty">Nothing here</div>
                   ) : (
                     groups.map((group) => (
-                      <div key={group.name || "all"}>
+                      <div key={group.name || "all"} className="task-stack">
                         {groupBy !== "none" && (
                           <div className="tgroup-head">
                             <span className="tgroup-name">{group.name}</span>
@@ -480,6 +504,16 @@ export function TaskBoard({
                         {group.items.map((task) => <Card key={task.id} task={task} />)}
                       </div>
                     ))
+                  )}
+                  {isDraggingTask && dragSourceStatus !== stage.key && (
+                    <div className={`drop-placeholder ${dragOverCol === stage.key ? "on" : ""}`}>
+                      <span>{dragOverCol === stage.key ? "Drop task here" : "Drag task here"}</span>
+                    </div>
+                  )}
+                  {isDraggingStage && !isDraggingTask && draggingStageKey !== stage.key && (
+                    <div className={`drop-placeholder stage ${dragOverCol === stage.key ? "on" : ""}`}>
+                      <span>{dragOverCol === stage.key ? "Drop stage here" : "Move stage here"}</span>
+                    </div>
                   )}
                 </div>
                 <button className="addbtn" onClick={() => setDrawer({ mode: "create", presetStatus: stage.key })}>
