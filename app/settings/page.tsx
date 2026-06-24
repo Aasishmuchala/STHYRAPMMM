@@ -6,7 +6,6 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
-type Invite = { email: string; full_name: string | null; global_role: string; invite_division_id: string | null; invite_division_role: string | null };
 type Member = { id: string; full_name: string | null; email: string | null; global_role: string };
 type Membership = { id: string; user_id: string; division_id: string; role: string };
 
@@ -27,16 +26,13 @@ export default async function SettingsPage() {
   const canSeeFinances = isOwner || isLeadAnywhere;
   const canManageTeam = isOwner || isLeadAnywhere;
 
-  let invites: Invite[] = [];
   let members: Member[] = [];
   let memberships: Membership[] = [];
   if (canManageTeam) {
-    const [{ data: inv }, { data: mem }, { data: mship }] = await Promise.all([
-      supabase.from("invite_allowlist").select("email,full_name,global_role,invite_division_id,invite_division_role").order("invited_at"),
+    const [{ data: mem }, { data: mship }] = await Promise.all([
       supabase.from("profiles").select("id,full_name,email,global_role").eq("is_active", true).order("created_at"),
       supabase.from("division_members").select("id,user_id,division_id,role"),
     ]);
-    invites = (inv ?? []) as Invite[];
     members = (mem ?? []) as Member[];
     memberships = (mship ?? []) as Membership[];
   }
@@ -65,7 +61,6 @@ export default async function SettingsPage() {
           isOwner={isOwner}
           canManageTeam={canManageTeam}
           leadableDivisions={leadableDivisions}
-          invites={invites}
           members={members}
           memberships={memberships}
           divisions={divs}

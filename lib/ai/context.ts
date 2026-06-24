@@ -27,7 +27,7 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
   ] = await Promise.all([
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("division_briefs").select("division_id,goals,targets,notes"),
-    supabase.from("tasks").select("title,status,priority,due_date,divisions(slug)").is("deleted_at", null).neq("status", "done").order("due_date", { nullsFirst: false }).limit(50),
+    supabase.from("tasks").select("title,status:status_key,priority,due_date,divisions(slug),stage:task_stages!tasks_status_key_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(50),
     supabase.from("invoices").select("number,amount_paise,status,due_on,division_id,divisions(slug)").is("deleted_at", null).in("status", ["sent", "overdue"]).limit(200),
     supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart).limit(3000),
     supabase.from("documents").select("title,doc_type,body_md,divisions(slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(6),
@@ -39,12 +39,11 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
   const divs = (divisions ?? []) as { id: string; slug: string; name: string }[];
   const slugOf = new Map(divs.map((d) => [d.id, d.slug]));
   const nameOf = new Map(divs.map((d) => [d.id, short(d.name)]));
-  const L: string[] = [];
+  const lines: string[] = [];
 
-  L.push(`TODAY: ${todayStr}`);
-  L.push(`DIVISIONS: ${divs.map((d) => `${short(d.name)} (${d.slug})`).join(", ") || "none visible"}`);
+  lines.push(`TODAY: ${todayStr}`);
+  lines.push(`DIVISIONS: ${divs.map((d) => `${short(d.name)} (${d.slug})`).join(", ") || "none visible"}`);
 
-  // ---- Finance (only populated for users with finance access; RLS empties it otherwise) ----
   const tx = (txns ?? []) as { division_id: string; direction: string; amount_paise: number }[];
   const iv = (invoices ?? []) as { number: string; amount_paise: number; status: string; due_on: string | null; division_id: string }[];
   const hasFinance = tx.length > 0 || iv.length > 0;
@@ -52,101 +51,112 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
   if (hasFinance) {
     const cashIn = sum(tx.filter((t) => t.direction === "in").map((t) => t.amount_paise));
     const cashOut = sum(tx.filter((t) => t.direction === "out").map((t) => t.amount_paise));
-    L.push(`\nCASH FLOW (this month): in ${inr(cashIn)} · out ${inr(cashOut)} · net ${inr(cashIn - cashOut)}`);
+    lines.push(`\nCASH FLOW (this month): in ${inr(cashIn)} | out ${inr(cashOut)} | net ${inr(cashIn - cashOut)}`);
 
-    // Receivables + aging
     const owed = sum(iv.map((i) => i.amount_paise));
-    let b0 = 0, b30 = 0, b60 = 0, b90 = 0;
-    for (const i of iv) {
-      const od = i.due_on ? daysBetween(todayStr, i.due_on) : 0;
-      if (od <= 0) b0 += i.amount_paise;
-      else if (od <= 30) b30 += i.amount_paise;
-      else if (od <= 60) b60 += i.amount_paise;
-      else b90 += i.amount_paise;
+    let b0 = 0;
+    let b30 = 0;
+    let b60 = 0;
+    let b90 = 0;
+    for (const invoice of iv) {
+      const overdueDays = invoice.due_on ? daysBetween(todayStr, invoice.due_on) : 0;
+      if (overdueDays <= 0) b0 += invoice.amount_paise;
+      else if (overdueDays <= 30) b30 += invoice.amount_paise;
+      else if (overdueDays <= 60) b60 += invoice.amount_paise;
+      else b90 += invoice.amount_paise;
     }
-    L.push(`RECEIVABLES: ${inr(owed)} owed across ${iv.length} invoice(s) — not-yet-due ${inr(b0)}, 1–30d late ${inr(b30)}, 31–60d ${inr(b60)}, 60d+ ${inr(b90)}`);
+    lines.push(`RECEIVABLES: ${inr(owed)} owed across ${iv.length} invoice(s) - not-yet-due ${inr(b0)}, 1-30d late ${inr(b30)}, 31-60d ${inr(b60)}, 60d+ ${inr(b90)}`);
 
     const overdue = iv
-      .filter((i) => i.status === "overdue" || (i.due_on && daysBetween(todayStr, i.due_on) > 0))
-      .map((i) => ({ ...i, days: i.due_on ? daysBetween(todayStr, i.due_on) : 0 }))
+      .filter((invoice) => invoice.status === "overdue" || (invoice.due_on && daysBetween(todayStr, invoice.due_on) > 0))
+      .map((invoice) => ({ ...invoice, days: invoice.due_on ? daysBetween(todayStr, invoice.due_on) : 0 }))
       .sort((a, b) => b.amount_paise - a.amount_paise)
       .slice(0, 8);
     if (overdue.length) {
-      L.push(`TOP OVERDUE:`);
-      for (const i of overdue) L.push(`- ${i.number} (${slugOf.get(i.division_id) ?? "?"}) ${inr(i.amount_paise)}${i.days > 0 ? ` — ${i.days} days late` : ""}`);
+      lines.push("TOP OVERDUE:");
+      for (const invoice of overdue) lines.push(`- ${invoice.number} (${slugOf.get(invoice.division_id) ?? "?"}) ${inr(invoice.amount_paise)}${invoice.days > 0 ? ` - ${invoice.days} days late` : ""}`);
     }
 
-    // Per-division revenue/expense/margin this month
-    const rev = new Map<string, number>(), exp = new Map<string, number>();
-    for (const t of tx) {
-      const m = t.direction === "in" ? rev : exp;
-      m.set(t.division_id, (m.get(t.division_id) ?? 0) + t.amount_paise);
+    const revenue = new Map<string, number>();
+    const expense = new Map<string, number>();
+    for (const txn of tx) {
+      const bucket = txn.direction === "in" ? revenue : expense;
+      bucket.set(txn.division_id, (bucket.get(txn.division_id) ?? 0) + txn.amount_paise);
     }
-    const perDiv = divs.filter((d) => (rev.get(d.id) ?? 0) + (exp.get(d.id) ?? 0) > 0);
-    if (perDiv.length) {
-      L.push(`PER-DIVISION (this month):`);
-      for (const d of perDiv) {
-        const r = rev.get(d.id) ?? 0, e = exp.get(d.id) ?? 0;
-        const m = r > 0 ? Math.round(((r - e) / r) * 100) : 0;
-        L.push(`- ${short(d.name)}: rev ${inr(r)} · exp ${inr(e)} · margin ${m}%`);
+    const perDivision = divs.filter((division) => (revenue.get(division.id) ?? 0) + (expense.get(division.id) ?? 0) > 0);
+    if (perDivision.length) {
+      lines.push("PER-DIVISION (this month):");
+      for (const division of perDivision) {
+        const rev = revenue.get(division.id) ?? 0;
+        const exp = expense.get(division.id) ?? 0;
+        const margin = rev > 0 ? Math.round(((rev - exp) / rev) * 100) : 0;
+        lines.push(`- ${short(division.name)}: rev ${inr(rev)} | exp ${inr(exp)} | margin ${margin}%`);
       }
     }
 
-    // Construction RA bills pending certification
     const raRows = (ra ?? []) as { net_paise: number | null; gross_paise: number; deduction_paise: number; certified_on: string | null; division_id: string }[];
-    const raPending = raRows.filter((r) => !r.certified_on);
+    const raPending = raRows.filter((row) => !row.certified_on);
     if (raPending.length) {
-      const net = sum(raPending.map((r) => r.net_paise ?? r.gross_paise - r.deduction_paise));
-      L.push(`CONSTRUCTION: ${raPending.length} RA bill(s) pending certification, net ${inr(net)}`);
+      const net = sum(raPending.map((row) => row.net_paise ?? row.gross_paise - row.deduction_paise));
+      lines.push(`CONSTRUCTION: ${raPending.length} RA bill(s) pending certification, net ${inr(net)}`);
     }
 
-    // Living Twin / committed BOM per division
     const bomRows = (bom ?? []) as { qty: number; unit_cost_paise: number; division_id: string }[];
     const bomByDiv = new Map<string, number>();
-    for (const b of bomRows) bomByDiv.set(b.division_id, (bomByDiv.get(b.division_id) ?? 0) + b.qty * b.unit_cost_paise);
-    for (const [divId, total] of bomByDiv) if (total > 0) L.push(`BOM committed — ${nameOf.get(divId) ?? "?"}: ${inr(total)}`);
+    for (const row of bomRows) bomByDiv.set(row.division_id, (bomByDiv.get(row.division_id) ?? 0) + row.qty * row.unit_cost_paise);
+    for (const [divId, total] of bomByDiv) if (total > 0) lines.push(`BOM committed - ${nameOf.get(divId) ?? "?"}: ${inr(total)}`);
   }
 
-  // ---- Clients / pipeline ----
   const cl = (clients ?? []) as { name: string; stage: string; value_paise: number; contact_name: string | null; division_id: string }[];
   if (cl.length) {
-    const open = cl.filter((c) => ["lead", "contacted", "proposal"].includes(c.stage));
-    const won = cl.filter((c) => c.stage === "won");
-    const lost = cl.filter((c) => c.stage === "lost").length;
-    const byStage = (s: string) => cl.filter((c) => c.stage === s).length;
-    L.push(`\nPIPELINE: ${cl.length} clients/leads — open value ${inr(sum(open.map((c) => c.value_paise)))} (${open.length} open: ${byStage("lead")} lead / ${byStage("contacted")} contacted / ${byStage("proposal")} proposal), won ${won.length}, lost ${lost}`);
+    const open = cl.filter((client) => ["lead", "contacted", "proposal"].includes(client.stage));
+    const won = cl.filter((client) => client.stage === "won");
+    const lost = cl.filter((client) => client.stage === "lost").length;
+    const byStage = (stage: string) => cl.filter((client) => client.stage === stage).length;
+    lines.push(`\nPIPELINE: ${cl.length} clients/leads - open value ${inr(sum(open.map((client) => client.value_paise)))} (${open.length} open: ${byStage("lead")} lead / ${byStage("contacted")} contacted / ${byStage("proposal")} proposal), won ${won.length}, lost ${lost}`);
     const topOpen = open.slice().sort((a, b) => b.value_paise - a.value_paise).slice(0, 6);
     if (topOpen.length) {
-      L.push(`TOP OPEN DEALS:`);
-      for (const c of topOpen) L.push(`- ${c.name} (${nameOf.get(c.division_id) ?? "?"}) ${inr(c.value_paise)} — ${c.stage}${c.contact_name ? `, ${c.contact_name}` : ""}`);
+      lines.push("TOP OPEN DEALS:");
+      for (const client of topOpen) lines.push(`- ${client.name} (${nameOf.get(client.division_id) ?? "?"}) ${inr(client.value_paise)} - ${client.stage}${client.contact_name ? `, ${client.contact_name}` : ""}`);
     }
   }
 
-  // ---- Operating briefs (goals / targets the AI measures against) ----
-  const brf = (briefs ?? []) as { division_id: string; goals: string | null; targets: string | null; notes: string | null }[];
-  const filled = brf.filter((b) => (b.goals || b.targets || b.notes));
+  const briefsFilled = (briefs ?? []) as { division_id: string; goals: string | null; targets: string | null; notes: string | null }[];
+  const filled = briefsFilled.filter((brief) => brief.goals || brief.targets || brief.notes);
   if (filled.length) {
-    L.push(`\nOPERATING BRIEFS (what "good" looks like per division):`);
-    for (const b of filled) {
-      const parts = [b.goals && `Goals: ${b.goals}`, b.targets && `Targets: ${b.targets}`, b.notes && `Notes: ${b.notes}`].filter(Boolean);
-      L.push(`- ${nameOf.get(b.division_id) ?? "?"} — ${parts.join(" | ")}`);
+    lines.push(`\nOPERATING BRIEFS (what "good" looks like per division):`);
+    for (const brief of filled) {
+      const parts = [brief.goals && `Goals: ${brief.goals}`, brief.targets && `Targets: ${brief.targets}`, brief.notes && `Notes: ${brief.notes}`].filter(Boolean);
+      lines.push(`- ${nameOf.get(brief.division_id) ?? "?"} - ${parts.join(" | ")}`);
     }
   }
 
-  // ---- Tasks ----
-  const ts = (tasks ?? []) as any[];
-  L.push(`\nOPEN TASKS (${ts.length}):`);
-  for (const t of ts) L.push(`- [${t.priority}] ${t.title} — ${t.divisions?.slug ?? "?"}${t.due_date ? `, due ${t.due_date}` : ""}, ${t.status}`);
-  if (ts.length === 0) L.push("- (none)");
-
-  // ---- Documents (titles + an excerpt of the body so it can reason over content) ----
-  const dc = (docs ?? []) as any[];
-  L.push(`\nDOCUMENTS (${dc.length} most recent):`);
-  for (const d of dc) {
-    const body = (d.body_md ?? "").replace(/\s+/g, " ").trim().slice(0, 320);
-    L.push(`- ${d.title}${d.doc_type ? ` (${d.doc_type})` : ""} — ${d.divisions?.slug ?? "?"}${body ? `: ${body}${body.length >= 320 ? "…" : ""}` : ""}`);
+  const openTasks = ((tasks ?? []) as {
+    title: string;
+    status: string;
+    priority: string;
+    due_date: string | null;
+    divisions: { slug: string } | { slug: string }[] | null;
+    stage: { is_done: boolean } | { is_done: boolean }[] | null;
+  }[]).filter((task) => {
+    const stage = Array.isArray(task.stage) ? task.stage[0] : task.stage;
+    return !stage?.is_done;
+  });
+  lines.push(`\nOPEN TASKS (${openTasks.length}):`);
+  for (const task of openTasks) {
+    const division = Array.isArray(task.divisions) ? task.divisions[0] : task.divisions;
+    lines.push(`- [${task.priority}] ${task.title} - ${division?.slug ?? "?"}${task.due_date ? `, due ${task.due_date}` : ""}, ${task.status}`);
   }
-  if (dc.length === 0) L.push("- (none)");
+  if (openTasks.length === 0) lines.push("- (none)");
 
-  return L.join("\n");
+  const recentDocs = (docs ?? []) as { title: string; doc_type: string | null; body_md: string | null; divisions: { slug: string } | { slug: string }[] | null }[];
+  lines.push(`\nDOCUMENTS (${recentDocs.length} most recent):`);
+  for (const doc of recentDocs) {
+    const division = Array.isArray(doc.divisions) ? doc.divisions[0] : doc.divisions;
+    const body = (doc.body_md ?? "").replace(/\s+/g, " ").trim().slice(0, 320);
+    lines.push(`- ${doc.title}${doc.doc_type ? ` (${doc.doc_type})` : ""} - ${division?.slug ?? "?"}${body ? `: ${body}${body.length >= 320 ? "..." : ""}` : ""}`);
+  }
+  if (recentDocs.length === 0) lines.push("- (none)");
+
+  return lines.join("\n");
 }

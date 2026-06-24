@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
+import { isCompanyEmail } from "@/lib/auth/companyEmail";
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
@@ -32,15 +33,22 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/auth") || pathname.startsWith("/signup");
+  const hasCompanyEmail = !!user && isCompanyEmail(user.email);
+  const isAuthRoute =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/signup");
 
-  if (!user && !isAuthRoute) {
+  if (!hasCompanyEmail && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    if (user && !isCompanyEmail(user.email)) {
+      url.searchParams.set("error", "company-email-only");
+    }
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname === "/login") {
+  if (hasCompanyEmail && (pathname === "/login" || pathname === "/signup")) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

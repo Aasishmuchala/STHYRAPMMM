@@ -487,6 +487,7 @@ export type Database = {
           priority: Database["public"]["Enums"]["task_priority"]
           project_id: string | null
           status: Database["public"]["Enums"]["task_status"]
+          status_key: string
           title: string
           transaction_id: string | null
         }
@@ -503,6 +504,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["task_priority"]
           project_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
+          status_key?: string
           title: string
           transaction_id?: string | null
         }
@@ -519,6 +521,7 @@ export type Database = {
           priority?: Database["public"]["Enums"]["task_priority"]
           project_id?: string | null
           status?: Database["public"]["Enums"]["task_status"]
+          status_key?: string
           title?: string
           transaction_id?: string | null
         }
@@ -559,6 +562,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tasks_status_key_fkey"
+            columns: ["status_key"]
+            isOneToOne: false
+            referencedRelation: "task_stages"
+            referencedColumns: ["key"]
+          },
+          {
             foreignKeyName: "tasks_transaction_id_fkey"
             columns: ["transaction_id"]
             isOneToOne: false
@@ -566,6 +576,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      task_stages: {
+        Row: {
+          color: string
+          created_at: string
+          is_done: boolean
+          key: string
+          label: string
+          position: number
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          is_done?: boolean
+          key: string
+          label: string
+          position?: number
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          is_done?: boolean
+          key?: string
+          label?: string
+          position?: number
+        }
+        Relationships: []
       }
       transactions: {
         Row: {

@@ -1,5 +1,13 @@
-export type TaskStatus = "todo" | "doing" | "review" | "done";
+export type TaskStatus = string;
 export type TaskPriority = "low" | "med" | "high";
+
+export type TaskStage = {
+  key: string;
+  label: string;
+  color: string;
+  position: number;
+  is_done: boolean;
+};
 
 export type BoardTask = {
   id: string;
@@ -32,9 +40,9 @@ export type TaskInput = {
   description: string | null;
 };
 
-export const STATUS_COLUMNS: { key: TaskStatus; label: string; dot: string }[] = [
-  { key: "todo", label: "To do", dot: "var(--text-faint)" },
-  { key: "doing", label: "Doing", dot: "var(--accent)" },
-  { key: "review", label: "Review", dot: "var(--warning)" },
-  { key: "done", label: "Done", dot: "var(--positive)" },
+export const DEFAULT_TASK_STAGES: TaskStage[] = [
+  { key: "todo", label: "To do", color: "var(--text-faint)", position: 0, is_done: false },
+  { key: "doing", label: "Doing", color: "var(--accent)", position: 1, is_done: false },
+  { key: "review", label: "Review", color: "var(--warning)", position: 2, is_done: false },
+  { key: "done", label: "Done", color: "var(--positive)", position: 3, is_done: true },
 ];

@@ -14,7 +14,17 @@ const prioColor: Record<string, string> = { high: "var(--danger)", med: "var(--w
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const short = (n: string) => n.replace(/^Sthyra\s+/, "");
 
-type TaskRow = { id: string; title: string; priority: string; status: string; due_date: string | null; assignee_id: string | null; projects: { name: string } | null; assignee: { full_name: string | null } | null };
+type TaskRow = {
+  id: string;
+  title: string;
+  priority: string;
+  status: string;
+  due_date: string | null;
+  assignee_id: string | null;
+  projects: { name: string } | null;
+  assignee: { full_name: string | null } | null;
+  stage: { is_done: boolean } | null;
+};
 type DocRow = { id: string; title: string; doc_type: string | null; storage_path: string | null; updated_at: string };
 
 export default async function DivisionPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -45,7 +55,7 @@ export default async function DivisionPage({ params }: { params: Promise<{ slug:
 
   const [{ data: projects }, { data: tasks }, { data: docs }, { data: txns }, { data: invoices }, { data: bom }, { data: ra }, { data: briefRow }] = await Promise.all([
     supabase.from("projects").select("id,name,client,status").eq("division_id", division.id).is("deleted_at", null).order("created_at"),
-    supabase.from("tasks").select("id,title,priority,status,due_date,assignee_id,projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name)").eq("division_id", division.id).is("deleted_at", null).neq("status", "done").order("due_date", { nullsFirst: false }).limit(8).returns<TaskRow[]>(),
+    supabase.from("tasks").select("id,title,priority,status:status_key,due_date,assignee_id,projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),stage:task_stages!tasks_status_key_fkey(is_done)").eq("division_id", division.id).is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(8).returns<TaskRow[]>(),
     supabase.from("documents").select("id,title,doc_type,storage_path,updated_at").eq("division_id", division.id).is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(6).returns<DocRow[]>(),
     supabase.from("transactions").select("direction,amount_paise").eq("division_id", division.id).is("deleted_at", null).gte("occurred_on", monthStart),
     supabase.from("invoices").select("amount_paise,status").eq("division_id", division.id).is("deleted_at", null),
@@ -55,7 +65,7 @@ export default async function DivisionPage({ params }: { params: Promise<{ slug:
   ]);
 
   const proj = (projects ?? []) as { id: string; name: string; client: string | null; status: string }[];
-  const tsk = (tasks ?? []) as TaskRow[];
+  const tsk = ((tasks ?? []) as TaskRow[]).filter((task) => !task.stage?.is_done);
   const dcs = (docs ?? []) as DocRow[];
   const tx = (txns ?? []) as { direction: string; amount_paise: number }[];
   const inv = (invoices ?? []) as { amount_paise: number; status: string }[];

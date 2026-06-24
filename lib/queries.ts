@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/database.types";
 
 // NOTE: @supabase/supabase-js (this version) infers `never` for `.select()` result rows even
 // with the full generated types (verified). So the query/mutation helpers take a loose client;
@@ -10,11 +9,12 @@ type DB = SupabaseClient<any, any, any>;
 type TaskRow = {
   id: string;
   title: string;
-  priority: Database["public"]["Enums"]["task_priority"];
-  status: Database["public"]["Enums"]["task_status"];
+  priority: "low" | "med" | "high";
+  status: string;
   due_date: string | null;
   division_id: string;
   divisions: { slug: string; name: string } | null;
+  stage: { is_done: boolean } | null;
 };
 type DocRow = {
   title: string;
@@ -47,10 +47,12 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart),
     supabase.from("invoices").select("number,counterparty,amount_paise,status,due_on,division_id").is("deleted_at", null),
-    supabase.from("tasks").select("id,title,priority,status,due_date,division_id,divisions(slug,name)").is("deleted_at", null).neq("status", "done").order("due_date", { nullsFirst: false }).returns<TaskRow[]>(),
+    supabase.from("tasks").select("id,title,priority,status:status_key,due_date,division_id,divisions(slug,name),stage:task_stages!tasks_status_key_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).returns<TaskRow[]>(),
     supabase.from("projects").select("division_id,status").is("deleted_at", null),
     supabase.from("documents").select("title,doc_type,body_md,updated_at,divisions(name,slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(1).returns<DocRow[]>(),
   ]);
+
+  const openTasks = (tasks ?? []).filter((task) => !task.stage?.is_done);
 
   const isOwner = profile?.global_role === "owner";
   const isLeadAnywhere = isOwner || (memberships ?? []).some((m) => m.role === "lead");
@@ -70,7 +72,7 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
   for (const t of T) if (t.direction === "in") revByDiv.set(t.division_id, (revByDiv.get(t.division_id) ?? 0) + t.amount_paise);
   const maxRev = Math.max(1, ...revByDiv.values());
   const activeProjByDiv = countBy((projects ?? []).filter((p) => p.status === "active").map((p) => p.division_id));
-  const openTaskByDiv = countBy((tasks ?? []).map((t) => t.division_id));
+  const openTaskByDiv = countBy(openTasks.map((task) => task.division_id));
 
   const divisionHealth = (divisions ?? []).map((d) => {
     const rev = revByDiv.get(d.id) ?? 0;
@@ -85,7 +87,7 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
     };
   });
 
-  const myTasks = (tasks ?? []).slice(0, 6).map((t) => ({
+  const myTasks = openTasks.slice(0, 6).map((t) => ({
     id: t.id,
     title: t.title,
     priority: t.priority,

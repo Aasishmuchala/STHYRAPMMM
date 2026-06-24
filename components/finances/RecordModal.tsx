@@ -32,7 +32,9 @@ export function RecordModal({
   const [err, setErr] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDismiss(dialogRef, onClose);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  
   const set = (k: string, v: any) => setVals((s) => ({ ...s, [k]: v }));
 
   const projectField = fields.find((f) => f.type === "project");

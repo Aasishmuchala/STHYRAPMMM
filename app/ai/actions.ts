@@ -160,7 +160,7 @@ export async function askAi(prompt: string): Promise<Result> {
         const { error } = await supabase.from("tasks").insert({
           title: String(call.args.title).slice(0, 300), division_id: divId,
           priority: ["low", "med", "high"].includes(call.args.priority) ? call.args.priority : "med",
-          status: "todo", due_date: call.args.due_date || null, created_by: user.id,
+          status_key: "todo", due_date: call.args.due_date || null, created_by: user.id,
         });
         log.push(error ? { tool: "create_task", ok: false, detail: error.message } : { tool: "create_task", ok: true, detail: `Task: ${call.args.title}` });
       } else if (call.name === "draft_note") {
