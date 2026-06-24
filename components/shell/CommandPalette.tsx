@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   IconSearch, IconHome, IconTasks, IconFinance, IconDoc, IconSparkle, IconSettings, IconClients,
-  IconStudios, IconDigital, IconConstruction, IconLivingTwin,
+  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconLayers,
 } from "@/components/icons";
 
 type Nav = { slug: string; name: string };
@@ -45,6 +45,7 @@ export function CommandPalette({ divisions, canSeeFinances, isOwner }: { divisio
     const items: Item[] = [
       { id: "nav-home", label: "Home · Inbox", href: "/", icon: <IconHome size={15} />, group: "Go to" },
       { id: "nav-tasks", label: "Tasks", href: "/tasks", icon: <IconTasks size={15} />, group: "Go to" },
+      { id: "nav-projects", label: "Projects", href: "/projects", icon: <IconLayers size={15} />, group: "Go to" },
       { id: "nav-clients", label: "Clients", href: "/clients", icon: <IconClients size={15} />, group: "Go to" },
       ...(canSeeFinances ? [{ id: "nav-fin", label: "Finances", href: "/finances", icon: <IconFinance size={15} />, group: "Go to" as const }] : []),
       { id: "nav-docs", label: "Documents", href: "/documents", icon: <IconDoc size={15} />, group: "Go to" },

@@ -55,7 +55,7 @@ export default async function DivisionPage({ params }: { params: Promise<{ slug:
 
   const [{ data: projects }, { data: tasks }, { data: docs }, { data: txns }, { data: invoices }, { data: bom }, { data: ra }, { data: briefRow }] = await Promise.all([
     supabase.from("projects").select("id,name,client,status").eq("division_id", division.id).is("deleted_at", null).order("created_at"),
-    supabase.from("tasks").select("id,title,priority,status:status_key,due_date,assignee_id,projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),stage:task_stages!tasks_status_key_fkey(is_done)").eq("division_id", division.id).is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(8).returns<TaskRow[]>(),
+    supabase.from("tasks").select("id,title,priority,status:workflow_stage_id,due_date,assignee_id,projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").eq("division_id", division.id).is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(8).returns<TaskRow[]>(),
     supabase.from("documents").select("id,title,doc_type,storage_path,updated_at").eq("division_id", division.id).is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(6).returns<DocRow[]>(),
     supabase.from("transactions").select("direction,amount_paise").eq("division_id", division.id).is("deleted_at", null).gte("occurred_on", monthStart),
     supabase.from("invoices").select("amount_paise,status").eq("division_id", division.id).is("deleted_at", null),

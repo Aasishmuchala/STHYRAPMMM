@@ -2,6 +2,8 @@ export type TaskStatus = string;
 export type TaskPriority = "low" | "med" | "high";
 
 export type TaskStage = {
+  id: string;
+  workflow_id: string;
   key: string;
   label: string;
   color: string;
@@ -26,7 +28,7 @@ export type BoardTask = {
 };
 
 export type DivisionOpt = { id: string; slug: string; name: string };
-export type ProjectOpt = { id: string; name: string; division_id: string };
+export type ProjectOpt = { id: string; name: string; division_id: string; workflow_id?: string | null };
 export type MemberOpt = { id: string; name: string };
 
 export type TaskInput = {
@@ -41,8 +43,8 @@ export type TaskInput = {
 };
 
 export const DEFAULT_TASK_STAGES: TaskStage[] = [
-  { key: "todo", label: "To do", color: "var(--text-faint)", position: 0, is_done: false },
-  { key: "doing", label: "Doing", color: "var(--accent)", position: 1, is_done: false },
-  { key: "review", label: "Review", color: "var(--warning)", position: 2, is_done: false },
-  { key: "done", label: "Done", color: "var(--positive)", position: 3, is_done: true },
+  { id: "todo", workflow_id: "default", key: "todo", label: "To do", color: "var(--text-faint)", position: 0, is_done: false },
+  { id: "doing", workflow_id: "default", key: "doing", label: "Doing", color: "var(--accent)", position: 1, is_done: false },
+  { id: "review", workflow_id: "default", key: "review", label: "Review", color: "var(--warning)", position: 2, is_done: false },
+  { id: "done", workflow_id: "default", key: "done", label: "Done", color: "var(--positive)", position: 3, is_done: true },
 ];

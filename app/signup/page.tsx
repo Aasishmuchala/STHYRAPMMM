@@ -24,9 +24,27 @@ const inputStyle: React.CSSProperties = {
 
 type Stage = "details" | "verify";
 
-function mapOtpError(message: string) {
+function getAuthErrorMessage(error: { message?: string; code?: string; status?: number } | null | undefined) {
+  const message = error?.message?.trim();
+  if (message && message !== "{}") return message;
+  if (error?.code) return error.code;
+  if (error?.status) return `Request failed with status ${error.status}.`;
+  return "";
+}
+
+function mapOtpError(rawMessage: string) {
+  const message = rawMessage.trim();
   if (/over_email_send_rate_limit/i.test(message)) {
     return "Too many code requests right now. Please wait a moment and try again.";
+  }
+  if (/sender|from address|domain|smtp|email address is not authorized/i.test(message)) {
+    return "Your email provider rejected the sender setup. Verify your sending domain in Resend and make sure Supabase SMTP uses that same sender address.";
+  }
+  if (/request failed with status 500/i.test(message)) {
+    return "Supabase could not send the verification email. This is usually an SMTP setup issue in Supabase or an unverified sender/domain in Resend.";
+  }
+  if (/database error saving new user/i.test(message)) {
+    return "Supabase could not create the user record. Check your Auth logs for the exact signup error.";
   }
   if (/invalid login credentials|token has expired|otp expired/i.test(message)) {
     return "That verification code is invalid or expired. Request a new code and try again.";
@@ -34,7 +52,7 @@ function mapOtpError(message: string) {
   if (/signup is disabled/i.test(message)) {
     return "Email verification signup is disabled in Supabase Auth right now.";
   }
-  return message || "Couldn't continue with email verification right now.";
+  return message || "Couldn't continue with email verification right now. Check Supabase Auth logs for the exact reason.";
 }
 
 export default function SignupPage() {
@@ -80,7 +98,8 @@ export default function SignupPage() {
     setBusy(false);
 
     if (error) {
-      setErr(mapOtpError(error.message));
+      console.error("Signup OTP request failed", error);
+      setErr(mapOtpError(getAuthErrorMessage(error)));
       return;
     }
 
@@ -108,8 +127,9 @@ export default function SignupPage() {
     });
 
     if (verifyError) {
+      console.error("Signup OTP verification failed", verifyError);
       setBusy(false);
-      setErr(mapOtpError(verifyError.message));
+      setErr(mapOtpError(getAuthErrorMessage(verifyError)));
       return;
     }
 
@@ -163,7 +183,8 @@ export default function SignupPage() {
     setBusy(false);
 
     if (error) {
-      setErr(mapOtpError(error.message));
+      console.error("Signup OTP resend failed", error);
+      setErr(mapOtpError(getAuthErrorMessage(error)));
       return;
     }
 

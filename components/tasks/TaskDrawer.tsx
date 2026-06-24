@@ -35,6 +35,7 @@ export function TaskDrawer({
   members,
   stages,
   onClose,
+  lockedProjectId,
 }: {
   initialMode: Mode;
   task?: BoardTask;
@@ -44,12 +45,14 @@ export function TaskDrawer({
   members: MemberOpt[];
   stages: TaskStage[];
   onClose: () => void;
+  lockedProjectId?: string | null;
 }) {
   const router = useRouter();
+  const lockedProject = lockedProjectId ? projects.find((project) => project.id === lockedProjectId) ?? null : null;
   const [mode, setMode] = useState<Mode>(initialMode);
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const [status, setStatusLocal] = useState<TaskStatus>(task?.status ?? presetStatus ?? stages[0]?.key ?? "todo");
+  const [status, setStatusLocal] = useState<TaskStatus>(task?.status ?? presetStatus ?? stages[0]?.id ?? "todo");
   const [confirmDel, setConfirmDel] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   useDismiss(drawerRef, onClose);
@@ -57,11 +60,11 @@ export function TaskDrawer({
 
   const [form, setForm] = useState<TaskInput>({
     title: task?.title ?? "",
-    division_id: task?.division_id ?? divisions[0]?.id ?? "",
-    project_id: task?.project_id ?? null,
+    division_id: task?.division_id ?? lockedProject?.division_id ?? divisions[0]?.id ?? "",
+    project_id: task?.project_id ?? lockedProjectId ?? null,
     assignee_id: task?.assignee_id ?? null,
     priority: task?.priority ?? "med",
-    status: task?.status ?? presetStatus ?? stages[0]?.key ?? "todo",
+    status: task?.status ?? presetStatus ?? stages[0]?.id ?? "todo",
     due_date: task?.due_date ?? null,
     description: task?.description ?? null,
   });
@@ -69,7 +72,7 @@ export function TaskDrawer({
   const set = <K extends keyof TaskInput>(key: K, value: TaskInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const projectsForDivision = projects.filter((project) => project.division_id === form.division_id);
   const activeStatus = mode === "view" ? status : form.status;
-  const statusMeta = stages.find((stage) => stage.key === activeStatus) ?? stages[0];
+  const statusMeta = stages.find((stage) => stage.id === activeStatus) ?? stages[0];
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -157,7 +160,7 @@ export function TaskDrawer({
               <div className="dsection">Move to</div>
               <div className="qstatus qstatus-dynamic">
                 {stages.map((stage) => (
-                  <button key={stage.key} className={status === stage.key ? "on" : ""} onClick={() => quickStatus(stage.key)} disabled={pending}>
+                  <button key={stage.id} className={status === stage.id ? "on" : ""} onClick={() => quickStatus(stage.id)} disabled={pending}>
                     {stage.label}
                   </button>
                 ))}
@@ -186,14 +189,14 @@ export function TaskDrawer({
               <div className="field-row">
                 <div className="field">
                   <label className="label" htmlFor="d-div">Division</label>
-                  <select id="d-div" className="select" value={form.division_id} onChange={(e) => setForm((current) => ({ ...current, division_id: e.target.value, project_id: null }))}>
+                  <select id="d-div" className="select" value={form.division_id} onChange={(e) => setForm((current) => ({ ...current, division_id: e.target.value, project_id: null }))} disabled={Boolean(lockedProjectId)}>
                     {divisions.map((division) => <option key={division.id} value={division.id}>{division.name.replace(/^Sthyra\s+/, "")}</option>)}
                   </select>
                 </div>
                 <div className="field">
                   <label className="label" htmlFor="d-proj">Project</label>
-                  <select id="d-proj" className="select" value={form.project_id ?? ""} onChange={(e) => set("project_id", e.target.value || null)}>
-                    <option value="">- None -</option>
+                  <select id="d-proj" className="select" value={form.project_id ?? ""} onChange={(e) => set("project_id", e.target.value || null)} disabled={Boolean(lockedProjectId)}>
+                    {!lockedProjectId && <option value="">- None -</option>}
                     {projectsForDivision.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </select>
                 </div>
@@ -223,7 +226,7 @@ export function TaskDrawer({
                 <div className="field">
                   <label className="label" htmlFor="d-status">Stage</label>
                   <select id="d-status" className="select" value={form.status} onChange={(e) => set("status", e.target.value)}>
-                    {stages.map((stage) => <option key={stage.key} value={stage.key}>{stage.label}</option>)}
+                    {stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.label}</option>)}
                   </select>
                 </div>
               </div>

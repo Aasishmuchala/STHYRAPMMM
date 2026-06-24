@@ -27,7 +27,7 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
   ] = await Promise.all([
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("division_briefs").select("division_id,goals,targets,notes"),
-    supabase.from("tasks").select("title,status:status_key,priority,due_date,divisions(slug),stage:task_stages!tasks_status_key_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(50),
+    supabase.from("tasks").select("title,status:workflow_stage_id,priority,due_date,divisions(slug),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(50),
     supabase.from("invoices").select("number,amount_paise,status,due_on,division_id,divisions(slug)").is("deleted_at", null).in("status", ["sent", "overdue"]).limit(200),
     supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart).limit(3000),
     supabase.from("documents").select("title,doc_type,body_md,divisions(slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(6),

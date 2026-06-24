@@ -47,7 +47,7 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart),
     supabase.from("invoices").select("number,counterparty,amount_paise,status,due_on,division_id").is("deleted_at", null),
-    supabase.from("tasks").select("id,title,priority,status:status_key,due_date,division_id,divisions(slug,name),stage:task_stages!tasks_status_key_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).returns<TaskRow[]>(),
+    supabase.from("tasks").select("id,title,priority,status:workflow_stage_id,due_date,division_id,divisions(slug,name),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).returns<TaskRow[]>(),
     supabase.from("projects").select("division_id,status").is("deleted_at", null),
     supabase.from("documents").select("title,doc_type,body_md,updated_at,divisions(name,slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(1).returns<DocRow[]>(),
   ]);

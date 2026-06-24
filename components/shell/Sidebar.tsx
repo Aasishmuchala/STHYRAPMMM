@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconHome, IconTasks, IconFinance, IconDoc, IconClients,
-  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle,
+  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers,
 } from "@/components/icons";
 
 type Nav = { slug: string; name: string };
@@ -47,6 +47,9 @@ export function Sidebar({
         </Link>
         <Link href="/tasks" onClick={onNavigate} className={`nav-item ${active("/tasks") ? "active" : ""}`} aria-current={active("/tasks") ? "page" : undefined}>
           <IconTasks size={16} />Tasks
+        </Link>
+        <Link href="/projects" onClick={onNavigate} className={`nav-item ${active("/projects") ? "active" : ""}`} aria-current={active("/projects") ? "page" : undefined}>
+          <IconLayers size={16} />Projects
         </Link>
         <Link href="/clients" onClick={onNavigate} className={`nav-item ${active("/clients") ? "active" : ""}`} aria-current={active("/clients") ? "page" : undefined}>
           <IconClients size={16} />Clients
