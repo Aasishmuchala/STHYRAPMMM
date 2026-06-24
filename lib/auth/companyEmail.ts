@@ -1,17 +1,22 @@
-const COMPANY_EMAIL_DOMAIN = "sthyra.com";
+const ALLOWED_EMAIL_DOMAINS = ["sthyra.com", "sthyra.in"] as const;
+const ALLOWED_EMAILS = ["aasishmuchala@gmail.com"] as const;
 
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
 export function isCompanyEmail(email: string | null | undefined) {
-  return normalizeEmail(email ?? "").endsWith(`@${COMPANY_EMAIL_DOMAIN}`);
+  const normalized = normalizeEmail(email ?? "");
+  return (
+    ALLOWED_EMAILS.includes(normalized as (typeof ALLOWED_EMAILS)[number]) ||
+    ALLOWED_EMAIL_DOMAINS.some((domain) => normalized.endsWith(`@${domain}`))
+  );
 }
 
 export function companyEmailMessage() {
-  return `Use your @${COMPANY_EMAIL_DOMAIN} email to access Sthyra.`;
+  return "Use your approved Sthyra email to access Sthyra.";
 }
 
 export function companyEmailDomain() {
-  return COMPANY_EMAIL_DOMAIN;
+  return ALLOWED_EMAIL_DOMAINS[0];
 }

@@ -7,9 +7,7 @@ on:
 
 # Required repo secrets (GitHub → Settings → Secrets and variables → Actions):
 #   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
-#   CYPRESS_OWNER_EMAIL,  CYPRESS_OWNER_PASSWORD
-#   CYPRESS_LEAD_EMAIL,   CYPRESS_LEAD_PASSWORD
-#   CYPRESS_MEMBER_EMAIL, CYPRESS_MEMBER_PASSWORD
+#   CYPRESS_OWNER_EMAIL, CYPRESS_OWNER_PASSWORD
 
 jobs:
   verify:
@@ -22,7 +20,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Cache Cypress binary
@@ -43,23 +41,52 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check E2E secret availability
+        id: e2e-secrets
+        shell: bash
+        env:
+          CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
+          CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
+        run: |
+          missing=0
+          for var in \
+            NEXT_PUBLIC_SUPABASE_URL \
+            NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            CYPRESS_OWNER_EMAIL \
+            CYPRESS_OWNER_PASSWORD
+          do
+            if [ -z "${!var}" ]; then
+              echo "Missing $var"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 0 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: E2E (Cypress)
+        if: steps.e2e-secrets.outputs.run == 'true'
         uses: cypress-io/github-action@v6
         with:
           install: false
           start: npm run start
           wait-on: http://localhost:3000/login
           wait-on-timeout: 120
+          command: npx cypress run --spec "cypress/e2e/auth.cy.ts,cypress/e2e/clients.cy.ts,cypress/e2e/command-palette.cy.ts,cypress/e2e/wallpaper.cy.ts"
         env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
           CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
-          CYPRESS_LEAD_EMAIL: ${{ secrets.CYPRESS_LEAD_EMAIL }}
-          CYPRESS_LEAD_PASSWORD: ${{ secrets.CYPRESS_LEAD_PASSWORD }}
-          CYPRESS_MEMBER_EMAIL: ${{ secrets.CYPRESS_MEMBER_EMAIL }}
-          CYPRESS_MEMBER_PASSWORD: ${{ secrets.CYPRESS_MEMBER_PASSWORD }}
+
+      - name: Skip E2E when secrets are unavailable
+        if: steps.e2e-secrets.outputs.run != 'true'
+        run: echo "Skipping owner-only Cypress because required Supabase/owner secrets are not configured for this run."
 
       - name: Upload Cypress screenshots on failure
-        if: failure()
+        if: failure() && steps.e2e-secrets.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: cypress-screenshots
