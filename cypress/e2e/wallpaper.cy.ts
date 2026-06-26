@@ -13,8 +13,9 @@ describe("Custom wallpaper", () => {
     cy.window().then((win) => {
       const v = win.document.documentElement.style.getPropertyValue("--wallpaper-image");
       expect(v, "wallpaper variable").to.contain("picsum.photos");
-      const size = win.getComputedStyle(win.document.body).backgroundSize;
-      expect(size, "background-size includes cover").to.contain("cover");
+      const pseudo = win.getComputedStyle(win.document.body, "::before");
+      expect(pseudo.backgroundImage, "pseudo background image").to.contain("picsum.photos");
+      expect(pseudo.backgroundSize, "background-size includes cover").to.contain("cover");
     });
 
     cy.contains("button", "None").click(); // reset so the account stays clean
