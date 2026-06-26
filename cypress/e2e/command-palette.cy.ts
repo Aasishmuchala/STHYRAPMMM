@@ -17,8 +17,22 @@ describe("Command palette + global search", () => {
   });
 
   it("top-bar search returns live results", () => {
+    const clientName = `Palette Search Client ${Date.now()}`;
+
     cy.login(Cypress.env("OWNER_EMAIL"), Cypress.env("OWNER_PASSWORD"));
-    cy.get('input[aria-label="Search"]').type("veranza");
-    cy.contains("Veranza", { timeout: 10000 }).should("be.visible");
+    cy.visit("/clients");
+    cy.contains("button", "Add client").first().click();
+    cy.get("#f-name").clear().type(clientName);
+    cy.get('[role="dialog"]').contains("button", "Create").click();
+    cy.contains(".ccard", clientName, { timeout: 15000 }).should("be.visible");
+
+    cy.visit("/");
+    cy.get('input[aria-label="Search"]').type("palette");
+    cy.contains(clientName, { timeout: 10000 }).should("be.visible");
+
+    cy.visit("/clients");
+    cy.contains(".ccard", clientName).find('button[aria-label="Delete"]').click();
+    cy.get('[role="alertdialog"]').contains("button", "Delete").click();
+    cy.contains(".ccard", clientName).should("not.exist");
   });
 });
