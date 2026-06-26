@@ -4,11 +4,11 @@ describe("Command palette + global search", () => {
   it("opens and jumps to a module", () => {
     cy.login(Cypress.env("OWNER_EMAIL"), Cypress.env("OWNER_PASSWORD"));
 
-    // Open via the app's custom event to avoid flaky synthetic modifier-key handling in CI.
+    // Wait for the client shell to hydrate, then use the real UI button path that dispatches
+    // the command-palette open event. This avoids racing the effect that wires listeners in CI.
     cy.get('input[aria-label="Search"]').should("be.visible");
-    cy.window().then((win) => {
-      win.dispatchEvent(new Event("sthyra:open-cmdk"));
-    });
+    cy.get("html").should("have.attr", "data-workspace-surface", "plane");
+    cy.get("button.top-search-m").click({ force: true });
     cy.get('[role="dialog"][aria-label="Command palette"]', { timeout: 8000 }).should("be.visible");
 
     cy.get('input[placeholder*="Search or jump"]').type("Finances");
