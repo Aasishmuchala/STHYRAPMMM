@@ -19,7 +19,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
 
   const [{ data: profile }, { data: memberships }, { data: divisions }, { data: rows }] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role"),
+    supabase.from("division_members").select("role").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("clients").select("id,division_id,name,contact_name,email,phone,stage,value_paise,note,divisions(name,slug)").is("deleted_at", null).order("value_paise", { ascending: false }).returns<Row[]>(),
   ]);

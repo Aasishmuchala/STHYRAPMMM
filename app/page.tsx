@@ -12,9 +12,11 @@ import {
 } from "@/components/icons";
 
 const prioColor: Record<string, string> = {
+  highest: "#f87171",
   high: "var(--danger)",
-  med: "var(--warning)",
-  low: "var(--text-faint)",
+  medium: "var(--warning)",
+  low: "#3b82f6",
+  lowest: "var(--text-faint)",
 };
 
 export default async function HomePage() {

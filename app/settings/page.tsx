@@ -17,7 +17,7 @@ export default async function SettingsPage() {
 
   const [{ data: profile }, { data: myMemberships }, { data: divisions }] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role,theme,wallpaper").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role,division_id"),
+    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
   ]);
   const isOwner = profile?.global_role === "owner";
@@ -26,25 +26,34 @@ export default async function SettingsPage() {
   const canSeeFinances = isOwner || isLeadAnywhere;
   const canManageTeam = isOwner || isLeadAnywhere;
 
+  const divs: DivisionOpt[] = (divisions ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
+  const leadableDivisions: DivisionOpt[] = isOwner ? divs : divs.filter((d) => myMem.some((m) => m.role === "lead" && m.division_id === d.id));
+  const leadableDivisionIds = leadableDivisions.map((division) => division.id);
+
   let members: Member[] = [];
   let memberships: Membership[] = [];
   if (canManageTeam) {
-    const [{ data: mem }, { data: mship }] = await Promise.all([
+    const membershipQuery = isOwner
+      ? supabase.from("division_members").select("id,user_id,division_id,role")
+      : leadableDivisionIds.length > 0
+        ? supabase.from("division_members").select("id,user_id,division_id,role").in("division_id", leadableDivisionIds)
+        : Promise.resolve({ data: [] as Membership[], error: null });
+    const [{ data: mem }, membershipResult] = await Promise.all([
       supabase.from("profiles").select("id,full_name,email,global_role").eq("is_active", true).order("created_at"),
-      supabase.from("division_members").select("id,user_id,division_id,role"),
+      membershipQuery,
     ]);
     members = (mem ?? []) as Member[];
-    memberships = (mship ?? []) as Membership[];
+    memberships = (membershipResult.data ?? []) as Membership[];
   }
-
-  const divs: DivisionOpt[] = (divisions ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
-  const leadableDivisions: DivisionOpt[] = isOwner ? divs : divs.filter((d) => myMem.some((m) => m.role === "lead" && m.division_id === d.id));
 
   let omegaStatus: { configured: boolean; last4?: string; updated_at?: string } | null = null;
   if (isOwner) {
     const { data } = await supabase.rpc("omega_key_status");
     omegaStatus = (data as typeof omegaStatus) ?? { configured: false };
   }
+
+  const allowedThemes = new Set(["slate", "daybreak", "mist", "harbor"]);
+  const normalizedTheme = allowedThemes.has(profile?.theme ?? "") ? (profile?.theme ?? "slate") : "slate";
 
   return (
     <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
@@ -64,7 +73,7 @@ export default async function SettingsPage() {
           members={members}
           memberships={memberships}
           divisions={divs}
-          initialTheme={profile?.theme ?? "nyradna"}
+          initialTheme={normalizedTheme}
           initialWallpaper={profile?.wallpaper ?? null}
           omegaStatus={omegaStatus}
         />

@@ -6,14 +6,25 @@ import { createHmac } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createAuthClient } from "@supabase/supabase-js";
-import type { TaskInput, TaskStage, TaskStatus } from "@/lib/tasks-types";
+import type {
+  CycleOpt,
+  ModuleOpt,
+  TaskInput,
+  TaskStage,
+  TaskStatus,
+} from "@/lib/tasks-types";
 
 type Result = { ok: true } | { error: string };
 type WorkflowResult<T = void> = T extends void ? Result : { ok: true; data: T } | { error: string };
 type WorkflowRow = { id: string; name: string; project_id: string | null; scope_key: string | null };
 type StageRow = TaskStage;
+type CycleRow = CycleOpt;
+type ModuleRow = ModuleOpt;
 type StageResult = { ok: true; data: StageRow } | { error: string };
 type StageListResult = { ok: true; data: StageRow[] } | { error: string };
+type OptionalCycleResult = { ok: true; data: CycleRow | null } | { error: string };
+type OptionalModuleResult = { ok: true; data: ModuleRow | null } | { error: string };
+type ModuleLeadJoin = { full_name: string | null } | { full_name: string | null }[] | null;
 
 const DELETE_APPROVAL_COOKIE = "sthyra_task_stage_delete_approval";
 
@@ -29,18 +40,41 @@ function clean<T extends object>(o: T): T {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T;
 }
 
+function unwrapLeadName(value: ModuleLeadJoin) {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0]?.full_name ?? null : value.full_name ?? null;
+}
+
 async function currentUser() {
   const supabase = await db();
   const { data: { user } } = await supabase.auth.getUser();
   return { supabase, user };
 }
 
-async function canManageWorkflow(supabase: SupabaseClient<any, any, any>, userId: string): Promise<boolean> {
-  const [{ data: profile }, { data: memberships }] = await Promise.all([
+async function isOwnerOrLead(supabase: SupabaseClient<any, any, any>, userId: string): Promise<boolean> {
+  const [{ data: profile }, { data: membership }] = await Promise.all([
     supabase.from("profiles").select("global_role").eq("id", userId).maybeSingle(),
-    supabase.from("division_members").select("role").eq("user_id", userId),
+    supabase.from("division_members").select("id").eq("user_id", userId).eq("role", "lead").maybeSingle(),
   ]);
-  return profile?.global_role === "owner" || (memberships ?? []).some((m) => m.role === "lead");
+  return profile?.global_role === "owner" || Boolean(membership);
+}
+
+async function canManageWorkflow(supabase: SupabaseClient<any, any, any>, userId: string, projectId: string | null): Promise<boolean> {
+  const { data: profile } = await supabase.from("profiles").select("global_role").eq("id", userId).maybeSingle();
+  if (profile?.global_role === "owner") return true;
+  if (!projectId) return false;
+
+  const { data: project } = await supabase.from("projects").select("division_id").eq("id", projectId).maybeSingle<{ division_id: string }>();
+  if (!project?.division_id) return false;
+
+  const { data: membership } = await supabase
+    .from("division_members")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("division_id", project.division_id)
+    .eq("role", "lead")
+    .maybeSingle();
+  return Boolean(membership);
 }
 
 async function resolveWorkflow(supabase: SupabaseClient<any, any, any>, projectId: string | null) {
@@ -50,6 +84,90 @@ async function resolveWorkflow(supabase: SupabaseClient<any, any, any>, projectI
   const { data, error } = await query;
   if (error) return { error: error.message } as const;
   if (!data) return { error: "This project does not have a workflow yet." } as const;
+  return { ok: true, data } as const;
+}
+
+async function requireProjectCycle(
+  supabase: SupabaseClient<any, any, any>,
+  projectId: string | null,
+  cycleId: string | null | undefined
+): Promise<OptionalCycleResult> {
+  if (!cycleId) return { ok: true, data: null };
+  if (!projectId) return { error: "Pick a project before assigning a cycle." };
+
+  const { data, error } = await supabase
+    .from("project_cycles")
+    .select("id,project_id,name,goal,starts_on,ends_on,status")
+    .eq("id", cycleId)
+    .eq("project_id", projectId)
+    .is("deleted_at", null)
+    .maybeSingle<CycleRow>();
+  if (error) return { error: error.message };
+  if (!data) return { error: "That cycle is not available for this project." };
+  return { ok: true, data };
+}
+
+async function requireProjectModule(
+  supabase: SupabaseClient<any, any, any>,
+  projectId: string | null,
+  moduleId: string | null | undefined
+): Promise<OptionalModuleResult> {
+  if (!moduleId) return { ok: true, data: null };
+  if (!projectId) return { error: "Pick a project before assigning a module." };
+
+  const { data, error } = await supabase
+    .from("project_modules")
+    .select("id,project_id,name,description,color,status,lead_id,lead_name:profiles!project_modules_lead_id_fkey(full_name)")
+    .eq("id", moduleId)
+    .eq("project_id", projectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!data) return { error: "That module is not available for this project." };
+
+  const row = data as {
+    id: string;
+    project_id: string;
+    name: string;
+    description: string | null;
+    color: string;
+    status: ModuleRow["status"];
+    lead_id: string | null;
+    lead_name: ModuleLeadJoin;
+  };
+  return {
+    ok: true,
+    data: {
+      id: row.id,
+      project_id: row.project_id,
+      name: row.name,
+      description: row.description,
+      color: row.color,
+      status: row.status,
+      lead_id: row.lead_id,
+      lead_name: unwrapLeadName(row.lead_name),
+    },
+  };
+}
+
+async function requireParentTask(
+  supabase: SupabaseClient<any, any, any>,
+  projectId: string | null,
+  parentTaskId: string | null | undefined
+) {
+  if (!parentTaskId) return { ok: true, data: null } as const;
+  if (!projectId) return { error: "Pick a project before linking an epic." } as const;
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id,title,project_id,item_type")
+    .eq("id", parentTaskId)
+    .is("deleted_at", null)
+    .maybeSingle<{ id: string; title: string; project_id: string | null; item_type: string | null }>();
+  if (error) return { error: error.message } as const;
+  if (!data) return { error: "That parent work item no longer exists." } as const;
+  if (data.project_id !== projectId) return { error: "Parent work items must belong to the same project." } as const;
+  if (data.item_type !== "epic") return { error: "Only epics can be used as parent work items." } as const;
   return { ok: true, data } as const;
 }
 
@@ -163,12 +281,24 @@ export async function createTask(input: TaskInput): Promise<Result> {
 
   const stage = await resolveStageForWorkflow(supabase, workflow.data.id, input.status);
   if ("error" in stage) return stage;
+  const cycle = await requireProjectCycle(supabase, input.project_id, input.cycle_id);
+  if ("error" in cycle) return cycle;
+  const moduleEntry = await requireProjectModule(supabase, input.project_id, input.module_id);
+  if ("error" in moduleEntry) return moduleEntry;
+  const parentTask = input.item_type === "epic"
+    ? { ok: true, data: null as null }
+    : await requireParentTask(supabase, input.project_id, input.parent_task_id);
+  if ("error" in parentTask) return parentTask;
 
   const { error } = await supabase.from("tasks").insert({
     title: input.title.trim(),
     division_id: input.division_id,
     project_id: input.project_id,
     assignee_id: input.assignee_id,
+    cycle_id: cycle.data?.id ?? null,
+    module_id: moduleEntry.data?.id ?? null,
+    parent_task_id: parentTask.data?.id ?? null,
+    item_type: input.item_type,
     priority: input.priority,
     status_key: stage.data.key,
     workflow_stage_id: stage.data.id,
@@ -183,12 +313,13 @@ export async function createTask(input: TaskInput): Promise<Result> {
 }
 
 export async function updateTask(id: string, input: Partial<TaskInput>): Promise<Result> {
-  const supabase = await db();
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
   const { data: existing, error: existingError } = await supabase
     .from("tasks")
-    .select("project_id,workflow_stage_id")
+    .select("project_id,workflow_stage_id,item_type")
     .eq("id", id)
-    .maybeSingle<{ project_id: string | null; workflow_stage_id: string | null }>();
+    .maybeSingle<{ project_id: string | null; workflow_stage_id: string | null; item_type: string | null }>();
   if (existingError) return { error: existingError.message };
   if (!existing) return { error: "Task not found." };
 
@@ -199,12 +330,26 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
   const desiredStageId = input.status ?? existing.workflow_stage_id;
   const stage = await resolveStageForWorkflow(supabase, workflow.data.id, desiredStageId);
   if ("error" in stage) return stage;
+  const nextItemType = input.item_type ?? (existing.item_type === "epic" || existing.item_type === "story" || existing.item_type === "task" || existing.item_type === "bug" || existing.item_type === "improvement" || existing.item_type === "subtask" ? existing.item_type : "task");
+  if (input.parent_task_id === id) return { error: "A work item cannot be its own parent epic." };
+  const cycle = await requireProjectCycle(supabase, nextProjectId, input.cycle_id);
+  if ("error" in cycle) return cycle;
+  const moduleEntry = await requireProjectModule(supabase, nextProjectId, input.module_id);
+  if ("error" in moduleEntry) return moduleEntry;
+  const parentTask = nextItemType === "epic"
+    ? { ok: true, data: null as null }
+    : await requireParentTask(supabase, nextProjectId, input.parent_task_id);
+  if ("error" in parentTask) return parentTask;
 
   const patch = clean({
     title: input.title?.trim(),
     division_id: input.division_id,
     project_id: input.project_id,
     assignee_id: input.assignee_id,
+    cycle_id: input.cycle_id !== undefined ? cycle.data?.id ?? null : undefined,
+    module_id: input.module_id !== undefined ? moduleEntry.data?.id ?? null : undefined,
+    parent_task_id: input.parent_task_id !== undefined || nextItemType === "epic" ? parentTask.data?.id ?? null : undefined,
+    item_type: input.item_type,
     priority: input.priority,
     due_date: input.due_date,
     description: input.description,
@@ -220,7 +365,8 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
 }
 
 export async function setTaskStatus(id: string, status: TaskStatus): Promise<Result> {
-  const supabase = await db();
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
   const { data: task, error: taskError } = await supabase
     .from("tasks")
     .select("project_id")
@@ -253,7 +399,7 @@ export async function createTaskStage(input: {
 }): Promise<WorkflowResult<TaskStage>> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
-  if (!(await canManageWorkflow(supabase, user.id))) return { error: "Only owners and leads can edit the workflow." };
+  if (!(await canManageWorkflow(supabase, user.id, input.project_id))) return { error: "Only the owner or this division's lead can edit the workflow." };
 
   const workflow = await resolveWorkflow(supabase, input.project_id);
   if ("error" in workflow) return { error: workflow.error || "Couldn't load this workflow." };
@@ -308,7 +454,7 @@ export async function updateTaskStage(
 ): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
-  if (!(await canManageWorkflow(supabase, user.id))) return { error: "Only owners and leads can edit the workflow." };
+  if (!(await canManageWorkflow(supabase, user.id, projectId))) return { error: "Only the owner or this division's lead can edit the workflow." };
 
   const workflow = await resolveWorkflow(supabase, projectId);
   if ("error" in workflow) return { error: workflow.error || "Couldn't load this workflow." };
@@ -333,7 +479,7 @@ export async function updateTaskStage(
 export async function reorderTaskStages(projectId: string | null, stageIds: string[]): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
-  if (!(await canManageWorkflow(supabase, user.id))) return { error: "Only owners and leads can edit the workflow." };
+  if (!(await canManageWorkflow(supabase, user.id, projectId))) return { error: "Only the owner or this division's lead can edit the workflow." };
   if (stageIds.length === 0) return { error: "No stages to reorder." };
 
   const workflow = await resolveWorkflow(supabase, projectId);
@@ -353,7 +499,7 @@ export async function reorderTaskStages(projectId: string | null, stageIds: stri
 export async function requestTaskStageDeletionApproval(password: string): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
-  if (!(await canManageWorkflow(supabase, user.id))) return { error: "Only owners and leads can edit the workflow." };
+  if (!(await isOwnerOrLead(supabase, user.id))) return { error: "Only owners and leads can edit the workflow." };
 
   const trimmedPassword = password.trim();
   if (!trimmedPassword) return { error: "Enter your account password to continue." };
@@ -373,7 +519,7 @@ export async function deleteTaskStage(input: {
 }): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
-  if (!(await canManageWorkflow(supabase, user.id))) return { error: "Only owners and leads can edit the workflow." };
+  if (!(await canManageWorkflow(supabase, user.id, input.project_id))) return { error: "Only the owner or this division's lead can edit the workflow." };
   if (!(await hasDeletionApproval(user.id))) {
     return { error: "Confirm your password once this session before deleting workflow stages." };
   }
@@ -423,7 +569,8 @@ export async function deleteTaskStage(input: {
 }
 
 export async function deleteTask(id: string): Promise<Result> {
-  const supabase = await db();
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
   const { data: task, error: taskError } = await supabase.from("tasks").select("project_id").eq("id", id).maybeSingle<{ project_id: string | null }>();
   if (taskError) return { error: taskError.message };
 
@@ -435,4 +582,97 @@ export async function deleteTask(id: string): Promise<Result> {
 
   touchTaskPaths(task?.project_id ?? null);
   return { ok: true };
+}
+
+export async function createProjectCycle(input: {
+  project_id: string | null;
+  name: string;
+  goal?: string | null;
+  starts_on?: string | null;
+  ends_on?: string | null;
+  status?: CycleRow["status"];
+}): Promise<WorkflowResult<CycleRow>> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (!(await canManageWorkflow(supabase, user.id, input.project_id))) return { error: "Only the owner or this division's lead can create cycles." };
+  if (!input.project_id) return { error: "Pick a project first." };
+
+  const name = input.name.trim();
+  if (!name) return { error: "Cycle name is required." };
+
+  const { data, error } = await supabase
+    .from("project_cycles")
+    .insert({
+      project_id: input.project_id,
+      name,
+      goal: input.goal?.trim() || null,
+      starts_on: input.starts_on || null,
+      ends_on: input.ends_on || null,
+      status: input.status ?? "planned",
+      created_by: user.id,
+    })
+    .select("id,project_id,name,goal,starts_on,ends_on,status")
+    .single<CycleRow>();
+  if (error) return { error: error.message };
+
+  touchTaskPaths(input.project_id);
+  return { ok: true, data };
+}
+
+export async function createProjectModule(input: {
+  project_id: string | null;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  lead_id?: string | null;
+  status?: ModuleRow["status"];
+}): Promise<WorkflowResult<ModuleRow>> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (!(await canManageWorkflow(supabase, user.id, input.project_id))) return { error: "Only the owner or this division's lead can create modules." };
+  if (!input.project_id) return { error: "Pick a project first." };
+
+  const name = input.name.trim();
+  if (!name) return { error: "Module name is required." };
+
+  const { data, error } = await supabase
+    .from("project_modules")
+    .insert({
+      project_id: input.project_id,
+      name,
+      description: input.description?.trim() || null,
+      color: input.color?.trim() || "#3b82f6",
+      lead_id: input.lead_id || null,
+      status: input.status ?? "active",
+      created_by: user.id,
+    })
+    .select("id,project_id,name,description,color,status,lead_id,lead_name:profiles!project_modules_lead_id_fkey(full_name)")
+    .single();
+  if (error) return { error: error.message };
+
+  const row = data as {
+    id: string;
+    project_id: string;
+    name: string;
+    description: string | null;
+    color: string;
+    status: ModuleRow["status"];
+    lead_id: string | null;
+    lead_name: ModuleLeadJoin;
+  };
+
+  touchTaskPaths(input.project_id);
+  return {
+    ok: true,
+    data: {
+      id: row.id,
+      project_id: row.project_id,
+      name: row.name,
+      description: row.description,
+      color: row.color,
+      status: row.status,
+      lead_id: row.lead_id,
+      lead_name: unwrapLeadName(row.lead_name),
+    },
+  };
 }

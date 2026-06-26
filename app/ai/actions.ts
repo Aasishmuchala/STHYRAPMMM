@@ -39,7 +39,7 @@ const TOOLS: OmegaTool[] = [
         properties: {
           title: { type: "string" },
           division_slug: { type: "string", enum: ["studios", "digital", "construction", "living_twin"] },
-          priority: { type: "string", enum: ["low", "med", "high"] },
+          priority: { type: "string", enum: ["lowest", "low", "medium", "high", "highest"] },
           due_date: { type: "string", description: "YYYY-MM-DD, optional" },
         },
         required: ["title", "division_slug"],
@@ -159,7 +159,7 @@ export async function askAi(prompt: string): Promise<Result> {
         if (!divId) { log.push({ tool: "create_task", ok: false, detail: `unknown division ${call.args.division_slug}` }); continue; }
         const { error } = await supabase.from("tasks").insert({
           title: String(call.args.title).slice(0, 300), division_id: divId,
-          priority: ["low", "med", "high"].includes(call.args.priority) ? call.args.priority : "med",
+          priority: ["lowest", "low", "medium", "high", "highest"].includes(call.args.priority) ? call.args.priority : "medium",
           status_key: "todo", due_date: call.args.due_date || null, created_by: user.id,
         });
         log.push(error ? { tool: "create_task", ok: false, detail: error.message } : { tool: "create_task", ok: true, detail: `Task: ${call.args.title}` });

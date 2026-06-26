@@ -18,8 +18,8 @@ export const divisionHealth = [
 
 export const myTasks = [
   { prio: "high" as const, title: "Sign off Veranza Tower B RA-7 certificate", division: "Construction", due: "Today" },
-  { prio: "med" as const, title: "Review CHRONO 4DGS volumetric render pass", division: "Studios", due: "Tomorrow" },
-  { prio: "med" as const, title: "Send empanelment deck to Sundaram BNP HFC", division: "Living Twin", due: "24 Jun" },
+  { prio: "medium" as const, title: "Review CHRONO 4DGS volumetric render pass", division: "Studios", due: "Tomorrow" },
+  { prio: "medium" as const, title: "Send empanelment deck to Sundaram BNP HFC", division: "Living Twin", due: "24 Jun" },
   { prio: "low" as const, title: "Ship invoicing module to staging", division: "Digital", due: "26 Jun" },
   { prio: "low" as const, title: "Calibrate Selec EM2M energy meters vs BESCOM", division: "Living Twin", due: "27 Jun" },
 ];

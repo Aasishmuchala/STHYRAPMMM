@@ -6,6 +6,7 @@ import {
   IconHome, IconTasks, IconFinance, IconDoc, IconClients,
   IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers,
 } from "@/components/icons";
+import { DivisionSwitcher } from "./DivisionSwitcher";
 
 type Nav = { slug: string; name: string };
 
@@ -41,7 +42,12 @@ export function Sidebar({
         </div>
       </div>
 
-      <nav className="nav-group" aria-label="Modules">
+      {/* Workspace pill — lives in the sidebar instead of the top bar (Plane-style). */}
+      <div style={{ padding: "4px 14px 10px" }}>
+        <DivisionSwitcher divisions={divisions} />
+      </div>
+
+      <nav className="nav-group" aria-label="Workspace">
         <Link href="/" onClick={onNavigate} className={`nav-item ${active("/") ? "active" : ""}`} aria-current={active("/") ? "page" : undefined}>
           <IconHome size={16} />Home · Inbox
         </Link>
@@ -62,16 +68,11 @@ export function Sidebar({
         <Link href="/documents" onClick={onNavigate} className={`nav-item ${active("/documents") ? "active" : ""}`} aria-current={active("/documents") ? "page" : undefined}>
           <IconDoc size={16} />Documents
         </Link>
-        {isOwner && (
-          <Link href="/ai" onClick={onNavigate} className={`nav-item ${active("/ai") ? "active" : ""}`} aria-current={active("/ai") ? "page" : undefined}>
-            <IconSparkle size={16} />Assistant
-          </Link>
-        )}
       </nav>
 
       {divisions.length > 0 && (
-        <nav className="nav-group" aria-label="Divisions">
-          <div className="seg label">Divisions</div>
+        <nav className="nav-group" aria-label="Your teams">
+          <div className="seg label">Your teams</div>
           {divisions.map((d) => {
             const meta = divisionMeta[d.slug] ?? { Icon: IconLivingTwin, dot: "var(--accent)" };
             const Icon = meta.Icon;
@@ -88,6 +89,11 @@ export function Sidebar({
       )}
 
       <nav className="nav-group" style={{ marginTop: "auto" }} aria-label="Settings">
+        {isOwner && (
+          <Link href="/ai" onClick={onNavigate} className={`nav-item ${active("/ai") ? "active" : ""}`} aria-current={active("/ai") ? "page" : undefined}>
+            <IconSparkle size={16} />Assistant
+          </Link>
+        )}
         <Link href="/settings" onClick={onNavigate} className={`nav-item ${active("/settings") ? "active" : ""}`} aria-current={active("/settings") ? "page" : undefined}>
           <IconSettings size={16} />Settings
         </Link>

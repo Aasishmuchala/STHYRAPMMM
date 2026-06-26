@@ -4,7 +4,7 @@ function Line({ w, h = 12 }: { w: string | number; h?: number }) {
 
 export function PageSkeleton() {
   return (
-    <div className="app" aria-busy="true" aria-label="Loading">
+    <div className="app workspace-skeleton" aria-busy="true" aria-label="Loading">
       <aside className="side">
         <div className="brand">
           <div className="mark" />

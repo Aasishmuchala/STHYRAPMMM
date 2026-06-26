@@ -11,8 +11,15 @@ type ProjectRow = {
   name: string;
   division_id: string;
   client: string | null;
+  description: string | null;
+  starts_on: string | null;
+  target_end_on: string | null;
+  lead_id: string | null;
+  lead: { full_name: string | null } | { full_name: string | null }[] | null;
   divisions: { name: string } | { name: string }[] | null;
 };
+type MemberRow = { id: string; full_name: string | null; email: string | null };
+type DivisionMembershipRow = { user_id: string; division_id: string; role: string };
 
 export default async function ProjectsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,28 +35,59 @@ export default async function ProjectsPage() {
     { data: taskRows },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role"),
+    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
-    supabase.from("projects").select("id,name,division_id,client,divisions(name)").is("deleted_at", null).eq("status", "active").order("name"),
+    supabase.from("projects").select("id,name,division_id,client,description,starts_on,target_end_on,lead_id,lead:profiles!projects_lead_id_fkey(full_name),divisions(name)").is("deleted_at", null).eq("status", "active").order("name"),
     supabase.from("tasks").select("project_id").is("deleted_at", null),
   ]);
 
   const isOwner = profile?.global_role === "owner";
   const canSeeFinances = isOwner || (memberships ?? []).some((m) => m.role === "lead");
   const divs: DivisionOpt[] = (divisions ?? []).map((d) => ({ id: d.id, slug: d.slug, name: d.name }));
+  const creatableDivisions = isOwner
+    ? divs
+    : divs.filter((division) => (memberships ?? []).some((membership) => membership.role === "lead" && membership.division_id === division.id));
+  const manageableDivisionIds = creatableDivisions.map((division) => division.id);
   const taskCounts = new Map<string, number>();
   for (const row of taskRows ?? []) {
     if (!row.project_id) continue;
     taskCounts.set(row.project_id, (taskCounts.get(row.project_id) ?? 0) + 1);
   }
+
+  let members: { id: string; name: string; email: string | null }[] = [];
+  let divisionMemberships: DivisionMembershipRow[] = [];
+  if (canSeeFinances) {
+    const membershipQuery = isOwner
+      ? supabase.from("division_members").select("user_id,division_id,role")
+      : manageableDivisionIds.length > 0
+        ? supabase.from("division_members").select("user_id,division_id,role").in("division_id", manageableDivisionIds)
+        : Promise.resolve({ data: [] as DivisionMembershipRow[], error: null });
+    const [{ data: memberRows }, membershipResult] = await Promise.all([
+      supabase.from("profiles").select("id,full_name,email").eq("is_active", true).order("full_name"),
+      membershipQuery,
+    ]);
+    members = ((memberRows ?? []) as MemberRow[]).map((member) => ({
+      id: member.id,
+      name: member.full_name ?? member.email ?? "Unknown",
+      email: member.email ?? null,
+    }));
+    divisionMemberships = (membershipResult.data ?? []) as DivisionMembershipRow[];
+  }
+
   const projects = ((projectRows ?? []) as ProjectRow[]).map((project) => {
     const division = Array.isArray(project.divisions) ? project.divisions[0] : project.divisions;
+    const lead = Array.isArray(project.lead) ? project.lead[0] : project.lead;
     return {
       id: project.id,
       name: project.name,
       division_id: project.division_id,
       division_name: division?.name?.replace(/^Sthyra\s+/, "") ?? "Division",
       client: project.client ?? null,
+      description: project.description ?? null,
+      starts_on: project.starts_on ?? null,
+      target_end_on: project.target_end_on ?? null,
+      lead_id: project.lead_id ?? null,
+      lead_name: lead?.full_name ?? null,
       openTasks: taskCounts.get(project.id) ?? 0,
     };
   });
@@ -57,14 +95,21 @@ export default async function ProjectsPage() {
   return (
     <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
       <main>
-        <header className="subhead">
+        <header className="projects-page-head">
           <div>
-            <div className="label" style={{ marginBottom: 9 }}>Projects</div>
-            <h1>Project hub</h1>
-            <p className="head-sub">Create a project here, then open it in Tasks to work inside its own workflow and planning flow.</p>
+            <div className="label" style={{ marginBottom: 7 }}>Projects</div>
+            <h1>Projects</h1>
+            <p className="head-sub">Create, assign leads, tune timelines, and open each project&apos;s task board from one compact workspace.</p>
           </div>
         </header>
-        <ProjectsView divisions={divs} projects={projects} />
+        <ProjectsView
+          projects={projects}
+          canManageProjects={canSeeFinances}
+          creatableDivisions={creatableDivisions}
+          isOwner={isOwner}
+          members={members}
+          divisionMemberships={divisionMemberships}
+        />
       </main>
     </AppShell>
   );

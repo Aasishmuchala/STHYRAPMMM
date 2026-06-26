@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TaskPriority } from "@/lib/tasks-types";
 
 // NOTE: @supabase/supabase-js (this version) infers `never` for `.select()` result rows even
 // with the full generated types (verified). So the query/mutation helpers take a loose client;
@@ -9,7 +10,7 @@ type DB = SupabaseClient<any, any, any>;
 type TaskRow = {
   id: string;
   title: string;
-  priority: "low" | "med" | "high";
+  priority: TaskPriority;
   status: string;
   due_date: string | null;
   division_id: string;
@@ -43,7 +44,7 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
     { data: docs },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", userId).maybeSingle(),
-    supabase.from("division_members").select("division_id,role"),
+    supabase.from("division_members").select("division_id,role").eq("user_id", userId),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart),
     supabase.from("invoices").select("number,counterparty,amount_paise,status,due_on,division_id").is("deleted_at", null),

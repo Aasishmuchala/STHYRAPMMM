@@ -30,7 +30,7 @@ export default async function AiPage() {
     { data: monthRows },
     { data: keyStatus },
   ] = await Promise.all([
-    supabase.from("division_members").select("role"),
+    supabase.from("division_members").select("role").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("ai_runs").select("id,purpose,model,input_tokens,output_tokens,cost_inr,prompt,response,actions,status,error,created_at").order("created_at", { ascending: false }).limit(50).returns<Run[]>(),
     supabase.from("ai_pending_actions").select("id,kind,summary,payload,status,created_at").eq("status", "pending").order("created_at", { ascending: false }).returns<Pending[]>(),

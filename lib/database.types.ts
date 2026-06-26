@@ -697,7 +697,7 @@ export type Database = {
       global_role: "owner" | "member"
       invoice_status: "draft" | "sent" | "paid" | "overdue"
       project_status: "active" | "paused" | "done"
-      task_priority: "low" | "med" | "high"
+      task_priority: "lowest" | "low" | "medium" | "high" | "highest"
       task_status: "todo" | "doing" | "review" | "done"
       txn_direction: "in" | "out"
       txn_kind: "revenue" | "cost" | "invoice"
@@ -835,7 +835,7 @@ export const Constants = {
       global_role: ["owner", "member"],
       invoice_status: ["draft", "sent", "paid", "overdue"],
       project_status: ["active", "paused", "done"],
-      task_priority: ["low", "med", "high"],
+      task_priority: ["lowest", "low", "medium", "high", "highest"],
       task_status: ["todo", "doing", "review", "done"],
       txn_direction: ["in", "out"],
       txn_kind: ["revenue", "cost", "invoice"],

@@ -4,22 +4,18 @@ import { useState, useTransition, useEffect } from "react";
 import { saveAppearance } from "@/app/settings/actions";
 
 const THEMES = [
-  { key: "nyradna", name: "NYRADNA", bg: "#0a0a12", accent: "#c6bfff", text: "#eceaf6" },
-  { key: "midnight", name: "Midnight", bg: "#070c16", accent: "#6fb4ff", text: "#e6edf7" },
-  { key: "carbon", name: "Carbon", bg: "#0c0c0e", accent: "#5edda2", text: "#ededee" },
-  { key: "oxblood", name: "Oxblood", bg: "#100b08", accent: "#df8f6c", text: "#f0e7e2" },
-  { key: "daybreak", name: "Daybreak", bg: "#f4f1ea", accent: "#6b1f2a", text: "#241d17" },
-  { key: "slate", name: "Slate", bg: "#eef1f5", accent: "#2f6df0", text: "#18202e" },
+  { key: "slate", name: "Slate", bg: "#eef3f9", accent: "#2563eb", text: "#172033" },
+  { key: "daybreak", name: "Ivory", bg: "#f7f3ea", accent: "#a24b2a", text: "#2b221c" },
+  { key: "mist", name: "Mist", bg: "#edf6f3", accent: "#0f766e", text: "#16302c" },
+  { key: "harbor", name: "Harbor", bg: "#f3f6fd", accent: "#4f46e5", text: "#1f2340" },
 ];
 
 const WALLPAPERS = [
   { key: "none", name: "None", value: "none" },
-  { key: "aurora", name: "Aurora", value: "linear-gradient(135deg,#241b4d,#3b2e6e 45%,#16415f)" },
-  { key: "dusk", name: "Dusk", value: "linear-gradient(160deg,#2a1530,#4a2240 50%,#7a3a4a)" },
-  { key: "ocean", name: "Ocean", value: "linear-gradient(150deg,#0b2447,#19376d 55%,#1f6e8c)" },
-  { key: "ember", name: "Ember", value: "linear-gradient(150deg,#1a0f0a,#3a1d12 50%,#6b2f1a)" },
-  { key: "sand", name: "Sand", value: "linear-gradient(150deg,#efe6d6,#f3ebdc 50%,#e6d8c2)" },
-  { key: "mesh", name: "Mesh", value: "radial-gradient(at 18% 20%,#5b3fa8 0,transparent 45%),radial-gradient(at 82% 8%,#2a6f97 0,transparent 45%),radial-gradient(at 30% 92%,#b5547a 0,transparent 45%),linear-gradient(#12101f,#12101f)" },
+  { key: "cloud", name: "Cloud", value: "linear-gradient(145deg,#f7fbff,#edf4fb 54%,#e7eff9)" },
+  { key: "linen", name: "Linen", value: "linear-gradient(145deg,#faf6ef,#f4ecdf 56%,#efe6d7)" },
+  { key: "mint", name: "Mint", value: "linear-gradient(145deg,#f3fbf9,#e5f5ef 58%,#dbefe8)" },
+  { key: "harbor", name: "Harbor", value: "radial-gradient(at 15% 22%,rgba(99,102,241,0.10) 0,transparent 42%),radial-gradient(at 85% 12%,rgba(14,165,233,0.11) 0,transparent 42%),linear-gradient(145deg,#f6f8ff,#edf3ff 58%,#e8eefc)" },
 ];
 
 function Check() {
@@ -27,7 +23,7 @@ function Check() {
 }
 
 export function ThemeControls({ initialTheme, initialWallpaper }: { initialTheme: string; initialWallpaper: string | null }) {
-  const [theme, setTheme] = useState(initialTheme || "nyradna");
+  const [theme, setTheme] = useState(initialTheme || "slate");
   const [wp, setWp] = useState(initialWallpaper || "none");
   const [customUrl, setCustomUrl] = useState(
     initialWallpaper && initialWallpaper.startsWith("url(") ? initialWallpaper.slice(4, -1).replace(/['"]/g, "") : ""
@@ -56,7 +52,7 @@ export function ThemeControls({ initialTheme, initialWallpaper }: { initialTheme
   // The account (DB) is the source of truth. If this device's live state has drifted from it
   // — theme OR wallpaper — re-apply the saved values and re-persist so the cookie + UI agree.
   useEffect(() => {
-    const dbTheme = initialTheme || "nyradna";
+    const dbTheme = initialTheme || "slate";
     const wantWp = initialWallpaper ?? "none";
     const liveTheme = document.documentElement.getAttribute("data-theme");
     const liveWp = document.documentElement.style.getPropertyValue("--wallpaper-image").trim() || "none";
@@ -70,7 +66,7 @@ export function ThemeControls({ initialTheme, initialWallpaper }: { initialTheme
 
   return (
     <>
-      <div className="dsection" style={{ marginBottom: 12 }}>Theme</div>
+      <div className="dsection" style={{ marginBottom: 12 }}>Workspace palette</div>
       <div className="theme-grid" style={{ marginBottom: 24 }}>
         {THEMES.map((t) => (
           <button key={t.key} className={`theme-swatch ${theme === t.key ? "on" : ""}`} onClick={() => applyTheme(t.key)} aria-pressed={theme === t.key}>
@@ -83,7 +79,7 @@ export function ThemeControls({ initialTheme, initialWallpaper }: { initialTheme
         ))}
       </div>
 
-      <div className="dsection" style={{ marginBottom: 12 }}>Wallpaper</div>
+      <div className="dsection" style={{ marginBottom: 12 }}>Surface wash</div>
       <div className="wp-grid">
         {WALLPAPERS.map((w) => (
           <button

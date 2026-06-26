@@ -18,7 +18,7 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
 
   const [{ data: profile }, { data: memberships }] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role"),
+    supabase.from("division_members").select("role").eq("user_id", user.id),
   ]);
   const isOwner = profile?.global_role === "owner";
   const canSeeFinances = isOwner || (memberships ?? []).some((m: { role: string }) => m.role === "lead");

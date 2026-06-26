@@ -19,7 +19,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
 
   const [{ data: profile }, { data: memberships }, { data: divisions }, { data: docRows }] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role"),
+    supabase.from("division_members").select("role").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("documents").select("id,title,doc_type,status,body_md,storage_path,updated_at,division_id,divisions(name,slug)").is("deleted_at", null).order("updated_at", { ascending: false }).returns<DocRow[]>(),
   ]);

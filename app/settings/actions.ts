@@ -13,6 +13,26 @@ async function db(): Promise<SupabaseClient<any, any, any>> {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+async function currentUser() {
+  const supabase = await db();
+  const { data: { user } } = await supabase.auth.getUser();
+  return { supabase, user };
+}
+
+async function membershipAccess(supabase: SupabaseClient<any, any, any>, userId: string) {
+  const [{ data: profile }, { data: memberships }] = await Promise.all([
+    supabase.from("profiles").select("global_role").eq("id", userId).maybeSingle(),
+    supabase.from("division_members").select("division_id,role").eq("user_id", userId),
+  ]);
+  const isOwner = profile?.global_role === "owner";
+  const leadDivisionIds = new Set(
+    (memberships ?? [])
+      .filter((membership) => membership.role === "lead")
+      .map((membership) => membership.division_id)
+  );
+  return { isOwner, leadDivisionIds };
+}
+
 function done(): Result {
   revalidatePath("/settings");
   revalidatePath("/");
@@ -71,15 +91,42 @@ export async function removeInvite(email: string): Promise<Result> {
 }
 
 export async function addMembership(userId: string, divisionId: string, role: string): Promise<Result> {
-  const supabase = await db();
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
   if (!userId || !divisionId) return { error: "Pick a member and a division" };
+  const access = await membershipAccess(supabase, user.id);
+  if (!access.isOwner && !access.leadDivisionIds.has(divisionId)) {
+    return { error: "Only the owner or that division's lead can add members here." };
+  }
+  if (!access.isOwner && role === "lead") {
+    return { error: "Only the owner can grant lead access." };
+  }
   const { error } = await supabase.from("division_members").insert({ user_id: userId, division_id: divisionId, role });
   if (error) return { error: error.message };
   return done();
 }
 
 export async function removeMembership(id: string): Promise<Result> {
-  const supabase = await db();
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+  const { data: membership, error: membershipError } = await supabase
+    .from("division_members")
+    .select("division_id,role")
+    .eq("id", id)
+    .maybeSingle<{ division_id: string; role: string }>();
+  if (membershipError) return { error: membershipError.message };
+  if (!membership) return { error: "Membership not found." };
+
+  const access = await membershipAccess(supabase, user.id);
+  if (!access.isOwner) {
+    if (!access.leadDivisionIds.has(membership.division_id)) {
+      return { error: "Only the owner or that division's lead can remove this membership." };
+    }
+    if (membership.role === "lead") {
+      return { error: "Only the owner can remove lead access." };
+    }
+  }
+
   const { error } = await supabase.from("division_members").delete().eq("id", id);
   if (error) return { error: error.message };
   return done();

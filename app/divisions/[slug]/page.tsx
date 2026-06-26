@@ -10,7 +10,13 @@ import { DivisionBriefCard } from "@/components/divisions/DivisionBriefCard";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 const VALID = ["studios", "digital", "construction", "living_twin"];
-const prioColor: Record<string, string> = { high: "var(--danger)", med: "var(--warning)", low: "var(--text-faint)" };
+const prioColor: Record<string, string> = {
+  highest: "#f87171",
+  high: "#fb923c",
+  medium: "#f59e0b",
+  low: "#3b82f6",
+  lowest: "#60a5fa",
+};
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const short = (n: string) => n.replace(/^Sthyra\s+/, "");
 
@@ -41,7 +47,7 @@ export default async function DivisionPage({ params }: { params: Promise<{ slug:
 
   const [{ data: profile }, { data: myMem }, { data: allDivs }] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("division_id,role"),
+    supabase.from("division_members").select("division_id,role").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
   ]);
   const isOwner = profile?.global_role === "owner";

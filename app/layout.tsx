@@ -19,8 +19,10 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const jar = await cookies();
-  const theme = jar.get("sthyra-theme")?.value || "nyradna";
-  const wallpaper = jar.get("sthyra-wallpaper")?.value || null;
+  const allowedThemes = new Set(["slate", "daybreak", "mist", "harbor"]);
+  const storedTheme = jar.get("sthyra-theme")?.value || "slate";
+  const theme = allowedThemes.has(storedTheme) ? storedTheme : "slate";
+  const wallpaper = allowedThemes.has(storedTheme) ? (jar.get("sthyra-wallpaper")?.value || null) : null;
 
   return (
     <html

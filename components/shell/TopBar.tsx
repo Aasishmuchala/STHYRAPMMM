@@ -1,24 +1,30 @@
 "use client";
 
-import { IconSearch } from "@/components/icons";
+import { IconSearch, IconSparkle } from "@/components/icons";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { NotificationsBell } from "./NotificationsBell";
-import { DivisionSwitcher } from "./DivisionSwitcher";
 import { GlobalSearch } from "./GlobalSearch";
 
-type Nav = { slug: string; name: string };
+export function TopBar({ initials, onMenu }: { initials: string; onMenu?: () => void }) {
+  function openAi() {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("sthyra:open-ai"));
+    }
+  }
 
-export function TopBar({ initials, onMenu, divisions = [] }: { initials: string; onMenu?: () => void; divisions?: Nav[] }) {
   return (
     <div className="top">
       <button className="menu-btn" onClick={onMenu} aria-label="Open menu">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
       </button>
-      <DivisionSwitcher divisions={divisions} />
       <GlobalSearch />
       <div style={{ flex: 1 }} />
       <button className="iconbtn top-search-m" aria-label="Search" onClick={() => window.dispatchEvent(new Event("sthyra:open-cmdk"))}>
         <IconSearch size={17} />
+      </button>
+      <button className="pill ai-pill" aria-label="Open assistant" onClick={openAi} title="Assistant (Claude Opus 4.8)">
+        <IconSparkle size={14} />
+        <span>Ask AI</span>
       </button>
       <NotificationsBell />
       <SignOutButton initials={initials} />
