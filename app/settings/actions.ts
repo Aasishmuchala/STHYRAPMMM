@@ -39,17 +39,29 @@ function done(): Result {
   return { ok: true };
 }
 
-export async function saveAppearance(theme: string, wallpaper: string | null): Promise<Result> {
+const ACCENT_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+export async function saveAppearance(
+  theme: string,
+  wallpaper: string | null,
+  accent: string | null = null,
+): Promise<Result> {
   const supabase = await db();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
-  const { error } = await supabase.from("profiles").update({ theme, wallpaper }).eq("id", user.id);
+  const cleanAccent = accent && ACCENT_RE.test(accent.trim()) ? accent.trim().toLowerCase() : null;
+  const { error } = await supabase
+    .from("profiles")
+    .update({ theme, wallpaper, accent_color: cleanAccent })
+    .eq("id", user.id);
   if (error) return { error: error.message };
   const jar = await cookies();
   const opts = { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" as const };
   jar.set("sthyra-theme", theme, opts);
   if (wallpaper) jar.set("sthyra-wallpaper", wallpaper, opts);
   else jar.delete("sthyra-wallpaper");
+  if (cleanAccent) jar.set("sthyra-accent", cleanAccent, opts);
+  else jar.delete("sthyra-accent");
   return { ok: true };
 }
 

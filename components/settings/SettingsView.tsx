@@ -30,6 +30,7 @@ export function SettingsView({
   divisions,
   initialTheme,
   initialWallpaper,
+  initialAccent,
   omegaStatus,
 }: {
   profile: Profile;
@@ -41,6 +42,7 @@ export function SettingsView({
   divisions: DivisionOpt[];
   initialTheme: string;
   initialWallpaper: string | null;
+  initialAccent: string | null;
   omegaStatus: { configured: boolean; last4?: string; updated_at?: string } | null;
 }) {
   const router = useRouter();
@@ -105,7 +107,7 @@ export function SettingsView({
       <section className="set-card">
         <h3>Appearance</h3>
         <p className="sub">Choose a theme and an optional wallpaper. Applies instantly and syncs to your account.</p>
-        <ThemeControls initialTheme={initialTheme} initialWallpaper={initialWallpaper} />
+        <ThemeControls initialTheme={initialTheme} initialWallpaper={initialWallpaper} initialAccent={initialAccent} />
       </section>
 
       <section className="set-card">

@@ -676,3 +676,152 @@ export async function createProjectModule(input: {
     },
   };
 }
+
+export async function assignTasksToCycle(
+  cycleId: string,
+  taskIds: string[],
+  mode: "add" | "remove" = "add",
+): Promise<WorkflowResult<{ updated: number }>> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (!cycleId) return { error: "Pick a cycle." };
+  if (!taskIds.length) return { error: "No tasks selected." };
+
+  const [{ data: cycle, error: cycleErr }, { data: taskRows, error: taskErr }] = await Promise.all([
+    supabase
+      .from("project_cycles")
+      .select("id,project_id")
+      .eq("id", cycleId)
+      .is("deleted_at", null)
+      .maybeSingle<{ id: string; project_id: string }>(),
+    supabase
+      .from("tasks")
+      .select("id,project_id")
+      .in("id", taskIds)
+      .is("deleted_at", null)
+      .returns<{ id: string; project_id: string | null }[]>(),
+  ]);
+  if (cycleErr) return { error: cycleErr.message };
+  if (!cycle) return { error: "Cycle not found." };
+  if (taskErr) return { error: taskErr.message };
+
+  if (!(await canManageWorkflow(supabase, user.id, cycle.project_id))) {
+    return { error: "Only the owner or this division's lead can manage cycles." };
+  }
+
+  const mismatched = (taskRows ?? []).filter((row) => row.project_id !== cycle.project_id);
+  if (mismatched.length > 0) {
+    return { error: `${mismatched.length} task(s) belong to a different project — they can't go into this cycle.` };
+  }
+
+  const update = mode === "remove" ? { cycle_id: null } : { cycle_id: cycleId };
+  const { error, count } = await supabase
+    .from("tasks")
+    .update(update)
+    .in("id", taskIds)
+    .neq("cycle_id", mode === "remove" ? null : cycleId);
+
+  if (error) return { error: error.message };
+  touchTaskPaths(cycle.project_id);
+  return { ok: true, data: { updated: count ?? taskIds.length } };
+}
+
+export async function setTaskCycle(taskId: string, cycleId: string | null): Promise<Result> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { data: task, error: taskErr } = await supabase
+    .from("tasks")
+    .select("project_id")
+    .eq("id", taskId)
+    .maybeSingle<{ project_id: string | null }>();
+  if (taskErr) return { error: taskErr.message };
+  if (!task) return { error: "Task not found." };
+
+  if (cycleId) {
+    const cycleCheck = await requireProjectCycle(supabase, task.project_id, cycleId);
+    if ("error" in cycleCheck) return cycleCheck;
+    if (!(await canManageWorkflow(supabase, user.id, task.project_id))) {
+      return { error: "Only the owner or this division's lead can change cycles." };
+    }
+  }
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ cycle_id: cycleId || null })
+    .eq("id", taskId);
+  if (error) return { error: error.message };
+  touchTaskPaths(task.project_id);
+  return { ok: true };
+}
+
+export async function updateProjectCycle(
+  cycleId: string,
+  patch: { name?: string; goal?: string | null; starts_on?: string | null; ends_on?: string | null; status?: CycleRow["status"] },
+): Promise<Result> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (!cycleId) return { error: "Cycle id missing." };
+
+  const { data: cycle, error: cycleErr } = await supabase
+    .from("project_cycles")
+    .select("project_id")
+    .eq("id", cycleId)
+    .maybeSingle<{ project_id: string }>();
+  if (cycleErr) return { error: cycleErr.message };
+  if (!cycle) return { error: "Cycle not found." };
+  if (!(await canManageWorkflow(supabase, user.id, cycle.project_id))) {
+    return { error: "Only the owner or this division's lead can update cycles." };
+  }
+
+  const update: Record<string, unknown> = {};
+  if (patch.name !== undefined) update.name = patch.name.trim();
+  if (patch.goal !== undefined) update.goal = patch.goal?.trim() || null;
+  if (patch.starts_on !== undefined) update.starts_on = patch.starts_on || null;
+  if (patch.ends_on !== undefined) update.ends_on = patch.ends_on || null;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (Object.keys(update).length === 0) return { ok: true };
+
+  const { error } = await supabase.from("project_cycles").update(update).eq("id", cycleId);
+  if (error) return { error: error.message };
+  touchTaskPaths(cycle.project_id);
+  return { ok: true };
+}
+
+export async function deleteProjectCycle(cycleId: string, reassignTo: string | null = null): Promise<Result> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+  if (!cycleId) return { error: "Cycle id missing." };
+
+  const { data: cycle, error: cycleErr } = await supabase
+    .from("project_cycles")
+    .select("project_id")
+    .eq("id", cycleId)
+    .maybeSingle<{ project_id: string }>();
+  if (cycleErr) return { error: cycleErr.message };
+  if (!cycle) return { error: "Cycle not found." };
+  if (!(await canManageWorkflow(supabase, user.id, cycle.project_id))) {
+    return { error: "Only the owner or this division's lead can delete cycles." };
+  }
+
+  if (reassignTo) {
+    const target = await requireProjectCycle(supabase, cycle.project_id, reassignTo);
+    if ("error" in target) return target;
+    const { error: moveErr } = await supabase
+      .from("tasks")
+      .update({ cycle_id: reassignTo })
+      .eq("cycle_id", cycleId);
+    if (moveErr) return { error: moveErr.message };
+  } else {
+    const { error: clearErr } = await supabase
+      .from("tasks")
+      .update({ cycle_id: null })
+      .eq("cycle_id", cycleId);
+    if (clearErr) return { error: clearErr.message };
+  }
+
+  const { error } = await supabase.from("project_cycles").update({ deleted_at: new Date().toISOString() }).eq("id", cycleId);
+  if (error) return { error: error.message };
+  touchTaskPaths(cycle.project_id);
+  return { ok: true };
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   createProjectCycle,
@@ -31,6 +31,7 @@ import { avatarBg } from "@/lib/avatar";
 import { TaskDrawer } from "./TaskDrawer";
 import { TaskListView } from "./TaskListView";
 import { TaskToolbar } from "./TaskToolbar";
+import { CycleDetail } from "./CycleDetail";
 import { getTaskContextLabel, getTaskDisplayKey, getTaskStageIcon, ITEM_TYPE_META, PRIORITY_ICON_META } from "./taskMeta";
 import {
   FiCalendar,
@@ -112,6 +113,7 @@ export function TaskBoard({
   initialTab = "work-items",
   initialCycleId = null,
   initialModuleId = null,
+  initialAssignee = "all",
 }: {
   tasks: BoardTask[];
   stages: TaskStage[];
@@ -128,13 +130,14 @@ export function TaskBoard({
   initialTab?: TabKey;
   initialCycleId?: string | null;
   initialModuleId?: string | null;
+  initialAssignee?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [, start] = useTransition();
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [divFilter, setDivFilter] = useState(initialDivision ?? "all");
-  const [asgFilter, setAsgFilter] = useState("all");
+  const [asgFilter, setAsgFilter] = useState(initialAssignee);
   const [typeFilter, setTypeFilter] = useState<"all" | WorkItemType>("all");
   const [cycleFilter, setCycleFilter] = useState(initialCycleId ?? "all");
   const [moduleFilter, setModuleFilter] = useState(initialModuleId ?? "all");
@@ -179,6 +182,7 @@ export function TaskBoard({
   });
   const [cycleList, setCycleList] = useState(cycles);
   const [moduleList, setModuleList] = useState(modules);
+  const [openCycleId, setOpenCycleId] = useState<string | null>(null);
   const justDraggedRef = useRef(false);
   const today = new Date();
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
@@ -229,17 +233,23 @@ export function TaskBoard({
     setWorkflowOpen(false);
   }, [activeProjectId]);
 
-  const defaultCreateStage = stageList.find((stage) => !stage.is_done)?.id ?? stageList[0]?.id ?? "todo";
-  const filtered = boardTasks.filter(
-    (task) =>
-      (divFilter === "all" || task.division_slug === divFilter) &&
-      (asgFilter === "all" || (asgFilter === "unassigned" ? !task.assignee_id : task.assignee_id === asgFilter)) &&
-      (typeFilter === "all" || task.item_type === typeFilter) &&
-      (cycleFilter === "all" || task.cycle_id === cycleFilter) &&
-      (moduleFilter === "all" || task.module_id === moduleFilter) &&
-      (!mineOnly || task.assignee_id === currentUserId)
+  const defaultCreateStage = useMemo(
+    () => stageList.find((stage) => !stage.is_done)?.id ?? stageList[0]?.id ?? "todo",
+    [stageList]
   );
-  const epicOptions = boardTasks.filter((task) => task.item_type === "epic");
+  const filtered = useMemo(
+    () => boardTasks.filter(
+      (task) =>
+        (divFilter === "all" || task.division_slug === divFilter) &&
+        (asgFilter === "all" || (asgFilter === "unassigned" ? !task.assignee_id : task.assignee_id === asgFilter)) &&
+        (typeFilter === "all" || task.item_type === typeFilter) &&
+        (cycleFilter === "all" || task.cycle_id === cycleFilter) &&
+        (moduleFilter === "all" || task.module_id === moduleFilter) &&
+        (!mineOnly || task.assignee_id === currentUserId)
+    ),
+    [boardTasks, divFilter, asgFilter, typeFilter, cycleFilter, moduleFilter, mineOnly, currentUserId]
+  );
+  const epicOptions = useMemo(() => boardTasks.filter((task) => task.item_type === "epic"), [boardTasks]);
 
   function groupItems(items: BoardTask[]) {
     if (groupBy === "none") return [{ name: "", items }];
@@ -841,14 +851,40 @@ export function TaskBoard({
                         <span>{doneCount}/{count || 0} done</span>
                         <span>{cycle.starts_on || "No start"} - {cycle.ends_on || "No end"}</span>
                       </div>
-                      <button type="button" className="btn-ghost" onClick={() => openCycle(cycle.id)}>
-                        Open work items
-                      </button>
+                      <div className="planning-card-actions">
+                        <button type="button" className="btn" onClick={() => setOpenCycleId(cycle.id)}>
+                          Manage cycle
+                        </button>
+                        <button type="button" className="btn-ghost" onClick={() => openCycle(cycle.id)}>
+                          Open work items
+                        </button>
+                      </div>
                     </article>
                   );
                 })
               )}
             </div>
+            {openCycleId && (() => {
+              const selectedCycle = cycleList.find((c) => c.id === openCycleId);
+              if (!selectedCycle) return null;
+              return (
+                <CycleDetail
+                  cycle={selectedCycle}
+                  projectTasks={boardTasks}
+                  otherCycles={cycleList.filter((c) => c.id !== selectedCycle.id)}
+                  members={members}
+                  stages={stageList}
+                  canManage={canManageWorkflow}
+                />
+              );
+            })()}
+            {openCycleId && (
+              <div className="cycle-detail-close">
+                <button type="button" className="btn-ghost" onClick={() => setOpenCycleId(null)}>
+                  Close cycle editor
+                </button>
+              </div>
+            )}
           </article>
         </section>
       )}

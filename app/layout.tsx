@@ -23,13 +23,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const storedTheme = jar.get("sthyra-theme")?.value || "slate";
   const theme = allowedThemes.has(storedTheme) ? storedTheme : "slate";
   const wallpaper = allowedThemes.has(storedTheme) ? (jar.get("sthyra-wallpaper")?.value || null) : null;
+  const accent = jar.get("sthyra-accent")?.value || null;
+
+  const styleVars: React.CSSProperties = {};
+  if (wallpaper) (styleVars as Record<string, string>)["--wallpaper-image"] = wallpaper;
+  if (accent) (styleVars as Record<string, string>)["--user-accent"] = accent;
 
   return (
     <html
       lang="en"
       data-theme={theme}
       className={`${manrope.variable} ${inter.variable} ${mono.variable} ${cormorant.variable}`}
-      style={wallpaper ? ({ "--wallpaper-image": wallpaper } as React.CSSProperties) : undefined}
+      style={Object.keys(styleVars).length ? styleVars : undefined}
     >
       <body>{children}</body>
     </html>

@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: myMemberships }, { data: divisions }] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role,theme,wallpaper").eq("id", user.id).maybeSingle(),
+    supabase.from("profiles").select("full_name,email,global_role,theme,wallpaper,accent_color").eq("id", user.id).maybeSingle(),
     supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
   ]);
@@ -75,6 +75,7 @@ export default async function SettingsPage() {
           divisions={divs}
           initialTheme={normalizedTheme}
           initialWallpaper={profile?.wallpaper ?? null}
+          initialAccent={profile?.accent_color ?? null}
           omegaStatus={omegaStatus}
         />
       </main>

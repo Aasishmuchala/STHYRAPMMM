@@ -54,7 +54,7 @@ type ModuleRow = {
   lead: { full_name: string | null } | null;
 };
 
-function buildTaskHref(search: { div?: string; project?: string; view?: string; tab?: string; cycle?: string; module?: string }, patch: Record<string, string | null | undefined>) {
+function buildTaskHref(search: { div?: string; project?: string; view?: string; tab?: string; cycle?: string; module?: string; assignee?: string }, patch: Record<string, string | null | undefined>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries({ ...search, ...patch })) {
     if (value) params.set(key, value);
@@ -63,7 +63,7 @@ function buildTaskHref(search: { div?: string; project?: string; view?: string; 
   return query ? `/tasks?${query}` : "/tasks";
 }
 
-export default async function TasksPage({ searchParams }: { searchParams: Promise<{ div?: string; project?: string; view?: string; tab?: string; cycle?: string; module?: string }> }) {
+export default async function TasksPage({ searchParams }: { searchParams: Promise<{ div?: string; project?: string; view?: string; tab?: string; cycle?: string; module?: string; assignee?: string }> }) {
   const sp = await searchParams;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
@@ -241,6 +241,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           initialTab={tab}
           initialCycleId={sp.cycle ?? null}
           initialModuleId={sp.module ?? null}
+          initialAssignee={sp.assignee ?? "all"}
         />
       </main>
     </AppShell>

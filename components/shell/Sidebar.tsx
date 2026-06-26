@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconHome, IconTasks, IconFinance, IconDoc, IconClients,
-  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers,
+  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers, IconPeople,
 } from "@/components/icons";
 import { DivisionSwitcher } from "./DivisionSwitcher";
 
@@ -56,6 +56,9 @@ export function Sidebar({
         </Link>
         <Link href="/projects" onClick={onNavigate} className={`nav-item ${active("/projects") ? "active" : ""}`} aria-current={active("/projects") ? "page" : undefined}>
           <IconLayers size={16} />Projects
+        </Link>
+        <Link href="/people" onClick={onNavigate} className={`nav-item ${active("/people") ? "active" : ""}`} aria-current={active("/people") ? "page" : undefined}>
+          <IconPeople size={16} />People
         </Link>
         <Link href="/clients" onClick={onNavigate} className={`nav-item ${active("/clients") ? "active" : ""}`} aria-current={active("/clients") ? "page" : undefined}>
           <IconClients size={16} />Clients
