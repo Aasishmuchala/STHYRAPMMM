@@ -715,15 +715,16 @@ export async function assignTasksToCycle(
   }
 
   const update = mode === "remove" ? { cycle_id: null } : { cycle_id: cycleId };
-  const { error, count } = await supabase
+  const { data: updatedRows, error } = await supabase
     .from("tasks")
     .update(update)
     .in("id", taskIds)
-    .neq("cycle_id", mode === "remove" ? null : cycleId);
+    .eq("project_id", cycle.project_id)
+    .select("id");
 
   if (error) return { error: error.message };
   touchTaskPaths(cycle.project_id);
-  return { ok: true, data: { updated: count ?? taskIds.length } };
+  return { ok: true, data: { updated: updatedRows?.length ?? 0 } };
 }
 
 export async function setTaskCycle(taskId: string, cycleId: string | null): Promise<Result> {

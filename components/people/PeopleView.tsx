@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { initials as initialsOf } from "@/lib/format";
 import { avatarBg } from "@/lib/avatar";
 import type { DivisionMeta, Person, PersonDaily, PersonTask } from "./types";
@@ -124,7 +124,6 @@ export function PeopleView({
   openTasks: PersonTask[];
   currentUserId: string;
 }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const sortedPeople = useMemo(() => {
@@ -143,12 +142,12 @@ export function PeopleView({
   const totalDone = useMemo(() => people.reduce((s, p) => s + p.done_tasks, 0), [people]);
   const totalOpen = useMemo(() => people.reduce((s, p) => s + p.open_tasks, 0), [people]);
 
-  function select(id: string | null) {
+  function detailHref(id: string | null) {
     const next = new URLSearchParams(searchParams.toString());
     if (id) next.set("user", id);
     else next.delete("user");
     const q = next.toString();
-    router.push(q ? `/people?${q}` : "/people");
+    return q ? `/people?${q}` : "/people";
   }
 
   return (
@@ -187,12 +186,11 @@ export function PeopleView({
                 .slice(0, 2)
                 .join(" · ");
               return (
-                <button
+                <Link
                   key={person.id}
-                  type="button"
+                  href={detailHref(isSelected ? null : person.id)}
                   className={`person-row${isSelected ? " on" : ""}`}
-                  onClick={() => select(isSelected ? null : person.id)}
-                  aria-pressed={isSelected}
+                  aria-current={isSelected ? "page" : undefined}
                 >
                   <span className="person-avatar" style={{ background: avatarBg(person.id) }}>
                     {initialsOf(person.full_name, person.email)}
@@ -214,7 +212,7 @@ export function PeopleView({
                       <span className="person-row-num-of">/{total}</span>
                     </span>
                   </span>
-                </button>
+                </Link>
               );
             })}
           </div>

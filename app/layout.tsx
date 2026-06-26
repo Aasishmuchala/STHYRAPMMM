@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Manrope, Inter, JetBrains_Mono, Cormorant_Garamond } from "next/font/google";
+import type { CSSProperties } from "react";
+import { buildAppearanceStyleVars, isAllowedTheme } from "@/lib/appearance";
 import "./globals.css";
 
 // Inter (body) + Manrope (display headings) are above-the-fold everywhere, so they preload.
@@ -19,15 +21,11 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const jar = await cookies();
-  const allowedThemes = new Set(["slate", "daybreak", "mist", "harbor"]);
   const storedTheme = jar.get("sthyra-theme")?.value || "slate";
-  const theme = allowedThemes.has(storedTheme) ? storedTheme : "slate";
-  const wallpaper = allowedThemes.has(storedTheme) ? (jar.get("sthyra-wallpaper")?.value || null) : null;
+  const theme = isAllowedTheme(storedTheme) ? storedTheme : "slate";
+  const wallpaper = isAllowedTheme(storedTheme) ? (jar.get("sthyra-wallpaper")?.value || null) : null;
   const accent = jar.get("sthyra-accent")?.value || null;
-
-  const styleVars: React.CSSProperties = {};
-  if (wallpaper) (styleVars as Record<string, string>)["--wallpaper-image"] = wallpaper;
-  if (accent) (styleVars as Record<string, string>)["--user-accent"] = accent;
+  const styleVars = buildAppearanceStyleVars(wallpaper, accent) as CSSProperties;
 
   return (
     <html

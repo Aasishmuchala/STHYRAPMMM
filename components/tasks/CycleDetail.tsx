@@ -40,6 +40,7 @@ export function CycleDetail({
   members,
   stages,
   canManage,
+  onCycleTasksChanged,
 }: {
   cycle: CycleOpt;
   projectTasks: BoardTask[];
@@ -47,6 +48,7 @@ export function CycleDetail({
   members: MemberOpt[];
   stages: TaskStage[];
   canManage: boolean;
+  onCycleTasksChanged?: (taskIds: string[], nextCycleId: string | null) => void;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -117,7 +119,10 @@ export function CycleDetail({
     const res = await assignTasksToCycle(cycle.id, [taskId], "remove");
     setBusy(null);
     if ("error" in res) setError(res.error);
-    else router.refresh();
+    else {
+      onCycleTasksChanged?.([taskId], null);
+      router.refresh();
+    }
   }
 
   async function addSelectedToCycle(taskIds: string[]) {
@@ -132,6 +137,7 @@ export function CycleDetail({
     }
     setShowAdd(false);
     setFilter("");
+    onCycleTasksChanged?.(taskIds, cycle.id);
     router.refresh();
   }
 

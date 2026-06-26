@@ -283,6 +283,15 @@ export function TaskBoard({
     router.push(buildTasksHref(new URLSearchParams(searchParams.toString()), { tab: "work-items", module: moduleId, cycle: null }));
   }
 
+  function syncTaskCycles(taskIds: string[], nextCycleId: string | null) {
+    const cycleName = nextCycleId ? (cycleList.find((cycle) => cycle.id === nextCycleId)?.name ?? null) : null;
+    setBoardTasks((current) => current.map((task) => (
+      taskIds.includes(task.id)
+        ? { ...task, cycle_id: nextCycleId, cycle_name: cycleName }
+        : task
+    )));
+  }
+
   function handleTaskDrop(status: TaskStatus, taskId: string) {
     const previousTasks = boardTasks;
     setBoardError(null);
@@ -875,6 +884,7 @@ export function TaskBoard({
                   members={members}
                   stages={stageList}
                   canManage={canManageWorkflow}
+                  onCycleTasksChanged={syncTaskCycles}
                 />
               );
             })()}

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { normalizeAccentHex } from "@/lib/appearance";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Result = { ok: true } | { error: string };
@@ -39,8 +40,6 @@ function done(): Result {
   return { ok: true };
 }
 
-const ACCENT_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-
 export async function saveAppearance(
   theme: string,
   wallpaper: string | null,
@@ -49,7 +48,7 @@ export async function saveAppearance(
   const supabase = await db();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
-  const cleanAccent = accent && ACCENT_RE.test(accent.trim()) ? accent.trim().toLowerCase() : null;
+  const cleanAccent = normalizeAccentHex(accent);
   const { error } = await supabase
     .from("profiles")
     .update({ theme, wallpaper, accent_color: cleanAccent })
@@ -59,9 +58,9 @@ export async function saveAppearance(
   const opts = { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" as const };
   jar.set("sthyra-theme", theme, opts);
   if (wallpaper) jar.set("sthyra-wallpaper", wallpaper, opts);
-  else jar.delete("sthyra-wallpaper");
+  else jar.set("sthyra-wallpaper", "", { ...opts, maxAge: 0 });
   if (cleanAccent) jar.set("sthyra-accent", cleanAccent, opts);
-  else jar.delete("sthyra-accent");
+  else jar.set("sthyra-accent", "", { ...opts, maxAge: 0 });
   return { ok: true };
 }
 

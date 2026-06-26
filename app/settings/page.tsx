@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { isAllowedTheme } from "@/lib/appearance";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
@@ -52,8 +53,7 @@ export default async function SettingsPage() {
     omegaStatus = (data as typeof omegaStatus) ?? { configured: false };
   }
 
-  const allowedThemes = new Set(["slate", "daybreak", "mist", "harbor"]);
-  const normalizedTheme = allowedThemes.has(profile?.theme ?? "") ? (profile?.theme ?? "slate") : "slate";
+  const normalizedTheme = isAllowedTheme(profile?.theme) ? profile.theme : "slate";
 
   return (
     <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>

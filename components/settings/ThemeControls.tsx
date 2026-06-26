@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { saveAppearance } from "@/app/settings/actions";
+import {
+  applyAccentStyleVars,
+  clearAccentStyleVars,
+  normalizeAccentHex,
+} from "@/lib/appearance";
 
 const THEMES = [
   { key: "slate", name: "Slate", bg: "#eef3f9", accent: "#2563eb", text: "#172033" },
@@ -19,47 +24,28 @@ const WALLPAPERS = [
 ];
 
 const ACCENT_PRESETS = [
-  "#2563eb", // cobalt
-  "#4f46e5", // indigo
-  "#7c3aed", // violet
-  "#db2777", // pink
-  "#dc2626", // red
-  "#ea580c", // orange
-  "#ca8a04", // amber
-  "#16a34a", // green
-  "#0f766e", // teal
-  "#0891b2", // cyan
-  "#1e293b", // slate ink
-  "#6b1f2a", // oxblood
+  "#2563eb",
+  "#4f46e5",
+  "#7c3aed",
+  "#db2777",
+  "#dc2626",
+  "#ea580c",
+  "#ca8a04",
+  "#16a34a",
+  "#0f766e",
+  "#0891b2",
+  "#1e293b",
+  "#6b1f2a",
 ];
 
-const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-
-function isValidHex(v: string) {
-  return HEX.test(v.trim());
+function isValidHex(value: string) {
+  return normalizeAccentHex(value) !== null;
 }
 
-function mix(a: string, b: string, pct: number) {
-  // Mix a toward b by pct (0–100). Returns hex. Used to derive accent-strong / accent-ink
-  // locally so the user-picked accent still drives primary/secondary surfaces.
-  const ah = a.replace("#", "");
-  const bh = b.replace("#", "");
-  const ar = parseInt(ah.slice(0, 2), 16);
-  const ag = parseInt(ah.slice(2, 4), 16);
-  const ab = parseInt(ah.slice(4, 6), 16);
-  const br = parseInt(bh.slice(0, 2), 16);
-  const bg = parseInt(bh.slice(2, 4), 16);
-  const bb = parseInt(bh.slice(4, 6), 16);
-  const t = pct / 100;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bl = Math.round(ab + (bb - ab) * t);
-  return `#${[r, g, bl].map((n) => n.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function readableInk(hex: string) {
-  // Pick white or near-black as ink based on perceived luminance.
-  const h = hex.replace("#", "");
+function accentChipInk(hex: string) {
+  const clean = normalizeAccentHex(hex);
+  if (!clean) return "#ffffff";
+  const h = clean.replace("#", "");
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
@@ -82,35 +68,33 @@ export function ThemeControls({
 }) {
   const [theme, setTheme] = useState(initialTheme || "slate");
   const [wp, setWp] = useState(initialWallpaper || "none");
-  const [accent, setAccent] = useState(initialAccent || "");
+  const [accent, setAccent] = useState(normalizeAccentHex(initialAccent) ?? "");
   const [customUrl, setCustomUrl] = useState(
     initialWallpaper && initialWallpaper.startsWith("url(") ? initialWallpaper.slice(4, -1).replace(/['"]/g, "") : ""
   );
   const [, start] = useTransition();
 
   function applyAccentVars(hex: string) {
-    if (!hex) return;
-    const root = document.documentElement;
-    root.style.setProperty("--user-accent", hex);
-    root.style.setProperty("--accent", hex);
-    root.style.setProperty("--accent-strong", mix(hex, "#000000", 22));
-    root.style.setProperty("--accent-ink", readableInk(hex));
-    root.style.setProperty("--accent-soft", hex + "24");
-    root.style.setProperty("--accent-soft-2", hex + "38");
+    const clean = normalizeAccentHex(hex);
+    if (!clean) return;
+    applyAccentStyleVars(document.documentElement.style, clean);
   }
 
-  function persist(t: string, w: string, a: string) {
+  function persist(nextTheme: string, nextWallpaper: string, nextAccent: string) {
     start(() => {
-      void saveAppearance(t, w === "none" ? null : w, a || null);
+      void saveAppearance(nextTheme, nextWallpaper === "none" ? null : nextWallpaper, nextAccent || null);
     });
+  }
+
+  function resetAccentVars() {
+    clearAccentStyleVars(document.documentElement.style);
   }
 
   function applyTheme(key: string) {
     setTheme(key);
     document.documentElement.setAttribute("data-theme", key);
-    // Switching themes wipes the user-accent override so the theme's own accent shows.
     setAccent("");
-    document.documentElement.style.removeProperty("--user-accent");
+    resetAccentVars();
     persist(key, wp, "");
   }
 
@@ -121,38 +105,37 @@ export function ThemeControls({
   }
 
   function applyCustom() {
-    const u = customUrl.trim();
-    if (!u) return;
-    applyWallpaper(`url("${u.startsWith("http") ? u : "https://" + u}")`);
+    const url = customUrl.trim();
+    if (!url) return;
+    applyWallpaper(`url("${url.startsWith("http") ? url : `https://${url}`}")`);
   }
 
-  function applyAccent(hex: string) {
-    const clean = hex.trim();
+  function applyAccent(value: string) {
+    const clean = normalizeAccentHex(value) ?? "";
     setAccent(clean);
-    if (clean && isValidHex(clean)) {
+    if (clean) {
       applyAccentVars(clean);
       persist(theme, wp, clean);
-    } else if (!clean) {
-      // Reset to theme accent
-      document.documentElement.style.removeProperty("--user-accent");
-      persist(theme, wp, "");
+      return;
     }
+
+    resetAccentVars();
+    persist(theme, wp, "");
   }
 
-  // The account (DB) is the source of truth. If this device's live state has drifted from it
-  // — theme, wallpaper, OR accent — re-apply the saved values and re-persist.
   useEffect(() => {
     const dbTheme = initialTheme || "slate";
     const wantWp = initialWallpaper ?? "none";
-    const wantAccent = initialAccent ?? "";
+    const wantAccent = normalizeAccentHex(initialAccent) ?? "";
     const liveTheme = document.documentElement.getAttribute("data-theme");
     const liveWp = document.documentElement.style.getPropertyValue("--wallpaper-image").trim() || "none";
     const liveAccent = document.documentElement.style.getPropertyValue("--user-accent").trim();
+
     if (dbTheme !== liveTheme || wantWp !== liveWp || wantAccent !== liveAccent) {
       document.documentElement.setAttribute("data-theme", dbTheme);
       document.documentElement.style.setProperty("--wallpaper-image", wantWp === "none" ? "none" : wantWp);
       if (wantAccent) applyAccentVars(wantAccent);
-      else document.documentElement.style.removeProperty("--user-accent");
+      else resetAccentVars();
       persist(dbTheme, wantWp, wantAccent);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,13 +145,13 @@ export function ThemeControls({
     <>
       <div className="dsection" style={{ marginBottom: 12 }}>Workspace palette</div>
       <div className="theme-grid" style={{ marginBottom: 24 }}>
-        {THEMES.map((t) => (
-          <button key={t.key} className={`theme-swatch ${theme === t.key ? "on" : ""}`} onClick={() => applyTheme(t.key)} aria-pressed={theme === t.key}>
-            <div className="theme-preview" style={{ background: t.bg }}>
-              <span className="theme-dot" style={{ background: t.accent }} />
-              <span className="theme-bar" style={{ background: `color-mix(in srgb, ${t.text} 28%, transparent)` }} />
+        {THEMES.map((item) => (
+          <button key={item.key} className={`theme-swatch ${theme === item.key ? "on" : ""}`} onClick={() => applyTheme(item.key)} aria-pressed={theme === item.key}>
+            <div className="theme-preview" style={{ background: item.bg }}>
+              <span className="theme-dot" style={{ background: item.accent }} />
+              <span className="theme-bar" style={{ background: `color-mix(in srgb, ${item.text} 28%, transparent)` }} />
             </div>
-            <div className="theme-name">{t.name}{theme === t.key && <span className="tick"><Check /></span>}</div>
+            <div className="theme-name">{item.name}{theme === item.key && <span className="tick"><Check /></span>}</div>
           </button>
         ))}
       </div>
@@ -178,17 +161,17 @@ export function ThemeControls({
         Override the theme&apos;s accent. Affects buttons, active states, and the People page charts.
       </p>
       <div className="accent-row">
-        {ACCENT_PRESETS.map((c) => (
+        {ACCENT_PRESETS.map((color) => (
           <button
-            key={c}
+            key={color}
             type="button"
-            className={`accent-chip ${accent.toLowerCase() === c ? "on" : ""}`}
-            style={{ background: c, color: readableInk(c) }}
-            onClick={() => applyAccent(c)}
-            aria-label={`Accent ${c}`}
-            aria-pressed={accent.toLowerCase() === c}
+            className={`accent-chip ${accent.toLowerCase() === color ? "on" : ""}`}
+            style={{ background: color, color: accentChipInk(color) }}
+            onClick={() => applyAccent(color)}
+            aria-label={`Accent ${color}`}
+            aria-pressed={accent.toLowerCase() === color}
           >
-            {accent.toLowerCase() === c && <Check />}
+            {accent.toLowerCase() === color && <Check />}
           </button>
         ))}
         <button
@@ -221,23 +204,23 @@ export function ThemeControls({
 
       <div className="dsection" style={{ marginBottom: 12, marginTop: 24 }}>Surface wash</div>
       <div className="wp-grid">
-        {WALLPAPERS.map((w) => (
+        {WALLPAPERS.map((item) => (
           <button
-            key={w.key}
-            className={`wp-swatch ${wp === w.value ? "on" : ""}`}
-            onClick={() => applyWallpaper(w.value)}
-            aria-label={w.name}
-            aria-pressed={wp === w.value}
-            style={{ background: w.value === "none" ? "var(--glass)" : w.value }}
+            key={item.key}
+            className={`wp-swatch ${wp === item.value ? "on" : ""}`}
+            onClick={() => applyWallpaper(item.value)}
+            aria-label={item.name}
+            aria-pressed={wp === item.value}
+            style={{ background: item.value === "none" ? "var(--glass)" : item.value }}
           >
-            <span className="wp-label">{w.name}</span>
+            <span className="wp-label">{item.name}</span>
           </button>
         ))}
       </div>
       <div className="field-row" style={{ alignItems: "end" }}>
         <div className="field" style={{ margin: 0 }}>
           <label className="label" htmlFor="wp-url">Custom image URL</label>
-          <input id="wp-url" className="input" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} placeholder="https://… jpg or png" />
+          <input id="wp-url" className="input" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} placeholder="https://... jpg or png" />
         </div>
         <button className="btn" onClick={applyCustom} style={{ height: 38 }}>Apply</button>
       </div>
