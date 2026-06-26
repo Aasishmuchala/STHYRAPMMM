@@ -3,6 +3,7 @@
 describe("Command palette + global search", () => {
   it("opens and jumps to a module", () => {
     cy.login(Cypress.env("OWNER_EMAIL"), Cypress.env("OWNER_PASSWORD"));
+    cy.visit("/");
 
     // Wait for the client shell to hydrate, then use the real UI button path that dispatches
     // the command-palette open event. This avoids racing the effect that wires listeners in CI.
@@ -21,8 +22,8 @@ describe("Command palette + global search", () => {
     const clientName = `Palette Search Client ${token}`;
 
     cy.login(Cypress.env("OWNER_EMAIL"), Cypress.env("OWNER_PASSWORD"));
-    cy.visit("/clients");
-    cy.contains("button", "Add client").first().click();
+    cy.visit("/clients?new=1");
+    cy.get('[role="dialog"]', { timeout: 15000 }).should("be.visible");
     cy.get("#f-name").clear().type(clientName);
     cy.get('[role="dialog"]').contains("button", "Create").click();
     cy.contains(".ccard", clientName, { timeout: 15000 }).should("be.visible");

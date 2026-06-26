@@ -19,6 +19,7 @@ describe("Authentication", () => {
 
   it("logs the owner in and shows the full dashboard", () => {
     cy.login(Cypress.env("OWNER_EMAIL"), Cypress.env("OWNER_PASSWORD"));
+    cy.visit("/");
     cy.contains("h1", "Good").should("be.visible"); // "Good morning/afternoon, Aasish"
     cy.get("aside.side").within(() => {
       cy.contains("Finances").should("exist");

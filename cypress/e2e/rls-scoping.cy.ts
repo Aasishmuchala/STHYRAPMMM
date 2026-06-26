@@ -4,6 +4,7 @@
 describe("Role scoping (RBAC)", () => {
   it("a division MEMBER sees only their division, no finances, no assistant", () => {
     cy.login(Cypress.env("MEMBER_EMAIL"), Cypress.env("MEMBER_PASSWORD"));
+    cy.visit("/");
 
     cy.get('nav[aria-label="Modules"]').within(() => {
       cy.contains("Tasks").should("exist");
@@ -20,6 +21,7 @@ describe("Role scoping (RBAC)", () => {
 
   it("a division LEAD sees finances scoped to their division only, still no assistant", () => {
     cy.login(Cypress.env("LEAD_EMAIL"), Cypress.env("LEAD_PASSWORD"));
+    cy.visit("/");
 
     cy.get('nav[aria-label="Modules"]').within(() => {
       cy.contains("Finances").should("exist"); // leads CAN see finances
