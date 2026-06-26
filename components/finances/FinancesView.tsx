@@ -4,17 +4,21 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { inr, inrShort, pct, dueLabel } from "@/lib/format";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
-import type { Txn, Inv, Bom, Ra, FinView } from "@/lib/finances-types";
+import type { Txn, Inv, Bom, Ra, FinView, EmployeeOption, RecurringPayment, FinanceImportBatch } from "@/lib/finances-types";
 import { IconPlus, IconDownload, IconDoc } from "@/components/icons";
 import { toCsv, downloadCsv, rupees } from "@/lib/csv";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { InvoicePrint } from "./InvoicePrint";
 import { RecordModal, type Field } from "./RecordModal";
+import { RecurringPaymentModal } from "./RecurringPaymentModal";
+import { CsvImportModal } from "./CsvImportModal";
+import { accruedPaisaThrough, activeRecurring, humanRecurringLabel, monthlyEquivalentPaisa, nextDueOn } from "@/lib/recurring";
 import {
   createTransaction, deleteTransaction,
   createInvoice, setInvoiceStatus, deleteInvoice,
   createBomItem, deleteBomItem,
   createRaBill, deleteRaBill,
+  createRecurringPayment, updateRecurringPayment, deleteRecurringPayment, importTransactionsCsv,
 } from "@/app/finances/actions";
 
 const VIEWS: { key: FinView; label: string }[] = [
@@ -23,6 +27,7 @@ const VIEWS: { key: FinView; label: string }[] = [
   { key: "pnl", label: "P&L" },
   { key: "bom", label: "BOM" },
   { key: "ra", label: "RA bills" },
+  { key: "recurring", label: "Recurring" },
 ];
 
 function Trash() {
@@ -31,6 +36,10 @@ function Trash() {
 
 function Chevron({ dir }: { dir: "l" | "r" }) {
   return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">{dir === "l" ? <path d="M15 18l-6-6 6-6" /> : <path d="M9 18l6-6-6-6" />}</svg>;
+}
+
+function Pencil() {
+  return <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>;
 }
 
 function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: number; total: number; onPage: (p: number) => void }) {
@@ -51,17 +60,22 @@ function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: numb
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const nextInvoiceStatus: Record<string, string> = { draft: "sent", sent: "paid", overdue: "paid", paid: "paid" };
+type StandardModalView = Exclude<FinView, "pnl" | "recurring">;
 
 export function FinancesView({
-  transactions, invoices, bom, ra, divisions, projects, initialDivision, openNew,
+  transactions, invoices, bom, ra, recurring, employees, importBatches, divisions, projects, initialDivision, openNew,
 }: {
-  transactions: Txn[]; invoices: Inv[]; bom: Bom[]; ra: Ra[];
+  transactions: Txn[]; invoices: Inv[]; bom: Bom[]; ra: Ra[]; recurring: RecurringPayment[];
+  employees: EmployeeOption[]; importBatches: FinanceImportBatch[];
   divisions: DivisionOpt[]; projects: ProjectOpt[]; initialDivision?: string; openNew?: boolean;
 }) {
   const router = useRouter();
   const [divFilter, setDivFilter] = useState(initialDivision ?? "all");
   const [view, setView] = useState<FinView>(openNew ? "invoices" : "ledger");
-  const [modal, setModal] = useState<FinView | null>(openNew ? "invoices" : null);
+  const [modal, setModal] = useState<StandardModalView | null>(openNew ? "invoices" : null);
+  const [recurringEditor, setRecurringEditor] = useState<RecurringPayment | null>(null);
+  const [recurringOpen, setRecurringOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; label: string; fn: () => Promise<{ ok: true } | { error: string }> } | null>(null);
@@ -76,6 +90,7 @@ export function FinancesView({
   const invs = invoices.filter((i) => inScope(i.division_slug));
   const boms = bom.filter((b) => inScope(b.division_slug));
   const ras = ra.filter((r) => inScope(r.division_slug));
+  const recurringItems = recurring.filter((item) => inScope(item.division_slug));
 
   const moneyIn = sum(txns.filter((t) => t.direction === "in").map((t) => t.amount_paise));
   const moneyOut = sum(txns.filter((t) => t.direction === "out").map((t) => t.amount_paise));
@@ -117,6 +132,21 @@ export function FinancesView({
     } else if (view === "ra") {
       headers = ["RA", "Period", "Division", "Gross (₹)", "Deduction (₹)", "Net (₹)", "Status", "Certified on"];
       rows = ras.map((r) => [r.sequence, r.period ?? "", dn(r.division_name), rupees(r.gross_paise), rupees(r.deduction_paise), rupees(r.net_paise ?? r.gross_paise - r.deduction_paise), r.status, r.certified_on ?? ""]);
+    } else if (view === "recurring") {
+      headers = ["Type", "Label", "Employee / Vendor", "Division", "Cadence", "Starts", "Ends", "Next due", "Accrued (Rs)", "Monthly equivalent (Rs)", "Status"];
+      rows = recurringItems.map((item) => [
+        item.kind,
+        humanRecurringLabel(item),
+        item.kind === "salary" ? item.profile_name ?? item.profile_email ?? "" : item.vendor ?? "",
+        dn(item.division_name),
+        item.cadence,
+        item.starts_on,
+        item.ends_on ?? "",
+        nextDueOn(item, todayStr) ?? "",
+        rupees(accruedPaisaThrough(item, todayStr)),
+        rupees(monthlyEquivalentPaisa(item)),
+        item.status,
+      ]);
     } else {
       headers = ["Division", "Revenue (₹)", "Costs (₹)", "Net (₹)", "Margin (%)"];
       rows = divisions.filter((d) => inScope(d.slug)).map((d) => {
@@ -133,6 +163,20 @@ export function FinancesView({
   const livingTwin = divisions.find((d) => d.slug === "living_twin")?.id ?? firstDiv;
   const construction = divisions.find((d) => d.slug === "construction")?.id ?? firstDiv;
   const todayStr = today.toISOString().slice(0, 10);
+  const activeRecurringItems = recurringItems.filter((item) => activeRecurring(item, todayStr));
+  const activeSalaries = activeRecurringItems.filter((item) => item.kind === "salary");
+  const activeSubscriptions = activeRecurringItems.filter((item) => item.kind === "subscription");
+  const accruedPayroll = sum(activeSalaries.map((item) => accruedPaisaThrough(item, todayStr)));
+  const accruedSubscriptions = sum(activeSubscriptions.map((item) => accruedPaisaThrough(item, todayStr)));
+  const monthlyPayroll = sum(activeSalaries.map((item) => item.amount_paise));
+  const monthlySubscriptionBurn = sum(activeSubscriptions.map((item) => monthlyEquivalentPaisa(item)));
+  const upcomingRecurring = activeRecurringItems.filter((item) => {
+    const dueOn = nextDueOn(item, todayStr);
+    if (!dueOn) return false;
+    const diff = Math.round((new Date(`${dueOn}T00:00:00`).getTime() - new Date(`${todayStr}T00:00:00`).getTime()) / 86400000);
+    return diff >= 0 && diff <= 30;
+  });
+  const latestImport = importBatches[0] ?? null;
 
   // ----- modal field configs + save handlers -----
   const txnFields: Field[] = [
@@ -176,8 +220,7 @@ export function FinancesView({
     { key: "certified_on", label: "Certified on", type: "date", half: true },
   ];
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const modalConfig: Record<FinView, { title: string; fields: Field[]; initial: any; save: (v: any) => Promise<{ ok: true } | { error: string }> }> = {
+  const modalConfig: Record<StandardModalView, { title: string; fields: Field[]; initial: any; save: (v: any) => Promise<{ ok: true } | { error: string }> }> = {
     ledger: {
       title: "New transaction", fields: txnFields,
       initial: { type: "revenue", division_id: firstDiv, project_id: "", status: "cleared", occurred_on: todayStr },
@@ -204,7 +247,6 @@ export function FinancesView({
       initial: { division_id: construction, project_id: "", status: "pending" },
       save: (v) => createRaBill({ division_id: v.division_id, project_id: v.project_id, sequence: v.sequence, period: v.period, gross_paise: v.gross_paise, deduction_paise: v.deduction_paise, status: v.status, certified_on: v.certified_on }),
     },
-    pnl: { title: "", fields: [], initial: {}, save: async () => ({ ok: true } as const) },
   };
 
   return (
@@ -226,10 +268,32 @@ export function FinancesView({
           {VIEWS.map((v) => <button key={v.key} className={view === v.key ? "on" : ""} onClick={() => setView(v.key)}>{v.label}</button>)}
         </div>
         <button className="btn-ghost" onClick={exportCsv} title="Export current view to CSV"><IconDownload size={15} />Export</button>
-        {view !== "pnl" && <button className="btn" onClick={() => setModal(view)}><IconPlus size={15} />Add</button>}
+        {view === "ledger" && <button className="btn-ghost" onClick={() => setImportOpen(true)}>Import CSV</button>}
+        {view !== "pnl" && view !== "recurring" && <button className="btn" onClick={() => setModal(view)}><IconPlus size={15} />Add</button>}
+        {view === "recurring" && <button className="btn" onClick={() => { setRecurringEditor(null); setRecurringOpen(true); }}><IconPlus size={15} />Add recurring</button>}
       </div>
 
       {err && <div className="form-err" style={{ marginBottom: 14 }} role="alert">{err}</div>}
+
+      {view === "ledger" && latestImport && (
+        <div className="finance-note-card">
+          <div>
+            <div className="label" style={{ marginBottom: 6 }}>Latest import</div>
+            <div style={{ fontSize: 13 }}>{latestImport.file_name}</div>
+            <div className="fsub">{latestImport.imported_rows} of {latestImport.row_count} rows · {latestImport.status}</div>
+          </div>
+          {latestImport.error_summary && <div className="fsub" style={{ maxWidth: 320, textAlign: "right" }}>{latestImport.error_summary}</div>}
+        </div>
+      )}
+
+      {view === "recurring" && (
+        <div className="fin" aria-label="Recurring summary" style={{ marginBottom: 22 }}>
+          <div className="cell"><div className="label">Monthly payroll</div><div className="v mono">{inrShort(monthlyPayroll)}</div><div className="d dim">{activeSalaries.length} active salaries</div></div>
+          <div className="cell"><div className="label">Accrued payroll</div><div className="v mono">{inrShort(accruedPayroll)}</div><div className="d dim">From each employee start date to today</div></div>
+          <div className="cell"><div className="label">Subscription burn</div><div className="v mono">{inrShort(monthlySubscriptionBurn)}</div><div className="d dim">{activeSubscriptions.length} active subscriptions</div></div>
+          <div className="cell"><div className="label">Due in 30 days</div><div className="v mono">{inrShort(sum(upcomingRecurring.map((item) => item.amount_paise)))}</div><div className="d dim">{upcomingRecurring.length} upcoming renewals or payouts</div></div>
+        </div>
+      )}
 
       {view === "ledger" && (
         <>
@@ -349,7 +413,54 @@ export function FinancesView({
         </div>
       )}
 
-      {modal && modal !== "pnl" && (
+      {view === "recurring" && (
+        <div className="ftable">
+          <table>
+            <thead><tr><th>Name</th><th>Type</th><th>Division</th><th>Cadence</th><th>Next due</th><th style={{ textAlign: "right" }}>Accrued</th><th style={{ textAlign: "right" }}>Monthly eq.</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {recurringItems.length === 0 ? <tr><td colSpan={9} className="ftable-empty">No recurring items yet. Add salaries or subscriptions to keep fixed costs visible.</td></tr> :
+                recurringItems.map((item) => {
+                  const dueOn = nextDueOn(item, todayStr);
+                  const accrued = accruedPaisaThrough(item, todayStr);
+                  const monthlyEquivalent = monthlyEquivalentPaisa(item);
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <div>{humanRecurringLabel(item)}</div>
+                        <div className="fsub">
+                          {item.kind === "salary"
+                            ? item.profile_email ?? item.notes ?? "Employee payroll"
+                            : item.vendor ?? item.notes ?? "Subscription"}
+                        </div>
+                      </td>
+                      <td><span className={`spill ${item.kind === "salary" ? "paid" : "pending"}`}>{item.kind}</span></td>
+                      <td className="fsub">{item.division_name.replace(/^Sthyra\s+/, "")}</td>
+                      <td className="fsub">{item.cadence}</td>
+                      <td className="fsub">{dueOn ? dueLabel(dueOn, today) : "Ended"}</td>
+                      <td className="num">{inr(accrued)}</td>
+                      <td className="num">{inr(monthlyEquivalent)}</td>
+                      <td><span className={`spill ${item.status === "active" ? "cleared" : "void"}`}>{item.status}</span></td>
+                      <td>
+                        <div className="rowact">
+                          <button className="iconbtn" aria-label="Edit recurring item" onClick={() => { setRecurringEditor(item); setRecurringOpen(true); }}><Pencil /></button>
+                          <button className="iconbtn danger" aria-label="Delete" disabled={busyId === item.id} onClick={() => askDelete(item.id, humanRecurringLabel(item), () => deleteRecurringPayment(item.id))}><Trash /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+          {recurringItems.length > 0 && (
+            <div className="ftable-foot">
+              <span className="fsub">Accrued recurring outflow to date</span>
+              <span className="num">{inr(accruedPayroll + accruedSubscriptions)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {modal && (
         <RecordModal
           title={modalConfig[modal].title}
           fields={modalConfig[modal].fields}
@@ -358,6 +469,36 @@ export function FinancesView({
           projects={projects}
           onClose={() => setModal(null)}
           onSave={async (v) => { const res = await modalConfig[modal].save(v); if ("ok" in res) router.refresh(); return res; }}
+        />
+      )}
+
+      {recurringOpen && (
+        <RecurringPaymentModal
+          initial={recurringEditor}
+          divisions={divisions}
+          projects={projects}
+          employees={employees}
+          onClose={() => { setRecurringOpen(false); setRecurringEditor(null); }}
+          onSave={async (values) => {
+            const res = recurringEditor
+              ? await updateRecurringPayment(recurringEditor.id, values)
+              : await createRecurringPayment(values);
+            if ("ok" in res) router.refresh();
+            return res;
+          }}
+        />
+      )}
+
+      {importOpen && (
+        <CsvImportModal
+          divisions={divisions}
+          projects={projects}
+          onClose={() => setImportOpen(false)}
+          onImport={async (fileName, rows) => {
+            const res = await importTransactionsCsv(fileName, rows);
+            if ("ok" in res) router.refresh();
+            return res;
+          }}
         />
       )}
 

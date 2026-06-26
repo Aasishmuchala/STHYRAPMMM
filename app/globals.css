@@ -614,6 +614,17 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 .ftable-foot { display: flex; justify-content: space-between; align-items: center; padding: 15px 16px; border-top: 1px solid var(--line); font-size: 13px; background: var(--raise); }
 .ftable-foot .num { font-family: var(--font-mono), monospace; font-size: 15px; font-weight: 500; }
 .ftable-empty { padding: 38px; text-align: center; color: var(--text-faint); font-size: 13px; }
+.finance-note-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--glass-2); margin-bottom: 14px; }
+.recurring-modal { max-width: 760px; }
+.recurring-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+.recurring-form-span { grid-column: 1 / -1; }
+.csv-import-modal { max-width: 760px; }
+.csv-hint-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.csv-preview { border: 1px solid var(--line); border-radius: 12px; background: var(--glass-2); overflow: hidden; margin-bottom: 14px; }
+.csv-preview-head { padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--text-dim); }
+.csv-preview table { width: 100%; border-collapse: collapse; }
+.csv-preview th, .csv-preview td { padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; text-align: left; }
+.csv-preview tbody tr:last-child td { border-bottom: none; }
 
 .pnl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
 .pnl-card { border: 1px solid var(--line); border-radius: 13px; padding: 18px 20px; background: var(--glass-2); }
@@ -684,6 +695,9 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
   .app.nav-open .side { transform: translateX(0); }
   .nav-backdrop { display: block; position: fixed; inset: 0; background: var(--scrim); backdrop-filter: blur(3px); z-index: 55; }
   .menu-btn { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--line); background: var(--glass); color: var(--text); cursor: pointer; }
+  .finance-note-card { flex-direction: column; align-items: flex-start; }
+  .recurring-form-grid { grid-template-columns: 1fr; }
+  .csv-hint-row { flex-direction: column; align-items: flex-start; }
 }
 
 /* ===== settings ===== */

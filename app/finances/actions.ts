@@ -3,10 +3,38 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RecurringCadence, RecurringKind, RecurringStatus } from "@/lib/recurring";
 
 type Result = { ok: true } | { error: string };
+type ImportResult = { ok: true; imported: number } | { error: string };
+type RecurringInput = {
+  division_id: string;
+  project_id: string | null;
+  profile_id: string | null;
+  kind: RecurringKind;
+  cadence: RecurringCadence;
+  label: string;
+  vendor: string | null;
+  amount_paise: number;
+  starts_on: string;
+  ends_on: string | null;
+  status: RecurringStatus;
+  notes: string | null;
+};
+type CsvTransactionInput = {
+  division_id: string;
+  project_id: string | null;
+  kind: "revenue" | "cost" | "invoice";
+  direction: "in" | "out";
+  amount_paise: number;
+  category: string | null;
+  status: "draft" | "pending" | "cleared" | "void";
+  occurred_on: string;
+  counterparty: string | null;
+  note: string | null;
+};
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // Loose client: trimmed generated types otherwise infer `never` for insert/update. RLS enforces access.
 async function db(): Promise<SupabaseClient<any, any, any>> {
   return (await createClient()) as unknown as SupabaseClient<any, any, any>;
@@ -15,12 +43,34 @@ async function uid(supabase: SupabaseClient<any, any, any>): Promise<string | nu
   const { data: { user } } = await supabase.auth.getUser();
   return user?.id ?? null;
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
 
 function done(): Result {
   revalidatePath("/finances");
   revalidatePath("/");
   return { ok: true };
+}
+
+function isIsoDate(value: string | null | undefined): value is string {
+  return Boolean(value && ISO_DATE.test(value));
+}
+
+function normalizeRecurring(input: RecurringInput): RecurringInput | { error: string } {
+  const label = input.label.trim();
+  if (!input.division_id) return { error: "Pick a division." };
+  if (!label) return { error: "Name is required." };
+  if (!(input.amount_paise > 0)) return { error: "Amount must be greater than zero." };
+  if (!isIsoDate(input.starts_on)) return { error: "Start date is required." };
+  if (input.ends_on && !isIsoDate(input.ends_on)) return { error: "End date must be valid." };
+  if (input.ends_on && input.ends_on < input.starts_on) return { error: "End date cannot be before the start date." };
+  if (input.kind === "salary" && !input.profile_id) return { error: "Pick an employee for salary records." };
+
+  return {
+    ...input,
+    label,
+    vendor: input.vendor?.trim() || null,
+    notes: input.notes?.trim() || null,
+    cadence: input.kind === "salary" ? "monthly" : input.cadence,
+  };
 }
 
 // ---------- TRANSACTIONS ----------
@@ -127,4 +177,120 @@ export async function deleteRaBill(id: string): Promise<Result> {
   const { error } = await supabase.from("ra_bills").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) return { error: error.message };
   return done();
+}
+
+// ---------- RECURRING ----------
+export async function createRecurringPayment(input: RecurringInput): Promise<Result> {
+  const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+
+  const normalized = normalizeRecurring(input);
+  if ("error" in normalized) return normalized;
+
+  const { error } = await supabase.from("recurring_payments").insert({
+    ...normalized,
+    created_by: user,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) return { error: error.message };
+  return done();
+}
+
+export async function updateRecurringPayment(id: string, input: RecurringInput): Promise<Result> {
+  const supabase = await db();
+  const normalized = normalizeRecurring(input);
+  if ("error" in normalized) return normalized;
+
+  const { error } = await supabase.from("recurring_payments").update({
+    ...normalized,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (error) return { error: error.message };
+  return done();
+}
+
+export async function deleteRecurringPayment(id: string): Promise<Result> {
+  const supabase = await db();
+  const today = new Date().toISOString().slice(0, 10);
+  const { error } = await supabase.from("recurring_payments").update({
+    deleted_at: new Date().toISOString(),
+    status: "ended",
+    ends_on: today,
+    updated_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (error) return { error: error.message };
+  return done();
+}
+
+// ---------- CSV IMPORT ----------
+export async function importTransactionsCsv(fileName: string, rows: CsvTransactionInput[]): Promise<ImportResult> {
+  const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+  if (!fileName.trim()) return { error: "File name is required." };
+  if (rows.length === 0) return { error: "Upload a CSV with at least one row." };
+  if (rows.length > 1000) return { error: "Import up to 1000 rows at a time." };
+
+  for (const [index, row] of rows.entries()) {
+    if (!row.division_id) return { error: `Row ${index + 1}: missing division.` };
+    if (!(row.amount_paise > 0)) return { error: `Row ${index + 1}: amount must be greater than zero.` };
+    if (!isIsoDate(row.occurred_on)) return { error: `Row ${index + 1}: invalid date.` };
+  }
+
+  const divisionIds = [...new Set(rows.map((row) => row.division_id))];
+  const projectIds = [...new Set(rows.map((row) => row.project_id).filter((projectId): projectId is string => Boolean(projectId)))];
+
+  const [{ data: divisions, error: divisionError }, { data: projects, error: projectError }] = await Promise.all([
+    supabase.from("divisions").select("id").in("id", divisionIds),
+    projectIds.length > 0
+      ? supabase.from("projects").select("id,division_id").in("id", projectIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (divisionError) return { error: divisionError.message };
+  if (projectError) return { error: projectError.message };
+
+  const divisionSet = new Set((divisions ?? []).map((division: { id: string }) => division.id));
+  const projectMap = new Map((projects ?? []).map((project: { id: string; division_id: string }) => [project.id, project.division_id]));
+
+  for (const [index, row] of rows.entries()) {
+    if (!divisionSet.has(row.division_id)) return { error: `Row ${index + 1}: division no longer exists.` };
+    if (row.project_id && projectMap.get(row.project_id) !== row.division_id) {
+      return { error: `Row ${index + 1}: project does not belong to that division.` };
+    }
+  }
+
+  const { data: batch, error: batchError } = await supabase.from("finance_import_batches").insert({
+    file_name: fileName.trim(),
+    row_count: rows.length,
+    created_by: user,
+  }).select("id").single();
+  if (batchError || !batch?.id) return { error: batchError?.message ?? "Couldn't create the import batch." };
+
+  const payload = rows.map((row) => ({
+    ...row,
+    created_by: user,
+    source: "csv_import",
+    import_batch_id: batch.id,
+  }));
+
+  const { error: insertError } = await supabase.from("transactions").insert(payload);
+  if (insertError) {
+    await supabase.from("finance_import_batches").update({
+      status: "failed",
+      error_summary: insertError.message,
+    }).eq("id", batch.id);
+    return { error: insertError.message };
+  }
+
+  const { error: finalizeError } = await supabase.from("finance_import_batches").update({
+    status: "completed",
+    imported_rows: rows.length,
+  }).eq("id", batch.id);
+  if (finalizeError) return { error: finalizeError.message };
+
+  revalidatePath("/finances");
+  revalidatePath("/");
+  return { ok: true, imported: rows.length };
 }

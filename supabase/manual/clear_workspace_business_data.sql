@@ -30,6 +30,18 @@ begin
     update public.transactions set deleted_at = now() where deleted_at is null;
   end if;
 
+  if to_regclass('public.finance_import_batches') is not null then
+    delete from public.finance_import_batches;
+  end if;
+
+  if to_regclass('public.recurring_payments') is not null then
+    update public.recurring_payments
+      set deleted_at = now(),
+          status = 'ended',
+          ends_on = coalesce(ends_on, current_date)
+      where deleted_at is null;
+  end if;
+
   if to_regclass('public.documents') is not null then
     update public.documents
       set deleted_at = now(),

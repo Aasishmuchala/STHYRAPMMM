@@ -1,3 +1,5 @@
+import type { FinanceImportBatch, RecurringPayment } from "@/lib/recurring";
+
 export type Txn = {
   id: string; division_id: string; division_name: string; division_slug: string;
   project_name: string | null; kind: string; direction: string; amount_paise: number;
@@ -19,4 +21,13 @@ export type Ra = {
   gross_paise: number; deduction_paise: number; net_paise: number | null;
   status: string; certified_on: string | null;
 };
-export type FinView = "ledger" | "invoices" | "pnl" | "bom" | "ra";
+export type EmployeeOption = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  is_active: boolean;
+};
+
+export type { FinanceImportBatch, RecurringPayment };
+
+export type FinView = "ledger" | "invoices" | "pnl" | "bom" | "ra" | "recurring";
