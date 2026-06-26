@@ -49,7 +49,7 @@ export function CommandPalette({ divisions, canSeeFinances, isOwner }: { divisio
       { id: "nav-home", label: "Home · Inbox", href: "/", icon: <IconHome size={15} />, group: "Go to" },
       { id: "nav-tasks", label: "Tasks", href: "/tasks", icon: <IconTasks size={15} />, group: "Go to" },
       { id: "nav-projects", label: "Projects", href: "/projects", icon: <IconLayers size={15} />, group: "Go to" },
-      { id: "nav-clients", label: "Clients", href: "/clients", icon: <IconClients size={15} />, group: "Go to" },
+      ...(canSeeFinances ? [{ id: "nav-clients", label: "Clients", href: "/clients", icon: <IconClients size={15} />, group: "Go to" as const }] : []),
       ...(canSeeFinances ? [{ id: "nav-fin", label: "Finances", href: "/finances", icon: <IconFinance size={15} />, group: "Go to" as const }] : []),
       { id: "nav-docs", label: "Documents", href: "/documents", icon: <IconDoc size={15} />, group: "Go to" },
       ...(isOwner ? [{ id: "nav-ai", label: "Assistant", href: "/ai", icon: <IconSparkle size={15} />, group: "Go to" as const }] : []),
@@ -73,7 +73,9 @@ export function CommandPalette({ divisions, canSeeFinances, isOwner }: { divisio
         supabase.from("tasks").select("title,divisions(slug)").is("deleted_at", null).ilike("title", like).limit(5),
         supabase.from("documents").select("title,doc_type,divisions(slug)").is("deleted_at", null).ilike("title", like).limit(5),
         supabase.from("invoices").select("number,counterparty,divisions(slug)").is("deleted_at", null).or(`number.ilike.${orLike},counterparty.ilike.${orLike}`).limit(5),
-        supabase.from("clients").select("name,stage,divisions(slug)").is("deleted_at", null).ilike("name", like).limit(5),
+        canSeeFinances
+          ? supabase.from("clients").select("name,stage,divisions(slug)").is("deleted_at", null).ilike("name", like).limit(5)
+          : Promise.resolve({ data: [] }),
       ]);
       if (cancelled) return;
       const out: Item[] = [];
@@ -85,7 +87,7 @@ export function CommandPalette({ divisions, canSeeFinances, isOwner }: { divisio
       setActive(0);
     }, 200);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [q, supabase]);
+  }, [q, supabase, canSeeFinances]);
 
   const term = q.trim().toLowerCase();
   const shown = useMemo<Item[]>(() => {

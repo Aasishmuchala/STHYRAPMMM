@@ -7,7 +7,7 @@ import { IconPlus, IconClients, IconTasks, IconFinance, IconDoc } from "@/compon
 export function QuickNew({ canSeeFinances }: { canSeeFinances: boolean }) {
   const [open, setOpen] = useState(false);
   const items = [
-    { href: "/clients?new=1", label: "New client", Icon: IconClients },
+    ...(canSeeFinances ? [{ href: "/clients?new=1", label: "New client", Icon: IconClients }] : []),
     { href: "/tasks", label: "New task", Icon: IconTasks },
     ...(canSeeFinances ? [{ href: "/finances?new=1", label: "New invoice", Icon: IconFinance }] : []),
     { href: "/documents", label: "New document", Icon: IconDoc },

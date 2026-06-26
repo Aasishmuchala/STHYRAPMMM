@@ -57,12 +57,16 @@ export function Sidebar({
         <Link href="/projects" onClick={onNavigate} className={`nav-item ${active("/projects") ? "active" : ""}`} aria-current={active("/projects") ? "page" : undefined}>
           <IconLayers size={16} />Projects
         </Link>
-        <Link href="/people" onClick={onNavigate} className={`nav-item ${active("/people") ? "active" : ""}`} aria-current={active("/people") ? "page" : undefined}>
-          <IconPeople size={16} />People
-        </Link>
-        <Link href="/clients" onClick={onNavigate} className={`nav-item ${active("/clients") ? "active" : ""}`} aria-current={active("/clients") ? "page" : undefined}>
-          <IconClients size={16} />Clients
-        </Link>
+        {canSeeFinances && (
+          <Link href="/people" onClick={onNavigate} className={`nav-item ${active("/people") ? "active" : ""}`} aria-current={active("/people") ? "page" : undefined}>
+            <IconPeople size={16} />People
+          </Link>
+        )}
+        {canSeeFinances && (
+          <Link href="/clients" onClick={onNavigate} className={`nav-item ${active("/clients") ? "active" : ""}`} aria-current={active("/clients") ? "page" : undefined}>
+            <IconClients size={16} />Clients
+          </Link>
+        )}
         {canSeeFinances && (
           <Link href="/finances" onClick={onNavigate} className={`nav-item ${active("/finances") ? "active" : ""}`} aria-current={active("/finances") ? "page" : undefined}>
             <IconFinance size={16} />Finances

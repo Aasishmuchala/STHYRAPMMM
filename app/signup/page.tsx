@@ -31,6 +31,29 @@ export default function SignupPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  async function signInWithRetry(emailValue: string, passwordValue: string) {
+    const supabase = createClient();
+    let lastMessage = "Invalid login credentials";
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: emailValue,
+        password: passwordValue,
+      });
+
+      if (!signInError) return null;
+      lastMessage = signInError.message;
+
+      if (!/invalid login credentials/i.test(signInError.message) || attempt === 4) {
+        return signInError.message;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+
+    return lastMessage;
+  }
+
   async function createAccount(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
@@ -67,15 +90,11 @@ export default function SignupPage() {
       return;
     }
 
-    const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: emailValue,
-      password: pw,
-    });
+    const signInMessage = await signInWithRetry(emailValue, pw);
 
     setBusy(false);
-    if (signInError) {
-      setErr(`Account created, but sign-in failed: ${signInError.message}`);
+    if (signInMessage) {
+      setErr(`Account created, but sign-in failed: ${signInMessage}`);
       return;
     }
 

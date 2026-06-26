@@ -7,7 +7,7 @@ import { IconSearch, IconTasks, IconDoc, IconFinance, IconClients } from "@/comp
 
 type Hit = { kind: "task" | "document" | "invoice" | "client"; label: string; sub: string; href: string };
 
-export function GlobalSearch() {
+export function GlobalSearch({ canSeeFinances }: { canSeeFinances: boolean }) {
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = useRef(createClient()).current as any;
@@ -27,8 +27,12 @@ export function GlobalSearch() {
       const [tk, dc, iv, cl] = await Promise.all([
         supabase.from("tasks").select("title,divisions(slug)").is("deleted_at", null).ilike("title", like).limit(5),
         supabase.from("documents").select("title,doc_type,divisions(slug)").is("deleted_at", null).ilike("title", like).limit(5),
-        supabase.from("invoices").select("number,counterparty,divisions(slug)").is("deleted_at", null).or(`number.ilike.${orLike},counterparty.ilike.${orLike}`).limit(5),
-        supabase.from("clients").select("name,stage,divisions(slug)").is("deleted_at", null).ilike("name", like).limit(5),
+        canSeeFinances
+          ? supabase.from("invoices").select("number,counterparty,divisions(slug)").is("deleted_at", null).or(`number.ilike.${orLike},counterparty.ilike.${orLike}`).limit(5)
+          : Promise.resolve({ data: [] }),
+        canSeeFinances
+          ? supabase.from("clients").select("name,stage,divisions(slug)").is("deleted_at", null).ilike("name", like).limit(5)
+          : Promise.resolve({ data: [] }),
       ]);
       if (cancelled) return;
       const out: Hit[] = [];
@@ -41,7 +45,7 @@ export function GlobalSearch() {
       setOpen(true);
     }, 220);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [q, supabase]);
+  }, [q, supabase, canSeeFinances]);
 
   function go(h: Hit) {
     setOpen(false); setQ("");

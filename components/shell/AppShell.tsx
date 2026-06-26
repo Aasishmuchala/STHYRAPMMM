@@ -31,7 +31,7 @@ export function AppShell({
       <Sidebar divisions={divisions} canSeeFinances={canSeeFinances} isOwner={isOwner} onNavigate={() => setNavOpen(false)} />
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <div>
-        <TopBar initials={initials} onMenu={() => setNavOpen((v) => !v)} />
+        <TopBar initials={initials} canSeeFinances={canSeeFinances} onMenu={() => setNavOpen((v) => !v)} />
         {children}
       </div>
       <CommandPalette divisions={divisions} canSeeFinances={canSeeFinances} isOwner={isOwner} />

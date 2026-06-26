@@ -6,13 +6,25 @@ import { IconSparkle, IconClients, IconSettings, IconLivingTwin, IconCheck } fro
 
 type Step = { done: boolean; label: string; why: string; href: string; cta: string; Icon: (p: { size?: number }) => React.ReactElement };
 
-export function GettingStarted({ aiConnected, hasClients, hasTeam, hasBriefs }: { aiConnected: boolean; hasClients: boolean; hasTeam: boolean; hasBriefs: boolean }) {
+export function GettingStarted({
+  aiConnected,
+  hasClients,
+  hasTeam,
+  hasBriefs,
+  canSeeFinances,
+}: {
+  aiConnected: boolean;
+  hasClients: boolean;
+  hasTeam: boolean;
+  hasBriefs: boolean;
+  canSeeFinances: boolean;
+}) {
   const [hidden, setHidden] = useState(false);
   useEffect(() => { setHidden(localStorage.getItem("sthyra-gs-dismissed") === "1"); }, []);
 
   const steps: Step[] = [
     { done: aiConnected, label: "Turn on your AI assistant", why: "It reads your numbers and writes your morning brief.", href: "/settings", cta: "Connect", Icon: IconSparkle },
-    { done: hasClients, label: "Add your clients & leads", why: "Your pipeline lives here — projects and invoices hang off it.", href: "/clients", cta: "Add", Icon: IconClients },
+    ...(canSeeFinances ? [{ done: hasClients, label: "Add your clients & leads", why: "Your pipeline lives here - projects and invoices hang off it.", href: "/clients", cta: "Add", Icon: IconClients }] : []),
     { done: hasTeam, label: "Invite your team", why: "Each person gets their own login, scoped to their division.", href: "/settings", cta: "Invite", Icon: IconSettings },
     { done: hasBriefs, label: "Set a goal for each division", why: "So the assistant can flag when you're off target.", href: "/divisions/studios", cta: "Set", Icon: IconLivingTwin },
   ];
@@ -40,7 +52,7 @@ export function GettingStarted({ aiConnected, hasClients, hasTeam, hasBriefs }: 
               <div className="gs-label">{s.label}</div>
               {!s.done && <div className="gs-why">{s.why}</div>}
             </div>
-            {s.done ? <span className="gs-tag">Done</span> : <Link href={s.href} className="gs-cta">{s.cta} →</Link>}
+            {s.done ? <span className="gs-tag">Done</span> : <Link href={s.href} className="gs-cta">{s.cta} {"->"}</Link>}
           </div>
         ))}
       </div>

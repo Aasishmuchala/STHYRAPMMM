@@ -25,9 +25,10 @@ const VIEWS: { key: FinView; label: string }[] = [
   { key: "ledger", label: "Ledger" },
   { key: "invoices", label: "Invoices" },
   { key: "pnl", label: "P&L" },
+  { key: "salaries", label: "Salaries" },
+  { key: "recurring", label: "Subscriptions" },
   { key: "bom", label: "BOM" },
   { key: "ra", label: "RA bills" },
-  { key: "recurring", label: "Recurring" },
 ];
 
 function Trash() {
@@ -60,7 +61,7 @@ function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: numb
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const nextInvoiceStatus: Record<string, string> = { draft: "sent", sent: "paid", overdue: "paid", paid: "paid" };
-type StandardModalView = Exclude<FinView, "pnl" | "recurring">;
+type StandardModalView = Exclude<FinView, "pnl" | "recurring" | "salaries">;
 
 export function FinancesView({
   transactions, invoices, bom, ra, recurring, employees, importBatches, divisions, projects, initialDivision, openNew,
@@ -74,6 +75,7 @@ export function FinancesView({
   const [view, setView] = useState<FinView>(openNew ? "invoices" : "ledger");
   const [modal, setModal] = useState<StandardModalView | null>(openNew ? "invoices" : null);
   const [recurringEditor, setRecurringEditor] = useState<RecurringPayment | null>(null);
+  const [recurringDraftKind, setRecurringDraftKind] = useState<"salary" | "subscription">("subscription");
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -91,6 +93,8 @@ export function FinancesView({
   const boms = bom.filter((b) => inScope(b.division_slug));
   const ras = ra.filter((r) => inScope(r.division_slug));
   const recurringItems = recurring.filter((item) => inScope(item.division_slug));
+  const salaryItems = recurringItems.filter((item) => item.kind === "salary");
+  const subscriptionItems = recurringItems.filter((item) => item.kind === "subscription");
 
   const moneyIn = sum(txns.filter((t) => t.direction === "in").map((t) => t.amount_paise));
   const moneyOut = sum(txns.filter((t) => t.direction === "out").map((t) => t.amount_paise));
@@ -132,12 +136,24 @@ export function FinancesView({
     } else if (view === "ra") {
       headers = ["RA", "Period", "Division", "Gross (₹)", "Deduction (₹)", "Net (₹)", "Status", "Certified on"];
       rows = ras.map((r) => [r.sequence, r.period ?? "", dn(r.division_name), rupees(r.gross_paise), rupees(r.deduction_paise), rupees(r.net_paise ?? r.gross_paise - r.deduction_paise), r.status, r.certified_on ?? ""]);
+    } else if (view === "salaries") {
+      headers = ["Employee", "Email", "Division", "Starts", "Ends", "Next due", "Accrued (Rs)", "Monthly salary (Rs)", "Status"];
+      rows = salaryItems.map((item) => [
+        item.profile_name ?? item.label,
+        item.profile_email ?? "",
+        dn(item.division_name),
+        item.starts_on,
+        item.ends_on ?? "",
+        nextDueOn(item, todayStr) ?? "",
+        rupees(accruedPaisaThrough(item, todayStr)),
+        rupees(item.amount_paise),
+        item.status,
+      ]);
     } else if (view === "recurring") {
-      headers = ["Type", "Label", "Employee / Vendor", "Division", "Cadence", "Starts", "Ends", "Next due", "Accrued (Rs)", "Monthly equivalent (Rs)", "Status"];
-      rows = recurringItems.map((item) => [
-        item.kind,
+      headers = ["Subscription", "Vendor", "Division", "Cadence", "Starts", "Ends", "Next due", "Accrued (Rs)", "Monthly equivalent (Rs)", "Status"];
+      rows = subscriptionItems.map((item) => [
         humanRecurringLabel(item),
-        item.kind === "salary" ? item.profile_name ?? item.profile_email ?? "" : item.vendor ?? "",
+        item.vendor ?? "",
         dn(item.division_name),
         item.cadence,
         item.starts_on,
@@ -163,19 +179,24 @@ export function FinancesView({
   const livingTwin = divisions.find((d) => d.slug === "living_twin")?.id ?? firstDiv;
   const construction = divisions.find((d) => d.slug === "construction")?.id ?? firstDiv;
   const todayStr = today.toISOString().slice(0, 10);
-  const activeRecurringItems = recurringItems.filter((item) => activeRecurring(item, todayStr));
-  const activeSalaries = activeRecurringItems.filter((item) => item.kind === "salary");
-  const activeSubscriptions = activeRecurringItems.filter((item) => item.kind === "subscription");
+  const activeSalaries = salaryItems.filter((item) => activeRecurring(item, todayStr));
+  const activeSubscriptions = subscriptionItems.filter((item) => activeRecurring(item, todayStr));
   const accruedPayroll = sum(activeSalaries.map((item) => accruedPaisaThrough(item, todayStr)));
   const accruedSubscriptions = sum(activeSubscriptions.map((item) => accruedPaisaThrough(item, todayStr)));
   const monthlyPayroll = sum(activeSalaries.map((item) => item.amount_paise));
   const monthlySubscriptionBurn = sum(activeSubscriptions.map((item) => monthlyEquivalentPaisa(item)));
-  const upcomingRecurring = activeRecurringItems.filter((item) => {
+  const upcomingRecurring = activeSubscriptions.filter((item) => {
     const dueOn = nextDueOn(item, todayStr);
     if (!dueOn) return false;
     const diff = Math.round((new Date(`${dueOn}T00:00:00`).getTime() - new Date(`${todayStr}T00:00:00`).getTime()) / 86400000);
     return diff >= 0 && diff <= 30;
   });
+  const nextPayrollDue = activeSalaries.reduce<string | null>((soonest, item) => {
+    const dueOn = nextDueOn(item, todayStr);
+    if (!dueOn) return soonest;
+    if (!soonest) return dueOn;
+    return dueOn < soonest ? dueOn : soonest;
+  }, null);
   const latestImport = importBatches[0] ?? null;
 
   // ----- modal field configs + save handlers -----
@@ -269,8 +290,9 @@ export function FinancesView({
         </div>
         <button className="btn-ghost" onClick={exportCsv} title="Export current view to CSV"><IconDownload size={15} />Export</button>
         {view === "ledger" && <button className="btn-ghost" onClick={() => setImportOpen(true)}>Import CSV</button>}
-        {view !== "pnl" && view !== "recurring" && <button className="btn" onClick={() => setModal(view)}><IconPlus size={15} />Add</button>}
-        {view === "recurring" && <button className="btn" onClick={() => { setRecurringEditor(null); setRecurringOpen(true); }}><IconPlus size={15} />Add recurring</button>}
+        {view !== "pnl" && view !== "recurring" && view !== "salaries" && <button className="btn" onClick={() => setModal(view)}><IconPlus size={15} />Add</button>}
+        {view === "recurring" && <button className="btn" onClick={() => { setRecurringEditor(null); setRecurringDraftKind("subscription"); setRecurringOpen(true); }}><IconPlus size={15} />Add subscription</button>}
+        {view === "salaries" && <button className="btn" onClick={() => { setRecurringEditor(null); setRecurringDraftKind("salary"); setRecurringOpen(true); }}><IconPlus size={15} />Add salary</button>}
       </div>
 
       {err && <div className="form-err" style={{ marginBottom: 14 }} role="alert">{err}</div>}
@@ -286,12 +308,57 @@ export function FinancesView({
         </div>
       )}
 
-      {view === "recurring" && (
-        <div className="fin" aria-label="Recurring summary" style={{ marginBottom: 22 }}>
+      {view === "salaries" && (
+        <div className="fin" aria-label="Salary summary" style={{ marginBottom: 22 }}>
           <div className="cell"><div className="label">Monthly payroll</div><div className="v mono">{inrShort(monthlyPayroll)}</div><div className="d dim">{activeSalaries.length} active salaries</div></div>
           <div className="cell"><div className="label">Accrued payroll</div><div className="v mono">{inrShort(accruedPayroll)}</div><div className="d dim">From each employee start date to today</div></div>
+          <div className="cell"><div className="label">Employees paid</div><div className="v mono">{salaryItems.length}</div><div className="d dim">Across the filtered divisions</div></div>
+          <div className="cell"><div className="label">Next payroll due</div><div className="v mono">{nextPayrollDue ? dueLabel(nextPayrollDue, today) : "None"}</div><div className="d dim">Based on each salary cycle</div></div>
+        </div>
+      )}
+
+      {view === "recurring" && (
+        <div className="fin" aria-label="Recurring summary" style={{ marginBottom: 22 }}>
           <div className="cell"><div className="label">Subscription burn</div><div className="v mono">{inrShort(monthlySubscriptionBurn)}</div><div className="d dim">{activeSubscriptions.length} active subscriptions</div></div>
-          <div className="cell"><div className="label">Due in 30 days</div><div className="v mono">{inrShort(sum(upcomingRecurring.map((item) => item.amount_paise)))}</div><div className="d dim">{upcomingRecurring.length} upcoming renewals or payouts</div></div>
+          <div className="cell"><div className="label">Accrued subscriptions</div><div className="v mono">{inrShort(accruedSubscriptions)}</div><div className="d dim">Accrued through today</div></div>
+          <div className="cell"><div className="label">Due in 30 days</div><div className="v mono">{inrShort(sum(upcomingRecurring.map((item) => item.amount_paise)))}</div><div className="d dim">{upcomingRecurring.length} upcoming renewals</div></div>
+          <div className="cell"><div className="label">Latest import</div><div className="v mono">{latestImport ? latestImport.imported_rows : 0}</div><div className="d dim">{latestImport ? latestImport.file_name : "No imports yet"}</div></div>
+        </div>
+      )}
+
+      {view === "salaries" && (
+        <div className="ftable">
+          <table>
+            <thead><tr><th>Employee</th><th>Division</th><th>Starts</th><th>Next due</th><th style={{ textAlign: "right" }}>Accrued</th><th style={{ textAlign: "right" }}>Monthly salary</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {salaryItems.length === 0 ? <tr><td colSpan={8} className="ftable-empty">No salaries yet. Add your recurring payroll here.</td></tr> :
+                salaryItems.map((item) => {
+                  const dueOn = nextDueOn(item, todayStr);
+                  const accrued = accruedPaisaThrough(item, todayStr);
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        <div>{item.profile_name ?? item.label}</div>
+                        <div className="fsub">{item.profile_email ?? item.notes ?? "Employee payroll"}</div>
+                      </td>
+                      <td className="fsub">{item.division_name.replace(/^Sthyra\s+/, "")}</td>
+                      <td className="fsub mono">{item.starts_on}</td>
+                      <td className="fsub">{dueOn ? dueLabel(dueOn, today) : "Ended"}</td>
+                      <td className="num">{inr(accrued)}</td>
+                      <td className="num">{inr(item.amount_paise)}</td>
+                      <td><span className={`spill ${item.status === "active" ? "cleared" : "void"}`}>{item.status}</span></td>
+                      <td>
+                        <div className="rowact">
+                          <button className="iconbtn" aria-label="Edit salary" onClick={() => { setRecurringDraftKind("salary"); setRecurringEditor(item); setRecurringOpen(true); }}><Pencil /></button>
+                          <button className="iconbtn danger" aria-label="Delete" disabled={busyId === item.id} onClick={() => askDelete(item.id, item.profile_name ?? item.label, () => deleteRecurringPayment(item.id))}><Trash /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+          {salaryItems.length > 0 && <div className="ftable-foot"><span className="fsub">Accrued payroll to date</span><span className="num">{inr(accruedPayroll)}</span></div>}
         </div>
       )}
 
@@ -416,10 +483,10 @@ export function FinancesView({
       {view === "recurring" && (
         <div className="ftable">
           <table>
-            <thead><tr><th>Name</th><th>Type</th><th>Division</th><th>Cadence</th><th>Next due</th><th style={{ textAlign: "right" }}>Accrued</th><th style={{ textAlign: "right" }}>Monthly eq.</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Subscription</th><th>Vendor</th><th>Division</th><th>Cadence</th><th>Next due</th><th style={{ textAlign: "right" }}>Accrued</th><th style={{ textAlign: "right" }}>Monthly eq.</th><th>Status</th><th></th></tr></thead>
             <tbody>
-              {recurringItems.length === 0 ? <tr><td colSpan={9} className="ftable-empty">No recurring items yet. Add salaries or subscriptions to keep fixed costs visible.</td></tr> :
-                recurringItems.map((item) => {
+              {subscriptionItems.length === 0 ? <tr><td colSpan={9} className="ftable-empty">No subscriptions yet. Add your recurring software, retainers, and annual renewals here.</td></tr> :
+                subscriptionItems.map((item) => {
                   const dueOn = nextDueOn(item, todayStr);
                   const accrued = accruedPaisaThrough(item, todayStr);
                   const monthlyEquivalent = monthlyEquivalentPaisa(item);
@@ -427,13 +494,9 @@ export function FinancesView({
                     <tr key={item.id}>
                       <td>
                         <div>{humanRecurringLabel(item)}</div>
-                        <div className="fsub">
-                          {item.kind === "salary"
-                            ? item.profile_email ?? item.notes ?? "Employee payroll"
-                            : item.vendor ?? item.notes ?? "Subscription"}
-                        </div>
+                        <div className="fsub">{item.notes ?? "Subscription"}</div>
                       </td>
-                      <td><span className={`spill ${item.kind === "salary" ? "paid" : "pending"}`}>{item.kind}</span></td>
+                      <td className="fsub">{item.vendor ?? "—"}</td>
                       <td className="fsub">{item.division_name.replace(/^Sthyra\s+/, "")}</td>
                       <td className="fsub">{item.cadence}</td>
                       <td className="fsub">{dueOn ? dueLabel(dueOn, today) : "Ended"}</td>
@@ -442,7 +505,7 @@ export function FinancesView({
                       <td><span className={`spill ${item.status === "active" ? "cleared" : "void"}`}>{item.status}</span></td>
                       <td>
                         <div className="rowact">
-                          <button className="iconbtn" aria-label="Edit recurring item" onClick={() => { setRecurringEditor(item); setRecurringOpen(true); }}><Pencil /></button>
+                          <button className="iconbtn" aria-label="Edit subscription" onClick={() => { setRecurringDraftKind("subscription"); setRecurringEditor(item); setRecurringOpen(true); }}><Pencil /></button>
                           <button className="iconbtn danger" aria-label="Delete" disabled={busyId === item.id} onClick={() => askDelete(item.id, humanRecurringLabel(item), () => deleteRecurringPayment(item.id))}><Trash /></button>
                         </div>
                       </td>
@@ -451,10 +514,10 @@ export function FinancesView({
                 })}
             </tbody>
           </table>
-          {recurringItems.length > 0 && (
+          {subscriptionItems.length > 0 && (
             <div className="ftable-foot">
-              <span className="fsub">Accrued recurring outflow to date</span>
-              <span className="num">{inr(accruedPayroll + accruedSubscriptions)}</span>
+              <span className="fsub">Accrued subscription outflow to date</span>
+              <span className="num">{inr(accruedSubscriptions)}</span>
             </div>
           )}
         </div>
@@ -475,6 +538,7 @@ export function FinancesView({
       {recurringOpen && (
         <RecurringPaymentModal
           initial={recurringEditor}
+          defaultKind={recurringDraftKind}
           divisions={divisions}
           projects={projects}
           employees={employees}

@@ -21,10 +21,10 @@ type Draft = {
   notes: string;
 };
 
-function toDraft(initial: RecurringPayment | null, divisions: DivisionOpt[]): Draft {
+function toDraft(initial: RecurringPayment | null, divisions: DivisionOpt[], defaultKind: RecurringKind): Draft {
   if (!initial) {
     return {
-      kind: "salary",
+      kind: defaultKind,
       cadence: "monthly",
       label: "",
       vendor: "",
@@ -57,6 +57,7 @@ function toDraft(initial: RecurringPayment | null, divisions: DivisionOpt[]): Dr
 
 export function RecurringPaymentModal({
   initial,
+  defaultKind = "salary",
   divisions,
   projects,
   employees,
@@ -64,6 +65,7 @@ export function RecurringPaymentModal({
   onSave,
 }: {
   initial: RecurringPayment | null;
+  defaultKind?: RecurringKind;
   divisions: DivisionOpt[];
   projects: ProjectOpt[];
   employees: EmployeeOption[];
@@ -84,10 +86,12 @@ export function RecurringPaymentModal({
   }) => Promise<{ ok: true } | { error: string }>;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const [vals, setVals] = useState<Draft>(() => toDraft(initial, divisions));
+  const [vals, setVals] = useState<Draft>(() => toDraft(initial, divisions, defaultKind));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useDismiss(dialogRef, onClose);
+  const createLabel = defaultKind === "salary" ? "Add salary" : "Add subscription";
+  const saveLabel = initial ? "Save changes" : defaultKind === "salary" ? "Create salary" : "Create subscription";
 
   const projectOptions = useMemo(
     () => projects.filter((project) => project.division_id === vals.division_id),
@@ -158,9 +162,9 @@ export function RecurringPaymentModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={initial ? "Edit recurring payment" : "Add recurring payment"}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={initial ? "Edit recurring payment" : createLabel}>
       <div className="modal recurring-modal" ref={dialogRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
-        <h3>{initial ? "Edit recurring payment" : "Add recurring payment"}</h3>
+        <h3>{initial ? "Edit recurring payment" : createLabel}</h3>
         <form onSubmit={submit}>
           <div className="recurring-form-grid">
             <div className="field">
@@ -268,7 +272,7 @@ export function RecurringPaymentModal({
 
           <div className="modal-actions">
             <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-            <button type="submit" className="btn" disabled={busy} style={{ opacity: busy ? 0.7 : 1 }}>{busy ? "Saving..." : initial ? "Save changes" : "Create recurring item"}</button>
+            <button type="submit" className="btn" disabled={busy} style={{ opacity: busy ? 0.7 : 1 }}>{busy ? "Saving..." : saveLabel}</button>
           </div>
         </form>
       </div>

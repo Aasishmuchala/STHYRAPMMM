@@ -26,6 +26,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
 
   const isOwner = profile?.global_role === "owner";
   const canSeeFinances = isOwner || (memberships ?? []).some((m) => m.role === "lead");
+  if (!canSeeFinances) redirect("/");
 
   const clients: Client[] = (rows ?? []).map((r) => ({
     ...r, division_name: r.divisions?.name ?? "", division_slug: r.divisions?.slug ?? "",

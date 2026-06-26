@@ -63,7 +63,7 @@ export default async function HomePage() {
             <QuickNew canSeeFinances={d.canSeeFinances} />
           </header>
 
-          {setup && <GettingStarted aiConnected={setup.ai} hasClients={setup.clients} hasTeam={setup.team} hasBriefs={setup.briefs} />}
+          {setup && <GettingStarted aiConnected={setup.ai} hasClients={setup.clients} hasTeam={setup.team} hasBriefs={setup.briefs} canSeeFinances={d.canSeeFinances} />}
 
           {/* Plain-language finances (owner / leads only) */}
           {d.canSeeFinances ? (

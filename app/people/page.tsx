@@ -33,6 +33,7 @@ export default async function PeoplePage({
 
   const isOwner = profile?.global_role === "owner";
   const canSeeFinances = isOwner || (memberships ?? []).some((m) => m.role === "lead");
+  if (!canSeeFinances) redirect("/");
 
   // Build membership lookup keyed by user_id
   const membershipsByUser = new Map<string, PersonMembership[]>();
