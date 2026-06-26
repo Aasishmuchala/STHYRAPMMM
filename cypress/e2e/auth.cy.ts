@@ -5,7 +5,7 @@ describe("Authentication", () => {
     cy.visit("/login");
     cy.get('img[alt*="Sthyra"]').should("be.visible");
     cy.contains("h1", "Sign in").should("be.visible");
-    cy.contains("Invite-only access");
+    cy.contains("Company email access only.").should("be.visible");
   });
 
   it("rejects invalid credentials and stays on /login", () => {
@@ -20,7 +20,7 @@ describe("Authentication", () => {
   it("logs the owner in and shows the full dashboard", () => {
     cy.login(Cypress.env("OWNER_EMAIL"), Cypress.env("OWNER_PASSWORD"));
     cy.contains("h1", "Good").should("be.visible"); // "Good morning/afternoon, Aasish"
-    cy.get('nav[aria-label="Modules"]').within(() => {
+    cy.get("aside.side").within(() => {
       cy.contains("Finances").should("exist");
       cy.contains("Assistant").should("exist");
     });

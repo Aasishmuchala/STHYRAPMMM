@@ -8,7 +8,7 @@ describe("Custom wallpaper", () => {
     cy.visit("/settings");
 
     cy.get("#wp-url").clear().type("https://picsum.photos/1200/800");
-    cy.contains("button", "Apply").click();
+    cy.get("#wp-url").closest(".field-row").contains("button", "Apply").click();
 
     cy.window().then((win) => {
       const v = win.document.documentElement.style.getPropertyValue("--wallpaper-image");
