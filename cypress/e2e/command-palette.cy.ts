@@ -17,7 +17,8 @@ describe("Command palette + global search", () => {
   });
 
   it("top-bar search returns live results", () => {
-    const clientName = `Palette Search Client ${Date.now()}`;
+    const token = `ps${Date.now()}`;
+    const clientName = `Palette Search Client ${token}`;
 
     cy.login(Cypress.env("OWNER_EMAIL"), Cypress.env("OWNER_PASSWORD"));
     cy.visit("/clients");
@@ -27,12 +28,9 @@ describe("Command palette + global search", () => {
     cy.contains(".ccard", clientName, { timeout: 15000 }).should("be.visible");
 
     cy.visit("/");
-    cy.get('input[aria-label="Search"]').type("palette");
-    cy.contains(clientName, { timeout: 10000 }).should("be.visible");
-
-    cy.visit("/clients");
-    cy.contains(".ccard", clientName).find('button[aria-label="Delete"]').click();
-    cy.get('[role="alertdialog"]').contains("button", "Delete").click();
-    cy.contains(".ccard", clientName).should("not.exist");
+    cy.get('input[aria-label="Search"]').type(token);
+    cy.get('.gsearch-pop', { timeout: 10000 }).should("be.visible").within(() => {
+      cy.contains(clientName).should("be.visible");
+    });
   });
 });
