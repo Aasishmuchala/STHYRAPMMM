@@ -27,13 +27,20 @@ export function ClientsView({ clients, divisions, initialDivision, openNew }: { 
   const [err, setErr] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ id: string; label: string } | null>(null);
 
-  const inScope = (slug: string) => divFilter === "all" || slug === divFilter;
-  const rows = useMemo(() => clients.filter((c) => inScope(c.division_slug)), [clients, divFilter]);
+  const rows = useMemo(
+    () => clients.filter((c) => divFilter === "all" || c.division_slug === divFilter),
+    [clients, divFilter],
+  );
 
   const openVal = sum(rows.filter((c) => OPEN_STAGES.includes(c.stage)).map((c) => c.value_paise));
   const wonVal = sum(rows.filter((c) => c.stage === "won").map((c) => c.value_paise));
   const openCount = rows.filter((c) => OPEN_STAGES.includes(c.stage)).length;
   const wonCount = rows.filter((c) => c.stage === "won").length;
+
+  function openModalFromSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setModal(true);
+  }
 
   async function run(id: string, fn: () => Promise<{ ok: true } | { error: string }>) {
     setErr(null); setBusyId(id);
@@ -76,7 +83,11 @@ export function ClientsView({ clients, divisions, initialDivision, openNew }: { 
           <button key={d.slug} className={`fpill ${divFilter === d.slug ? "on" : ""}`} onClick={() => setDivFilter(d.slug)}>{short(d.name)}</button>
         ))}
         <div className="spacer" />
-        <button className="btn" onClick={() => setModal(true)}><IconPlus size={15} />Add client</button>
+        <form method="get" onSubmit={openModalFromSubmit}>
+          {divFilter !== "all" && <input type="hidden" name="div" value={divFilter} />}
+          <input type="hidden" name="new" value="1" />
+          <button className="btn" type="submit"><IconPlus size={15} />Add client</button>
+        </form>
       </div>
 
       {err && <div className="form-err" style={{ marginBottom: 14 }} role="alert">{err}</div>}
@@ -85,7 +96,11 @@ export function ClientsView({ clients, divisions, initialDivision, openNew }: { 
         <div className="glass" style={{ borderRadius: 14, padding: "44px 20px", textAlign: "center" }}>
           <div style={{ fontSize: 15, color: "var(--text)", marginBottom: 6 }}>No clients yet</div>
           <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 18 }}>Add your first client or lead — projects and invoices hang off these.</div>
-          <button className="btn" onClick={() => setModal(true)} style={{ margin: "0 auto" }}><IconPlus size={15} />Add client</button>
+          <form method="get" onSubmit={openModalFromSubmit} style={{ display: "inline-flex", justifyContent: "center", width: "100%" }}>
+            {divFilter !== "all" && <input type="hidden" name="div" value={divFilter} />}
+            <input type="hidden" name="new" value="1" />
+            <button className="btn" type="submit" style={{ margin: "0 auto" }}><IconPlus size={15} />Add client</button>
+          </form>
         </div>
       ) : (
         <div className="pipe">
