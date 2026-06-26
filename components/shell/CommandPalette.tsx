@@ -32,9 +32,12 @@ export function CommandPalette({ divisions, canSeeFinances, isOwner }: { divisio
       else if (e.key === "Escape") setOpen(false);
     }
     function onOpen() { setOpen(true); }
-    window.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey);
     window.addEventListener("sthyra:open-cmdk", onOpen);
-    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("sthyra:open-cmdk", onOpen); };
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("sthyra:open-cmdk", onOpen);
+    };
   }, []);
 
   useEffect(() => {

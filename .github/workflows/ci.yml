@@ -74,7 +74,7 @@ jobs:
           start: npm run start
           wait-on: http://localhost:3000/login
           wait-on-timeout: 120
-          command: npx cypress run --spec "cypress/e2e/auth.cy.ts,cypress/e2e/clients.cy.ts,cypress/e2e/command-palette.cy.ts,cypress/e2e/wallpaper.cy.ts"
+          command: npx cypress run --spec cypress/e2e/auth.cy.ts,cypress/e2e/clients.cy.ts,cypress/e2e/command-palette.cy.ts,cypress/e2e/wallpaper.cy.ts
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
