@@ -82,9 +82,12 @@ export default function SignupPage() {
         fullName: name.trim(),
       }),
     });
-    const createBody = (await createRes.json().catch(() => null)) as { error?: string } | null;
+    const createType = createRes.headers.get("content-type") ?? "";
+    const createBody = createType.includes("application/json")
+      ? (await createRes.json().catch(() => null)) as { ok?: boolean; error?: string } | null
+      : null;
 
-    if (!createRes.ok) {
+    if (!createRes.ok || !createBody?.ok) {
       setBusy(false);
       setErr(createBody?.error || "Couldn't create the account right now.");
       return;

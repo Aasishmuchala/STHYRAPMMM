@@ -34,12 +34,15 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const hasCompanyEmail = !!user && isCompanyEmail(user.email);
+  const isPublicSignupApi =
+    pathname.startsWith("/api/signup/create") ||
+    pathname.startsWith("/api/signup/finalize");
   const isAuthRoute =
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/signup");
 
-  if (!hasCompanyEmail && !isAuthRoute) {
+  if (!hasCompanyEmail && !isAuthRoute && !isPublicSignupApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     if (user && !isCompanyEmail(user.email)) {
