@@ -79,7 +79,7 @@ export function AiDrawerHost({ initialData }: { initialData?: AiDrawerData }) {
       className="ai-drawer-overlay"
       onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
     >
-      <aside className="ai-drawer" role="dialog" aria-label="Assistant">
+      <aside className="ai-drawer" data-testid="ai-drawer" role="dialog" aria-label="Assistant">
         <div className="ai-drawer-head">
           <div className="title">
             <IconSparkle size={16} />

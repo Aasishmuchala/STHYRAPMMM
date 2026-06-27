@@ -313,7 +313,7 @@ export function TaskDrawer({
 
                 <div className="field">
                   <label className="label" htmlFor="d-title">Title</label>
-                  <input id="d-title" className="input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="What needs doing?" autoFocus required />
+                  <input id="d-title" data-testid="task-title" className="input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="What needs doing?" autoFocus required />
                 </div>
 
                 <div className="task-choice-block">
@@ -516,7 +516,7 @@ export function TaskDrawer({
               <div className="modal-actions">
                 {mode === "edit" && <button type="button" className="btn-danger" onClick={() => setConfirmDel(true)} disabled={pending}>Delete</button>}
                 <button type="button" className="btn-ghost" onClick={() => (mode === "edit" ? setMode("view") : onClose())} disabled={pending}>Cancel</button>
-                <button type="submit" className="btn" disabled={pending} style={{ opacity: pending ? 0.7 : 1 }}>
+                <button type="submit" data-testid="task-save" className="btn" disabled={pending} style={{ opacity: pending ? 0.7 : 1 }}>
                   {pending ? "Saving..." : mode === "create" ? "Create work item" : "Save changes"}
                 </button>
               </div>

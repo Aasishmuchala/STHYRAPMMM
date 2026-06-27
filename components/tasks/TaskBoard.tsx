@@ -707,6 +707,8 @@ export function TaskBoard({
     return (
       <article
         className={`task-card ${draggingId === task.id ? "dragging" : ""}`}
+        data-testid="task-card"
+        data-task-id={task.id}
         draggable={draggable}
         onDragStart={(event) => {
           if (!draggable) {

@@ -123,7 +123,7 @@ export function RecordModal({
           {err && <div className="form-err" role="alert">{err}</div>}
           <div className="modal-actions">
             <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-            <button type="submit" className="btn" disabled={busy} style={{ opacity: busy ? 0.7 : 1 }}>{busy ? "Saving…" : "Create"}</button>
+            <button type="submit" data-testid="record-save" className="btn" disabled={busy} style={{ opacity: busy ? 0.7 : 1 }}>{busy ? "Saving…" : "Create"}</button>
           </div>
         </form>
       </div>

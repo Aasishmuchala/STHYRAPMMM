@@ -247,7 +247,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   return (
     <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
-      <main className="tasks-main">
+      <main id="main" data-testid="main" className="tasks-main">
         <PageHeader
           eyebrow="Tasks"
           title={selectedProject ? selectedProject.name : "Board"}

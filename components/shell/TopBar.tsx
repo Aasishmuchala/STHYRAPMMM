@@ -22,7 +22,7 @@ export function TopBar({ initials, canSeeFinances, onMenu }: { initials: string;
       <button className="iconbtn top-search-m" aria-label="Search" onClick={() => window.dispatchEvent(new Event("sthyra:open-cmdk"))}>
         <IconSearch size={17} />
       </button>
-      <button className="pill ai-pill" aria-label="Open assistant" onClick={openAi} title="Assistant (Claude Opus 4.8)">
+      <button className="pill ai-pill" data-testid="ai-trigger" aria-label="Open assistant" onClick={openAi} title="Assistant (Claude Opus 4.8)">
         <IconSparkle size={14} />
         <span>Ask AI</span>
       </button>
