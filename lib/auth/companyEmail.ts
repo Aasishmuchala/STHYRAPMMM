@@ -5,10 +5,16 @@
 // invite_allowlist table via the service role from `docs/super-admin-bootstrap.md`.
 const ALLOWED_EMAIL_DOMAINS = ["sthyra.com", "sthyra.in"] as const;
 
-// Kept for unit-test backwards compatibility but empty — no hardcoded
-// backdoor emails in source. The previous personal-gmail allowlist was a
-// security finding (audit 1.6); admins should use the invite_allowlist table.
-const ALLOWED_EMAILS: readonly string[] = [];
+// Extra individual addresses allowed beyond the company domains. Sourced from
+// the NEXT_PUBLIC_ALLOWED_EMAILS env var (comma-separated) so NO personal email
+// is hardcoded in source (audit 1.6). When the var is unset this is empty and
+// only company-domain addresses can sign in. Use it to bootstrap an owner /
+// super-admin whose address is not on a company domain — set it as a deploy/CI
+// secret, not in committed code.
+const ALLOWED_EMAILS: readonly string[] = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS ?? "")
+  .split(",")
+  .map((entry) => entry.trim().toLowerCase())
+  .filter(Boolean);
 
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();

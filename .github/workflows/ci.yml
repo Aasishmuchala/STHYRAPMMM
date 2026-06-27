@@ -66,6 +66,13 @@ jobs:
 
       - name: Build
         run: npm run build
+        # NEXT_PUBLIC_* is inlined into the bundle at build time, so the
+        # owner/lead/member addresses must be baked in HERE for login + middleware
+        # to accept non-company-domain accounts. Empty secrets are filtered out by
+        # isCompanyEmail's parser. NOT set on the Vitest step, so the audit-1.6
+        # unit test (no personal email hardcoded) still passes.
+        env:
+          NEXT_PUBLIC_ALLOWED_EMAILS: ${{ secrets.CYPRESS_OWNER_EMAIL }},${{ secrets.LEAD_EMAIL }},${{ secrets.MEMBER_EMAIL }}
 
       - name: Supabase DB lint (when configured)
         if: env.SUPABASE_PROJECT_REF != null
@@ -113,6 +120,7 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_ALLOWED_EMAILS: ${{ secrets.CYPRESS_OWNER_EMAIL }},${{ secrets.LEAD_EMAIL }},${{ secrets.MEMBER_EMAIL }}
           CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
           CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
 
@@ -129,6 +137,7 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_ALLOWED_EMAILS: ${{ secrets.CYPRESS_OWNER_EMAIL }},${{ secrets.LEAD_EMAIL }},${{ secrets.MEMBER_EMAIL }}
           CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
           CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
           LEAD_EMAIL: ${{ secrets.LEAD_EMAIL }}
