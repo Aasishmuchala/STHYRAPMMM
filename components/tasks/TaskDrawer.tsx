@@ -6,6 +6,7 @@ import type { IconType } from "react-icons";
 import { useDismiss } from "@/lib/useDismiss";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { createTask, deleteTask, setTaskStatus, updateTask } from "@/app/tasks/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import type {
   BoardTask,
   CycleOpt,
@@ -144,8 +145,9 @@ export function TaskDrawer({
     e.preventDefault();
     setErr(null);
     start(async () => {
+      const toastId = beginToast(mode === "create" ? "Creating work item..." : "Saving work item...");
       const res = mode === "create" ? await createTask(form) : await updateTask(task!.id, form);
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: mode === "create" ? "Work item created." : "Work item updated." })) {
         setErr(res.error);
         return;
       }
@@ -163,8 +165,9 @@ export function TaskDrawer({
     if (!task || nextStatus === status || !canMoveTask) return;
     setStatusLocal(nextStatus);
     start(async () => {
+      const toastId = beginToast("Moving work item...");
       const res = await setTaskStatus(task.id, nextStatus);
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Work item moved." })) {
         setErr(res.error);
         setStatusLocal(status);
         return;
@@ -176,8 +179,9 @@ export function TaskDrawer({
   function onDelete() {
     if (!task) return;
     start(async () => {
+      const toastId = beginToast("Deleting work item...");
       const res = await deleteTask(task.id);
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Work item deleted." })) {
         setErr(res.error);
         setConfirmDel(false);
         return;

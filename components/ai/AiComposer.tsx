@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { askAi, generateBrief } from "@/app/ai/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import { fmtInr } from "@/lib/ai/cost";
 
 type AskResult = { ok: true; text: string; actions: { tool: string; ok: boolean; detail: string }[]; cost: number };
@@ -36,13 +37,16 @@ export function AiComposer({
     if (!text || busy) return;
     setErr(null);
     setBusy("ask");
+    const toastId = beginToast("Asking the assistant...");
     const res = await askAi(text);
     setBusy(null);
     if ("error" in res) {
+      finishToast(res, { id: toastId, success: "" });
       setErr(res.error);
       onAnswer({ error: res.error });
       return;
     }
+    finishToast(res, { id: toastId, success: "Assistant response ready." });
     setInput("");
     onAnswer(res);
     router.refresh();
@@ -52,13 +56,16 @@ export function AiComposer({
     if (busy) return;
     setErr(null);
     setBusy("brief");
+    const toastId = beginToast("Generating morning brief...");
     const res = await generateBrief();
     setBusy(null);
     if ("error" in res) {
+      finishToast(res, { id: toastId, success: "" });
       setErr(res.error);
       onAnswer({ error: res.error });
       return;
     }
+    finishToast(res, { id: toastId, success: "Morning brief generated." });
     onAnswer({ ok: true, text: res.text, actions: [], cost: res.cost });
     router.refresh();
   }

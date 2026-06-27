@@ -26,7 +26,7 @@ export default async function PeoplePage({
     { data: allMemberships },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role").eq("user_id", user.id),
+    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("profile_workload_v1").select("profile_id,full_name,email,global_role,is_active,open_tasks,done_tasks,overdue_tasks,active_cycles,projects_led,created_at"),
     supabase.from("division_members").select("id,user_id,division_id,role,divisions(name,slug)"),

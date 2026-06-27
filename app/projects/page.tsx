@@ -44,9 +44,10 @@ export default async function ProjectsPage() {
 
   const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
   const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
-  if (!access.isSuperAdmin && access.workspaceDivisionIds.size === 0) redirect("/");
   const canSeeFinances = access.canSeeFinances;
-  const divs: DivisionOpt[] = (divisions ?? []).map((d) => ({ id: d.id, slug: d.slug, name: d.name }));
+  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
+    (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
+  );
   const creatableDivisions = access.isSuperAdmin
     ? divs
     : divs.filter((division) => access.manageableDivisionIds.has(division.id));
@@ -77,7 +78,9 @@ export default async function ProjectsPage() {
     divisionMemberships = (membershipResult.data ?? []) as DivisionMembershipRow[];
   }
 
-  const projects = ((projectRows ?? []) as ProjectRow[]).map((project) => {
+  const projects = ((projectRows ?? []) as ProjectRow[])
+    .filter((project) => access.isSuperAdmin || access.workspaceDivisionIds.has(project.division_id))
+    .map((project) => {
     const division = Array.isArray(project.divisions) ? project.divisions[0] : project.divisions;
     const lead = Array.isArray(project.lead) ? project.lead[0] : project.lead;
     return {
@@ -93,7 +96,7 @@ export default async function ProjectsPage() {
       lead_name: lead?.full_name ?? null,
       openTasks: taskCounts.get(project.id) ?? 0,
     };
-  });
+    });
 
   return (
     <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>

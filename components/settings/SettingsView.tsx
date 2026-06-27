@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import { createDivision, updateProfile, addMembership, removeMembership } from "@/app/settings/actions";
 import { ThemeControls } from "./ThemeControls";
 import { OmegaKeyCard } from "./OmegaKeyCard";
@@ -79,14 +80,17 @@ export function SettingsView({
     }
 
     setPwBusy(true);
+    const toastId = beginToast("Updating password...");
     const { error } = await createClient().auth.updateUser({ password: pw });
     setPwBusy(false);
 
     if (error) {
+      finishToast({ error: error.message }, { id: toastId, success: "" });
       setPwMsg(error.message);
       return;
     }
 
+    finishToast({ ok: true }, { id: toastId, success: "Password updated." });
     setPwOk(true);
     setPwMsg("Password updated.");
     setPw("");
@@ -108,9 +112,10 @@ export function SettingsView({
     setMemberMessage(null);
     setMemberBusy("update");
     start(async () => {
+      const toastId = beginToast("Updating member access...");
       const result = await addMembership(memberId, memberDivisionId, memberRole);
       setMemberBusy(null);
-      if ("error" in result) {
+      if (!finishToast(result, { id: toastId, success: `${memberName(memberId)} updated.` })) {
         setMemberError(result.error);
         return;
       }
@@ -124,9 +129,10 @@ export function SettingsView({
     setMemberMessage(null);
     setMemberBusy(`remove:${id}`);
     start(async () => {
+      const toastId = beginToast("Removing member access...");
       const result = await removeMembership(id);
       setMemberBusy(null);
-      if ("error" in result) {
+      if (!finishToast(result, { id: toastId, success: "Member access removed." })) {
         setMemberError(result.error);
         return;
       }
@@ -171,8 +177,9 @@ export function SettingsView({
               setProfileError(null);
               setProfileSaved(false);
               start(async () => {
+                const toastId = beginToast("Saving profile...");
                 const result = await updateProfile(name);
-                if ("error" in result) {
+                if (!finishToast(result, { id: toastId, success: "Profile saved." })) {
                   setProfileError(result.error);
                   return;
                 }
@@ -234,8 +241,9 @@ export function SettingsView({
                 onClick={() => {
                   setCompanyError(null);
                   start(async () => {
+                    const toastId = beginToast("Creating company...");
                     const result = await createDivision(companyName, companySlug);
-                    if ("error" in result) {
+                    if (!finishToast(result, { id: toastId, success: "Company created." })) {
                       setCompanyError(result.error);
                       return;
                     }

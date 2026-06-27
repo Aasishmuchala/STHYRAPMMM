@@ -10,6 +10,7 @@ import { IconPlus } from "@/components/icons";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { RecordModal, type Field } from "@/components/finances/RecordModal";
 import { addClient, setClientStage, deleteClient } from "@/app/clients/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const short = (s: string) => s.replace(/^Sthyra\s+/, "");
@@ -44,9 +45,10 @@ export function ClientsView({ clients, divisions, initialDivision, openNew }: { 
 
   async function run(id: string, fn: () => Promise<{ ok: true } | { error: string }>) {
     setErr(null); setBusyId(id);
+    const toastId = beginToast("Saving client changes...");
     const res = await fn();
     setBusyId(null);
-    if ("error" in res) { setErr(res.error); return false; }
+    if (!finishToast(res, { id: toastId, success: "Client updated." })) { setErr(res.error); return false; }
     router.refresh();
     return true;
   }

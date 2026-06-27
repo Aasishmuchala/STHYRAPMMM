@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { saveAppearance } from "@/app/settings/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import {
   applyAccentStyleVars,
   clearAccentStyleVars,
@@ -80,9 +81,14 @@ export function ThemeControls({
     applyAccentStyleVars(document.documentElement.style, clean);
   }
 
-  function persist(nextTheme: string, nextWallpaper: string, nextAccent: string) {
+  function persist(nextTheme: string, nextWallpaper: string, nextAccent: string, notify = true) {
     start(() => {
-      void saveAppearance(nextTheme, nextWallpaper === "none" ? null : nextWallpaper, nextAccent || null);
+      const toastId = notify ? beginToast("Saving appearance...") : null;
+      void saveAppearance(nextTheme, nextWallpaper === "none" ? null : nextWallpaper, nextAccent || null)
+        .then((result) => {
+          if (!toastId) return;
+          finishToast(result, { id: toastId, success: "Appearance updated." });
+        });
     });
   }
 
@@ -136,7 +142,7 @@ export function ThemeControls({
       document.documentElement.style.setProperty("--wallpaper-image", wantWp === "none" ? "none" : wantWp);
       if (wantAccent) applyAccentVars(wantAccent);
       else resetAccentVars();
-      persist(dbTheme, wantWp, wantAccent);
+      persist(dbTheme, wantWp, wantAccent, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

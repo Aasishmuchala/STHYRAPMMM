@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useDismiss } from "@/lib/useDismiss";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
 import type { EmployeeOption, RecurringPayment } from "@/lib/finances-types";
 import type { RecurringCadence, RecurringKind, RecurringStatus } from "@/lib/recurring";
@@ -137,6 +138,7 @@ export function RecurringPaymentModal({
     }
 
     setBusy(true);
+    const toastId = beginToast(initial ? "Saving recurring item..." : "Creating recurring item...");
     const res = await onSave({
       division_id: vals.division_id,
       project_id: vals.project_id || null,
@@ -152,7 +154,7 @@ export function RecurringPaymentModal({
       notes: vals.notes || null,
     });
 
-    if ("error" in res) {
+    if (!finishToast(res, { id: toastId, success: initial ? "Recurring item updated." : "Recurring item created." })) {
       setBusy(false);
       setErr(res.error);
       return;

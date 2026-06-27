@@ -13,6 +13,7 @@ import { RecordModal, type Field } from "./RecordModal";
 import { RecurringPaymentModal } from "./RecurringPaymentModal";
 import { CsvImportModal } from "./CsvImportModal";
 import { accruedPaisaThrough, activeRecurring, humanRecurringLabel, monthlyEquivalentPaisa, nextDueOn } from "@/lib/recurring";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import {
   createTransaction, deleteTransaction,
   createInvoice, setInvoiceStatus, deleteInvoice,
@@ -104,9 +105,10 @@ export function FinancesView({
   async function run(id: string, fn: () => Promise<{ ok: true } | { error: string }>) {
     setErr(null);
     setBusyId(id);
+    const toastId = beginToast("Saving finance changes...");
     const res = await fn();
     setBusyId(null);
-    if ("error" in res) { setErr(res.error); return false; }
+    if (!finishToast(res, { id: toastId, success: "Finance updated." })) { setErr(res.error); return false; }
     router.refresh();
     return true;
   }

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { createProjectWithWorkflow, deleteProject, updateProjectDetails } from "@/app/projects/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 type ProjectRow = {
@@ -117,9 +118,11 @@ export function ProjectsView({
     setCreateError(null);
     setBusyKey("create");
     start(async () => {
+      const toastId = beginToast("Creating project...");
       const res = await createProjectWithWorkflow({ ...form, lead_id: form.lead_id || null, promote_lead: promoteLead });
       setBusyKey(null);
       if ("error" in res) {
+        finishToast(res, { id: toastId, success: "" });
         if (res.requiresLeadPromotion && res.memberName) {
           setPromotionDialog({ mode: "create", memberName: res.memberName });
           return;
@@ -127,6 +130,7 @@ export function ProjectsView({
         setCreateError(res.error);
         return;
       }
+      finishToast(res, { id: toastId, success: "Project created." });
       setPromotionDialog(null);
       setForm({
         name: "",
@@ -152,6 +156,7 @@ export function ProjectsView({
     setRowErrors((current) => ({ ...current, [projectId]: null }));
     setBusyKey(`save:${projectId}`);
     start(async () => {
+      const toastId = beginToast("Saving project...");
       const res = await updateProjectDetails({
         project_id: projectId,
         name: draft.name,
@@ -164,6 +169,7 @@ export function ProjectsView({
       });
       setBusyKey(null);
       if ("error" in res) {
+        finishToast(res, { id: toastId, success: "" });
         if (res.requiresLeadPromotion && res.memberName) {
           setPromotionDialog({ mode: "update", projectId, memberName: res.memberName });
           return;
@@ -171,6 +177,7 @@ export function ProjectsView({
         setRowErrors((current) => ({ ...current, [projectId]: res.error }));
         return;
       }
+      finishToast(res, { id: toastId, success: "Project updated." });
       setPromotionDialog(null);
       router.refresh();
     });
@@ -181,9 +188,10 @@ export function ProjectsView({
     setRowErrors((current) => ({ ...current, [deleteDialog.id]: null }));
     setBusyKey(`delete:${deleteDialog.id}`);
     start(async () => {
+      const toastId = beginToast("Deleting project...");
       const res = await deleteProject(deleteDialog.id);
       setBusyKey(null);
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Project deleted." })) {
         setRowErrors((current) => ({ ...current, [deleteDialog.id]: res.error }));
         return;
       }

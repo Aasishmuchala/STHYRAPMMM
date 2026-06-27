@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveDivisionBrief } from "@/app/divisions/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 
 type Brief = { goals: string | null; targets: string | null; notes: string | null } | null;
 
@@ -24,9 +25,10 @@ export function DivisionBriefCard({
 
   async function save() {
     setBusy(true); setErr(null);
+    const toastId = beginToast("Saving operating brief...");
     const r = await saveDivisionBrief(divisionId, goals, targets, notes);
     setBusy(false);
-    if ("error" in r) { setErr(r.error); return; }
+    if (!finishToast(r, { id: toastId, success: "Operating brief saved." })) { setErr(r.error); return; }
     setEditing(false);
     router.refresh();
   }

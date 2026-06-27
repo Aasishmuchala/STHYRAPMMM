@@ -28,6 +28,7 @@ import {
 } from "@/lib/tasks-types";
 import { dueLabel, initials } from "@/lib/format";
 import { avatarBg } from "@/lib/avatar";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import { TaskDrawer } from "./TaskDrawer";
 import { TaskListView } from "./TaskListView";
 import { TaskToolbar } from "./TaskToolbar";
@@ -428,8 +429,9 @@ export function TaskBoard({
     setDragOverCol(null);
     setBoardTasks((current) => current.map((task) => (task.id === taskId ? { ...task, status } : task)));
     start(async () => {
+      const toastId = beginToast("Moving work item...");
       const res = await setTaskStatus(taskId, status);
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Work item moved." })) {
         setBoardError(res.error);
         setBoardTasks(previousTasks);
         return;
@@ -457,8 +459,9 @@ export function TaskBoard({
     setStageList(reordered);
 
     start(async () => {
+      const toastId = beginToast("Reordering workflow...");
       const res = await reorderTaskStages(activeProjectId, reordered.map((stage) => stage.id));
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Workflow updated." })) {
         setBoardError(res.error);
         setStageList(previousStages);
         return;
@@ -499,8 +502,9 @@ export function TaskBoard({
     setBoardError(null);
     setStageList(updatedStages);
     start(async () => {
+      const toastId = beginToast("Saving workflow stage...");
       const res = await updateTaskStage(activeProjectId, stageId, draft);
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Workflow stage saved." })) {
         setBoardError(res.error);
         setStageList(previousStages);
         return;
@@ -562,13 +566,14 @@ export function TaskBoard({
     setStageList(remainingStages);
     setBoardTasks(remappedTasks);
 
+    const toastId = beginToast("Deleting workflow stage...");
     const res = await deleteTaskStage({
       project_id: activeProjectId,
       stage_id: deleteDialog.id,
       move_tasks_to: targetStageId,
     });
 
-    if ("error" in res) {
+    if (!finishToast(res, { id: toastId, success: "Workflow stage deleted." })) {
       setBoardError(res.error);
       setStageList(previousStages);
       setBoardTasks(previousTasks);
@@ -589,6 +594,7 @@ export function TaskBoard({
     if (!activeProjectId) return;
     setBoardError(null);
     start(async () => {
+      const toastId = beginToast("Creating workflow stage...");
       const res = await createTaskStage({
         project_id: activeProjectId,
         label: newStage.label,
@@ -596,7 +602,7 @@ export function TaskBoard({
         is_done: newStage.is_done,
         after_stage_id: newStage.after_stage_id || null,
       });
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Workflow stage created." })) {
         setBoardError(res.error);
         return;
       }
@@ -623,6 +629,7 @@ export function TaskBoard({
     if (!activeProjectId) return;
     setBoardError(null);
     start(async () => {
+      const toastId = beginToast("Creating cycle...");
       const res = await createProjectCycle({
         project_id: activeProjectId,
         name: cycleForm.name,
@@ -631,7 +638,7 @@ export function TaskBoard({
         ends_on: cycleForm.ends_on || null,
         status: cycleForm.status,
       });
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Cycle created." })) {
         setBoardError(res.error);
         return;
       }
@@ -647,6 +654,7 @@ export function TaskBoard({
     if (!activeProjectId) return;
     setBoardError(null);
     start(async () => {
+      const toastId = beginToast("Creating module...");
       const res = await createProjectModule({
         project_id: activeProjectId,
         name: moduleForm.name,
@@ -655,7 +663,7 @@ export function TaskBoard({
         lead_id: moduleForm.lead_id || null,
         status: moduleForm.status,
       });
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Module created." })) {
         setBoardError(res.error);
         return;
       }

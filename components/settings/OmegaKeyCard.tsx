@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveOmegaKey, testOmegaKey, clearOmegaKey } from "@/app/ai/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 
 type Status = { configured: boolean; last4?: string; updated_at?: string } | null;
 
@@ -24,9 +25,13 @@ export function OmegaKeyCard({ status }: { status: Status }) {
     const k = key.trim();
     if (!k) { setMsg({ ok: false, text: "Paste a key first." }); return; }
     setBusy("save"); setMsg(null);
+    const toastId = beginToast(configured ? "Updating AI key..." : "Saving AI key...");
     const r = await saveOmegaKey(k);
     setBusy(null);
-    if ("error" in r) { setMsg({ ok: false, text: r.error }); return; }
+    if (!finishToast(r, { id: toastId, success: (result) => result.status === "updated" ? "AI key updated." : "AI key saved." })) {
+      setMsg({ ok: false, text: r.error });
+      return;
+    }
     setKey("");
     setMsg({ ok: true, text: r.status === "updated" ? "Key updated and encrypted in Vault." : "Key saved and encrypted in Vault." });
     router.refresh();
@@ -34,9 +39,13 @@ export function OmegaKeyCard({ status }: { status: Status }) {
 
   async function test() {
     setBusy("test"); setMsg(null);
+    const toastId = beginToast("Testing AI connection...");
     const r = await testOmegaKey();
     setBusy(null);
-    if ("error" in r) { setMsg({ ok: false, text: r.error }); return; }
+    if (!finishToast(r, { id: toastId, success: "AI connection looks good." })) {
+      setMsg({ ok: false, text: r.error });
+      return;
+    }
     setMsg({
       ok: true,
       text: `Connected — ${r.count} model${r.count === 1 ? "" : "s"} available${r.hasDefault ? ", claude-opus-4-8 ready." : ". Note: claude-opus-4-8 not in the list."}`,
@@ -45,9 +54,13 @@ export function OmegaKeyCard({ status }: { status: Status }) {
 
   async function remove() {
     setBusy("clear"); setMsg(null);
+    const toastId = beginToast("Removing AI key...");
     const r = await clearOmegaKey();
     setBusy(null);
-    if ("error" in r) { setMsg({ ok: false, text: r.error }); return; }
+    if (!finishToast(r, { id: toastId, success: "AI key removed." })) {
+      setMsg({ ok: false, text: r.error });
+      return;
+    }
     setMsg({ ok: true, text: "Key removed." });
     router.refresh();
   }

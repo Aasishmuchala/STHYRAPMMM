@@ -89,8 +89,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
   const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
-  if (!access.isSuperAdmin && access.workspaceDivisionIds.size === 0) redirect("/");
-  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id));
+  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
+    (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
+  );
   const projects: ProjectOpt[] = ((projectRows ?? []) as ProjectOpt[])
     .filter((p) => access.isSuperAdmin || access.workspaceDivisionIds.has(p.division_id))
     .map((p) => ({ id: p.id, name: p.name, division_id: p.division_id }));

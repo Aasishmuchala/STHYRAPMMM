@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { askAi, generateBrief, approvePending, rejectPending } from "@/app/ai/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import { fmtInr } from "@/lib/ai/cost";
 import { IconSparkle, IconCheck, IconX } from "@/components/icons";
 
@@ -39,9 +40,10 @@ export function AiConsole({
     const text = input.trim();
     if (!text || busy) return;
     setErr(null); setBusy("ask");
+    const toastId = beginToast("Asking the assistant...");
     const res = await askAi(text);
     setBusy(null);
-    if ("error" in res) { setErr(res.error); return; }
+    if (!finishToast(res, { id: toastId, success: "Assistant response ready." })) { setErr(res.error); return; }
     setAnswer(res); setInput("");
     router.refresh();
   }
@@ -49,20 +51,23 @@ export function AiConsole({
   async function brief() {
     if (busy) return;
     setErr(null); setBusy("brief");
+    const toastId = beginToast("Generating morning brief...");
     const res = await generateBrief();
     setBusy(null);
-    if ("error" in res) { setErr(res.error); return; }
+    if (!finishToast(res, { id: toastId, success: "Morning brief generated." })) { setErr(res.error); return; }
     router.refresh();
   }
 
   async function approve(id: string) {
+    const toastId = beginToast("Approving action...");
     const res = await approvePending(id);
-    if ("error" in res) { setErr(res.error); return; }
+    if (!finishToast(res, { id: toastId, success: "Action approved." })) { setErr(res.error); return; }
     router.refresh();
   }
   async function reject(id: string) {
+    const toastId = beginToast("Rejecting action...");
     const res = await rejectPending(id);
-    if ("error" in res) { setErr(res.error); return; }
+    if (!finishToast(res, { id: toastId, success: "Action rejected." })) { setErr(res.error); return; }
     router.refresh();
   }
 

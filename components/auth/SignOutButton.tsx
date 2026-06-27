@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "react-hot-toast";
 
 export function SignOutButton({ initials }: { initials: string }) {
   const router = useRouter();
@@ -10,8 +11,10 @@ export function SignOutButton({ initials }: { initials: string }) {
 
   async function signOut() {
     setBusy(true);
+    const toastId = toast.loading("Signing out...");
     const supabase = createClient();
     await supabase.auth.signOut();
+    toast.success("Signed out.", { id: toastId });
     router.push("/login");
     router.refresh();
   }

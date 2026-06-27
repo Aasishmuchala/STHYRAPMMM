@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useDismiss } from "@/lib/useDismiss";
 import { createClient } from "@/lib/supabase/client";
 import { createDocument } from "@/app/documents/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { DocKind } from "@/lib/doc-types";
 
@@ -27,6 +28,7 @@ export function DocModal({ kind, divisions, onClose }: { kind: DocKind; division
     e.preventDefault();
     setErr(null);
     setBusy(true);
+    const toastId = beginToast(kind === "file" ? "Uploading document..." : "Creating document...");
     try {
       let storage_path: string | null = null;
       let body_md: string | null = null;
@@ -35,24 +37,26 @@ export function DocModal({ kind, divisions, onClose }: { kind: DocKind; division
         body_md = body.trim() || null;
       } else if (kind === "link") {
         const u = url.trim();
-        if (!u) { setErr("Enter a URL"); setBusy(false); return; }
+        if (!u) { finishToast({ error: "Enter a URL" }, { id: toastId, success: "" }); setErr("Enter a URL"); setBusy(false); return; }
         storage_path = u.startsWith("http") ? u : `https://${u}`;
       } else if (kind === "file") {
-        if (!file) { setErr("Choose a file"); setBusy(false); return; }
+        if (!file) { finishToast({ error: "Choose a file" }, { id: toastId, success: "" }); setErr("Choose a file"); setBusy(false); return; }
         const supabase = createClient();
         const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const path = `${divisionId}/${crypto.randomUUID()}-${safe}`;
         const { error: upErr } = await supabase.storage.from("documents").upload(path, file, { upsert: false });
-        if (upErr) { setErr(upErr.message); setBusy(false); return; }
+        if (upErr) { finishToast({ error: upErr.message }, { id: toastId, success: "" }); setErr(upErr.message); setBusy(false); return; }
         storage_path = path;
       }
 
       const res = await createDocument({ division_id: divisionId, title, doc_type: docType.trim() || null, status: "active", body_md, storage_path });
-      if ("error" in res) { setErr(res.error); setBusy(false); return; }
+      if (!finishToast(res, { id: toastId, success: kind === "file" ? "Document uploaded." : "Document created." })) { setErr(res.error); setBusy(false); return; }
       router.refresh();
       onClose();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Something went wrong");
+      const message = e instanceof Error ? e.message : "Something went wrong";
+      finishToast({ error: message }, { id: toastId, success: "" });
+      setErr(message);
       setBusy(false);
     }
   }

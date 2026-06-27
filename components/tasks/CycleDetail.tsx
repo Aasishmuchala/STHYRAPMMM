@@ -14,6 +14,7 @@ import {
   deleteProjectCycle,
   updateProjectCycle,
 } from "@/app/tasks/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import type { BoardTask, CycleOpt, CycleStatus, MemberOpt, TaskStage } from "@/lib/tasks-types";
 import { initials } from "@/lib/format";
 import { avatarBg } from "@/lib/avatar";
@@ -96,6 +97,7 @@ export function CycleDetail({
     if (!canManage || !dirty) return;
     setError(null);
     start(async () => {
+      const toastId = beginToast("Saving cycle...");
       const res = await updateProjectCycle(cycle.id, {
         name,
         goal: goal || null,
@@ -103,7 +105,7 @@ export function CycleDetail({
         ends_on: endsOn || null,
         status,
       });
-      if ("error" in res) {
+      if (!finishToast(res, { id: toastId, success: "Cycle updated." })) {
         setError(res.error);
         return;
       }
@@ -116,9 +118,10 @@ export function CycleDetail({
     if (!canManage) return;
     setError(null);
     setBusy(taskId);
+    const toastId = beginToast("Removing task from cycle...");
     const res = await assignTasksToCycle(cycle.id, [taskId], "remove");
     setBusy(null);
-    if ("error" in res) setError(res.error);
+    if (!finishToast(res, { id: toastId, success: "Task removed from cycle." })) setError(res.error);
     else {
       onCycleTasksChanged?.([taskId], null);
       router.refresh();
@@ -129,9 +132,10 @@ export function CycleDetail({
     if (!canManage || taskIds.length === 0) return;
     setError(null);
     setBusy("bulk-add");
+    const toastId = beginToast("Adding tasks to cycle...");
     const res = await assignTasksToCycle(cycle.id, taskIds, "add");
     setBusy(null);
-    if ("error" in res) {
+    if (!finishToast(res, { id: toastId, success: (result) => `${result.data.updated} task${result.data.updated === 1 ? "" : "s"} added to the cycle.` })) {
       setError(res.error);
       return;
     }
@@ -144,9 +148,10 @@ export function CycleDetail({
   async function confirmDelete() {
     setError(null);
     setBusy("delete");
+    const toastId = beginToast("Deleting cycle...");
     const res = await deleteProjectCycle(cycle.id, deleteMoveTo || null);
     setBusy(null);
-    if ("error" in res) {
+    if (!finishToast(res, { id: toastId, success: "Cycle deleted." })) {
       setError(res.error);
       return;
     }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { companyEmailDomain, companyEmailMessage, isCompanyEmail, normalizeEmail } from "@/lib/auth/companyEmail";
+import { toast } from "react-hot-toast";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -42,6 +43,7 @@ export default function LoginPage() {
     async function handleEmailLink() {
       setError(null);
       setLinkBusy(true);
+      const toastId = toast.loading("Finishing email verification...");
 
       const supabase = createClient();
       const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -50,6 +52,7 @@ export default function LoginPage() {
 
       if (exchangeError) {
         setLinkBusy(false);
+        toast.error(exchangeError.message, { id: toastId });
         setError(exchangeError.message);
         return;
       }
@@ -57,10 +60,12 @@ export default function LoginPage() {
       if (!isCompanyEmail(data.session?.user?.email)) {
         await supabase.auth.signOut();
         setLinkBusy(false);
+        toast.error(companyEmailMessage(), { id: toastId });
         setError(companyEmailMessage());
         return;
       }
 
+      toast.success("Email verified. Signed in.", { id: toastId });
       router.push("/");
       router.refresh();
     }
@@ -83,17 +88,20 @@ export default function LoginPage() {
     }
 
     setBusy(true);
+    const toastId = toast.loading("Signing in...");
     const supabase = createClient();
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: emailValue,
       password,
     });
     if (signInError) {
+      toast.error(signInError.message, { id: toastId });
       setError(signInError.message);
       setBusy(false);
       return;
     }
 
+    toast.success("Signed in.", { id: toastId });
     router.push("/");
     router.refresh();
   }

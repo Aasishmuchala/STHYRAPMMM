@@ -12,6 +12,7 @@ const ReactMarkdown = dynamic(() => import("react-markdown"), { ssr: false });
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 import { updateDocument, deleteDocument } from "@/app/documents/actions";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import { docKind, fileExt, IMAGE_EXTS, type Doc } from "@/lib/doc-types";
 
 export function DocReader({ doc, onClose }: { doc: Doc; onClose: () => void }) {
@@ -45,16 +46,18 @@ export function DocReader({ doc, onClose }: { doc: Doc; onClose: () => void }) {
 
   function saveNote() {
     start(async () => {
+      const toastId = beginToast("Saving note...");
       const res = await updateDocument(doc.id, { title: title.trim() || doc.title, body_md: body || null });
-      if ("error" in res) { setErr(res.error); return; }
+      if (!finishToast(res, { id: toastId, success: "Note saved." })) { setErr(res.error); return; }
       router.refresh();
       setEditing(false);
     });
   }
   function onDelete() {
     start(async () => {
+      const toastId = beginToast("Deleting document...");
       const res = await deleteDocument(doc.id, doc.storage_path);
-      if ("error" in res) { setErr(res.error); setConfirmDel(false); return; }
+      if (!finishToast(res, { id: toastId, success: "Document deleted." })) { setErr(res.error); setConfirmDel(false); return; }
       router.refresh();
       onClose();
     });

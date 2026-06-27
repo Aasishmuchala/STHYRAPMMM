@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useDismiss } from "@/lib/useDismiss";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
 import { csvObjects } from "@/lib/csvParse";
 import { downloadCsv, toCsv } from "@/lib/csv";
@@ -216,9 +217,10 @@ export function CsvImportModal({
     }
 
     setBusy(true);
+    const toastId = beginToast("Importing CSV...");
     const res = await onImport(fileName, parsedRows);
     setBusy(false);
-    if ("error" in res) {
+    if (!finishToast(res, { id: toastId, success: (result) => `${result.imported} row${result.imported === 1 ? "" : "s"} imported.` })) {
       setErr(res.error);
       return;
     }

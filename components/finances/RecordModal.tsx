@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { useDismiss } from "@/lib/useDismiss";
+import { beginToast, finishToast } from "@/lib/client-toast";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
 
 export type Field =
@@ -55,8 +56,9 @@ export function RecordModal({
       else if (f.type === "text" || f.type === "textarea") out[f.key] = (vals[f.key] ?? "").trim() || null;
       else if (f.type === "project" || f.type === "select") out[f.key] = vals[f.key] || null;
     }
+    const toastId = beginToast(`Saving ${title.toLowerCase()}...`);
     const res = await onSave(out);
-    if ("error" in res) { setErr(res.error); setBusy(false); return; }
+    if (!finishToast(res, { id: toastId, success: `${title} saved.` })) { setErr(res.error); setBusy(false); return; }
     onClose();
   }
 

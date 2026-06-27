@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { Manrope, Inter, JetBrains_Mono, Cormorant_Garamond } from "next/font/google";
 import type { CSSProperties } from "react";
 import { buildAppearanceStyleVars, isAllowedTheme } from "@/lib/appearance";
+import { WorkspaceToaster } from "@/components/shell/WorkspaceToaster";
 import "./globals.css";
 
 // Inter (body) + Manrope (display headings) are above-the-fold everywhere, so they preload.
@@ -34,7 +35,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${manrope.variable} ${inter.variable} ${mono.variable} ${cormorant.variable}`}
       style={Object.keys(styleVars).length ? styleVars : undefined}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        <WorkspaceToaster />
+      </body>
     </html>
   );
 }
