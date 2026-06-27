@@ -775,34 +775,20 @@ export function TaskBoard({
     );
   }
 
-  if (!activeProjectId || !activeProject) {
-    return (
-      <section className="tasks-empty-state" aria-label="Projects required">
-        <div>
-          <div className="workspace-tag">Projects first</div>
-          <h2>Create your first project</h2>
-          <p>Tasks, workflow, cycles, and modules all hang off a project now. Create one first, then this board becomes your project workspace.</p>
-        </div>
-        <a href="/projects" className="btn">
-          <FiPlus size={14} />
-          Create project
-        </a>
-      </section>
-    );
-  }
-
   return (
     <>
-      <div className="tasks-project-strip" aria-label="Current project controls">
-        <label className="field tasks-project-field">
-          <span className="label">Current project</span>
-          <select className="select tasks-project-select" value={activeProjectId} onChange={(event) => switchProject(event.target.value)}>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>{project.name}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {activeProjectId && activeProject && (
+        <div className="tasks-project-strip" aria-label="Current project controls">
+          <label className="field tasks-project-field">
+            <span className="label">Current project</span>
+            <select className="select tasks-project-select" value={activeProjectId} onChange={(event) => switchProject(event.target.value)}>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
 
       {boardError && <div className="form-err" role="alert" style={{ marginBottom: 18 }}>{boardError}</div>}
 

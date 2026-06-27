@@ -101,7 +101,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
 
   const workflowRes = selectedProjectId
     ? await supabase.from("task_workflows").select("id,project_id,scope_key,name").eq("project_id", selectedProjectId).maybeSingle<WorkflowRow>()
-    : { data: null, error: null };
+    : await supabase.from("task_workflows").select("id,project_id,scope_key,name").eq("scope_key", "general").maybeSingle<WorkflowRow>();
   if (workflowRes.error) {
     throw new Error(workflowRes.error.message);
   }
@@ -137,12 +137,26 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .order("name")
           .returns<ModuleRow[]>(),
       ])
-    : [
-        { data: [] as TaskJoinRow[], error: null },
-        { data: [] as StageRow[], error: null },
-        { data: [] as CycleRow[], error: null },
-        { data: [] as ModuleRow[], error: null },
-      ];
+    : await Promise.all([
+        supabase
+          .from("tasks")
+          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name)")
+          .is("project_id", null)
+          .is("deleted_at", null)
+          .order("due_date", { nullsFirst: false })
+          .limit(1000)
+          .returns<TaskJoinRow[]>(),
+        workflowRes.data
+          ? supabase
+              .from("workflow_stages")
+              .select("id,workflow_id,key,label,color,position,is_done")
+              .eq("workflow_id", workflowRes.data.id)
+              .order("position")
+              .returns<StageRow[]>()
+          : Promise.resolve({ data: [] as StageRow[], error: null }),
+        Promise.resolve({ data: [] as CycleRow[], error: null }),
+        Promise.resolve({ data: [] as ModuleRow[], error: null }),
+      ]);
 
   if (taskRes.error) throw new Error(taskRes.error.message);
   if (stageRes.error) throw new Error(stageRes.error.message);
@@ -209,7 +223,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   }));
 
   const stages = (stageRes.data?.length ? stageRes.data : DEFAULT_TASK_STAGES).slice().sort((a, b) => a.position - b.position);
-  const tab = sp.tab === "overview" || sp.tab === "epics" || sp.tab === "cycles" || sp.tab === "modules" ? sp.tab : "work-items";
+  const requestedTab = sp.tab === "overview" || sp.tab === "epics" || sp.tab === "cycles" || sp.tab === "modules" ? sp.tab : "work-items";
+  const tab = selectedProjectId || requestedTab === "work-items" || requestedTab === "epics" ? requestedTab : "work-items";
   const workItemsHref = buildTaskHref(sp, { tab: "work-items", cycle: null, module: null });
   const epicsHref = buildTaskHref(sp, { tab: "epics", cycle: null, module: null });
   const overviewHref = buildTaskHref(sp, { tab: "overview", cycle: null, module: null });
@@ -226,15 +241,22 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           title={selectedProject ? selectedProject.name : "Board"}
           sub={selectedProject
             ? "Use the project switcher below to move between boards, cycles, modules, and workflow."
-            : "Create a project first, then each project will carry its own workflow."}
+            : tasks.length > 0
+              ? "General work items still show up here even before they are attached to a project."
+              : "General work items and assigned tasks will appear here even if a project has not been created yet."}
           breadcrumbs={selectedProject ? [{ label: "Projects", href: "/projects" }, { label: selectedProject.name }] : undefined}
-          tabs={selectedProject ? [
-            { label: "Overview", href: overviewHref, active: tab === "overview" },
-            { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
-            { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
-            { label: "Cycles", href: cyclesHref, active: tab === "cycles", count: cycles.length },
-            { label: "Modules", href: modulesHref, active: tab === "modules", count: modules.length },
-          ] : undefined}
+          tabs={selectedProject
+            ? [
+                { label: "Overview", href: overviewHref, active: tab === "overview" },
+                { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
+                { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
+                { label: "Cycles", href: cyclesHref, active: tab === "cycles", count: cycles.length },
+                { label: "Modules", href: modulesHref, active: tab === "modules", count: modules.length },
+              ]
+            : [
+                { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
+                { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
+              ]}
           actions={
             <Button href="/projects" variant="ghost">Manage projects</Button>
           }
