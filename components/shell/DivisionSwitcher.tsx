@@ -17,10 +17,14 @@ export function DivisionSwitcher({ divisions }: { divisions: Nav[] }) {
 
   return (
     <div className="dsw">
-      <button className="pill" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
-        <IconLayers size={14} />
-        {label}
-        <IconChevronDown size={13} />
+      <button className="pill dsw-trigger" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+        <span className="dsw-trigger-icon" aria-hidden="true">
+          <IconLayers size={14} />
+        </span>
+        <span className="dsw-label">{label}</span>
+        <span className="dsw-trigger-caret" aria-hidden="true">
+          <IconChevronDown size={13} />
+        </span>
       </button>
       {open && (
         <>

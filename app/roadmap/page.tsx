@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { AppShell } from "@/components/shell/AppShell";
@@ -92,7 +91,7 @@ export default async function RoadmapPage() {
                         <td>{r.name}</td>
                         <td>{project?.name ?? "—"}</td>
                         <td className="mono">{r.target_date ?? "—"}</td>
-                        <td><span className={`pill pill-${r.status}`}>{r.status}</span></td>
+                        <td><span className={`roadmap-pill roadmap-pill-${r.status}`}>{r.status}</span></td>
                       </tr>
                     );
                   })}
