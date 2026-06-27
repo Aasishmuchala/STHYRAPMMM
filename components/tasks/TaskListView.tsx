@@ -15,7 +15,7 @@ export function TaskListView({
   const stageGroups = stages
     .map((stage) => ({
       stage,
-      items: tasks.filter((task) => task.status === stage.id),
+      items: tasks.filter((task) => (task.stage_group_id ?? task.status) === stage.id),
     }))
     .filter((group) => group.items.length > 0);
 

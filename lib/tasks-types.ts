@@ -51,6 +51,12 @@ export type BoardTask = {
   module_name: string | null;
   parent_task_id: string | null;
   parent_task_title: string | null;
+  stage_group_id?: string | null;
+  stage_workflow_id?: string | null;
+  stage_key?: string | null;
+  stage_label?: string | null;
+  stage_color?: string | null;
+  stage_is_done?: boolean | null;
 };
 
 export type DivisionOpt = { id: string; slug: string; name: string };

@@ -230,6 +230,7 @@ export function TaskBoard({
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? null;
   const isDraggingTask = draggingId !== null;
   const isDraggingStage = draggingStageId !== null;
+  const isCrossProjectBoard = activeProjectId === null;
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -369,6 +370,31 @@ export function TaskBoard({
 
     return { months, rows: positionedRows };
   }, [activeProject?.name, cycleList, epicChildCounts, filteredEpics, moduleList, stageList]);
+
+  const displayStageList = useMemo(() => {
+    if (!isCrossProjectBoard) return stageList;
+
+    const deduped = new Map<string, TaskStage>();
+    for (const stage of stageList) {
+      const groupId = stage.key || stage.id;
+      if (deduped.has(groupId)) continue;
+      deduped.set(groupId, { ...stage, id: groupId, key: groupId, workflow_id: "mixed" });
+    }
+
+    return deduped.size > 0 ? [...deduped.values()].sort((a, b) => a.position - b.position) : DEFAULT_TASK_STAGES;
+  }, [isCrossProjectBoard, stageList]);
+
+  function displayStageId(task: BoardTask) {
+    return task.stage_group_id ?? task.status;
+  }
+
+  function isTaskDone(task: BoardTask) {
+    if (isCrossProjectBoard) {
+      const stage = displayStageList.find((item) => item.id === displayStageId(task));
+      return stage?.is_done ?? task.stage_is_done ?? false;
+    }
+    return stageList.find((stage) => stage.id === task.status)?.is_done ?? false;
+  }
 
   function canMoveTask(task: BoardTask) {
     return canManageWorkflow || task.assignee_id === currentUserId;
@@ -684,14 +710,13 @@ export function TaskBoard({
 
   const summary = {
     filtered: filteredBoardItems.length,
-    openItems: boardWorkItems.filter((task) => !stageList.find((stage) => stage.id === task.status)?.is_done).length,
-    doneItems: boardWorkItems.filter((task) => stageList.find((stage) => stage.id === task.status)?.is_done).length,
+    openItems: boardWorkItems.filter((task) => !isTaskDone(task)).length,
+    doneItems: boardWorkItems.filter((task) => isTaskDone(task)).length,
     epics: boardTasks.filter((task) => task.item_type === "epic").length,
     bugs: boardWorkItems.filter((task) => task.item_type === "bug").length,
     overdue: boardWorkItems.filter((task) => {
       if (!task.due_date) return false;
-      const isDone = stageList.find((stage) => stage.id === task.status)?.is_done;
-      return !isDone && new Date(task.due_date).getTime() < today.getTime();
+      return !isTaskDone(task) && new Date(task.due_date).getTime() < today.getTime();
     }).length,
   };
   const activeCycle = cycleList.find((cycle) => cycle.status === "active") ?? cycleList[0] ?? null;
@@ -703,7 +728,7 @@ export function TaskBoard({
     const PriorityIcon = priority.Icon;
     const displayKey = getTaskDisplayKey(task);
     const contextLabel = getTaskContextLabel(task);
-    const draggable = canMoveTask(task);
+    const draggable = !isCrossProjectBoard && canMoveTask(task);
     return (
       <article
         className={`task-card ${draggingId === task.id ? "dragging" : ""}`}
@@ -1393,12 +1418,12 @@ export function TaskBoard({
               )}
             </section>
           ) : viewMode === "list" ? (
-            <TaskListView tasks={filteredBoardItems} stages={stageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
+            <TaskListView tasks={filteredBoardItems} stages={displayStageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
           ) : (
             <div className="board-scroll">
-              <div className="tasks-board-grid" style={{ gridTemplateColumns: `repeat(${stageList.length}, minmax(252px, 1fr))` }}>
-                {stageList.map((stage) => {
-                  const items = filteredBoardItems.filter((task) => task.status === stage.id);
+              <div className="tasks-board-grid" style={{ gridTemplateColumns: `repeat(${displayStageList.length}, minmax(252px, 1fr))` }}>
+                {displayStageList.map((stage) => {
+                  const items = filteredBoardItems.filter((task) => displayStageId(task) === stage.id);
                   const groups = groupItems(items);
                   const StageIcon = getTaskStageIcon(stage);
                   return (
@@ -1407,6 +1432,7 @@ export function TaskBoard({
                       key={stage.id}
                       aria-label={stage.label}
                       onDragOver={(event) => {
+                        if (isCrossProjectBoard) return;
                         if (isDraggingTask && dragSourceStatus === stage.id) return;
                         if (isDraggingStage && draggingStageId === stage.id) return;
                         event.preventDefault();
@@ -1416,13 +1442,16 @@ export function TaskBoard({
                       onDragLeave={(event) => {
                         if (event.currentTarget === event.target) setDragOverCol(null);
                       }}
-                      onDrop={(event) => onDrop(stage.id, event)}
+                      onDrop={(event) => {
+                        if (isCrossProjectBoard) return;
+                        onDrop(stage.id, event);
+                      }}
                     >
                       <div
                         className={`kanban-column-head ${canManageWorkflow ? "col-head-draggable" : ""}`}
-                        draggable={canManageWorkflow}
+                        draggable={!isCrossProjectBoard && canManageWorkflow}
                         onDragStart={(event) => {
-                          if (!canManageWorkflow) return;
+                          if (isCrossProjectBoard || !canManageWorkflow) return;
                           setDraggingStageId(stage.id);
                           setDraggingId(null);
                           event.dataTransfer.effectAllowed = "move";
@@ -1455,12 +1484,12 @@ export function TaskBoard({
                             </div>
                           ))
                         )}
-                        {isDraggingTask && dragSourceStatus !== stage.id && (
+                        {!isCrossProjectBoard && isDraggingTask && dragSourceStatus !== stage.id && (
                           <div className={`drop-placeholder ${dragOverCol === stage.id ? "on" : ""}`}>
                             <span>{dragOverCol === stage.id ? "Drop work item here" : "Drag work item here"}</span>
                           </div>
                         )}
-                        {isDraggingStage && !isDraggingTask && draggingStageId !== stage.id && (
+                        {!isCrossProjectBoard && isDraggingStage && !isDraggingTask && draggingStageId !== stage.id && (
                           <div className={`drop-placeholder stage ${dragOverCol === stage.id ? "on" : ""}`}>
                             <span>{dragOverCol === stage.id ? "Drop stage here" : "Move stage here"}</span>
                           </div>
@@ -1486,11 +1515,13 @@ export function TaskBoard({
           cycles={cycleList}
           modules={moduleList}
           epics={epicOptions}
-          stages={stageList}
+          stages={isCrossProjectBoard && drawer.mode === "view" && drawer.task.stage_workflow_id
+            ? stageList.filter((stage) => stage.workflow_id === drawer.task.stage_workflow_id)
+            : stageList}
           onClose={() => setDrawer(null)}
           lockedProjectId={activeProjectId}
           canManageTask={canManageWorkflow}
-          canMoveTask={drawer.mode === "view" ? canMoveTask(drawer.task) : canCreateTasks}
+          canMoveTask={drawer.mode === "view" ? (!isCrossProjectBoard && canMoveTask(drawer.task)) : canCreateTasks}
         />
       )}
 

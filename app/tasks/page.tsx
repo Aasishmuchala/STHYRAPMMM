@@ -210,6 +210,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     module_name: r.module?.name ?? null,
     parent_task_id: r.parent_task_id,
     parent_task_title: r.parent_task_id ? (parentTaskTitles.get(r.parent_task_id) ?? null) : null,
+    stage_group_id: selectedProjectId ? r.status : (r.stage?.key ?? r.status),
+    stage_workflow_id: r.stage?.workflow_id ?? null,
+    stage_key: r.stage?.key ?? null,
+    stage_label: r.stage?.label ?? null,
+    stage_color: r.stage?.color ?? null,
+    stage_is_done: r.stage?.is_done ?? null,
   }));
   const cycles: CycleOpt[] = cycleRes.data ?? [];
   const modules: ModuleOpt[] = (moduleRes.data ?? []).map((module) => ({
