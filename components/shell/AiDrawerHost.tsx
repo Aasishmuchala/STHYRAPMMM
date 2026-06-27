@@ -102,6 +102,7 @@ export function AiDrawerHost({ initialData }: { initialData?: AiDrawerData }) {
             spendToday={data.spendToday}
             spendMonth={data.spendMonth}
             runCount={data.runCount}
+            variant="drawer"
           />
         </div>
       </aside>

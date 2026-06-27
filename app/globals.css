@@ -1247,6 +1247,14 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 
 .ai-drawer-banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--warning-soft); color: var(--text); font-size: 12.5px; }
 .ai-drawer-banner a { color: var(--accent); text-decoration: underline; }
+.ai-console-drawer { display: flex; flex-direction: column; gap: 16px; min-height: 100%; }
+.ai-chatlog { display: flex; flex-direction: column; gap: 12px; }
+.ai-console-drawer .ai-composer { margin-top: auto; padding-top: 4px; }
+.ai-console-drawer .ai-composer .row { flex-wrap: wrap; }
+.ai-console-drawer .ai-composer .row .spend { margin-left: 0; width: 100%; }
+.ai-console-drawer .ai-composer .hints { flex-wrap: wrap; }
+.ai-console-drawer .ai-drawer-summary .item { flex-wrap: wrap; }
+.ai-console-drawer .ai-drawer-summary .item .cta { align-self: auto; }
 
 /* ---- welcome / marketing landing ---- */
 .welcome-shell { min-height: 100dvh; display: flex; flex-direction: column; }

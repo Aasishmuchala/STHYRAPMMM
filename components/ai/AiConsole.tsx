@@ -2,108 +2,232 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { askAi, generateBrief, approvePending, rejectPending } from "@/app/ai/actions";
+import { approvePending, rejectPending } from "@/app/ai/actions";
 import { beginToast, finishToast } from "@/lib/client-toast";
 import { fmtInr } from "@/lib/ai/cost";
 import { IconSparkle, IconCheck, IconX } from "@/components/icons";
+import { AiComposer } from "./AiComposer";
 
 export type Run = {
-  id: string; purpose: string; model: string; input_tokens: number; output_tokens: number;
-  cost_inr: number; prompt: string | null; response: string | null;
-  actions: unknown; status: string; error: string | null; created_at: string;
-};
-export type Pending = {
-  id: string; kind: string; summary: string; payload: unknown; status: string; created_at: string;
+  id: string;
+  purpose: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_inr: number;
+  prompt: string | null;
+  response: string | null;
+  actions: unknown;
+  status: string;
+  error: string | null;
+  created_at: string;
 };
 
-type AskResult = { ok: true; text: string; actions: { tool: string; ok: boolean; detail: string }[]; cost: number };
+export type Pending = {
+  id: string;
+  kind: string;
+  summary: string;
+  payload: unknown;
+  status: string;
+  created_at: string;
+};
+
+type AskResult = {
+  ok: true;
+  text: string;
+  actions: { tool: string; ok: boolean; detail: string }[];
+  cost: number;
+};
 
 function when(iso: string): string {
-  try { return new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); }
-  catch { return iso?.slice(0, 16) ?? ""; }
+  try {
+    return new Date(iso).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso?.slice(0, 16) ?? "";
+  }
 }
 
 export function AiConsole({
-  configured, isOwner, runs, pending, latestBrief, spendToday, spendMonth, runCount,
+  configured,
+  isOwner,
+  runs,
+  pending,
+  latestBrief,
+  spendToday,
+  spendMonth,
+  runCount,
+  variant = "page",
 }: {
-  configured: boolean; isOwner: boolean;
-  runs: Run[]; pending: Pending[]; latestBrief: Run | null;
-  spendToday: number; spendMonth: number; runCount: number;
+  configured: boolean;
+  isOwner: boolean;
+  runs: Run[];
+  pending: Pending[];
+  latestBrief: Run | null;
+  spendToday: number;
+  spendMonth: number;
+  runCount: number;
+  variant?: "page" | "drawer";
 }) {
   const router = useRouter();
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState<null | "ask" | "brief">(null);
   const [err, setErr] = useState<string | null>(null);
   const [answer, setAnswer] = useState<AskResult | null>(null);
-
-  async function send() {
-    const text = input.trim();
-    if (!text || busy) return;
-    setErr(null); setBusy("ask");
-    const toastId = beginToast("Asking the assistant...");
-    const res = await askAi(text);
-    setBusy(null);
-    if (!finishToast(res, { id: toastId, success: "Assistant response ready." })) { setErr(res.error); return; }
-    setAnswer(res); setInput("");
-    router.refresh();
-  }
-
-  async function brief() {
-    if (busy) return;
-    setErr(null); setBusy("brief");
-    const toastId = beginToast("Generating morning brief...");
-    const res = await generateBrief();
-    setBusy(null);
-    if (!finishToast(res, { id: toastId, success: "Morning brief generated." })) { setErr(res.error); return; }
-    router.refresh();
-  }
 
   async function approve(id: string) {
     const toastId = beginToast("Approving action...");
     const res = await approvePending(id);
-    if (!finishToast(res, { id: toastId, success: "Action approved." })) { setErr(res.error); return; }
+    if (!finishToast(res, { id: toastId, success: "Action approved." })) {
+      setErr(res.error);
+      return;
+    }
     router.refresh();
   }
+
   async function reject(id: string) {
     const toastId = beginToast("Rejecting action...");
     const res = await rejectPending(id);
-    if (!finishToast(res, { id: toastId, success: "Action rejected." })) { setErr(res.error); return; }
+    if (!finishToast(res, { id: toastId, success: "Action rejected." })) {
+      setErr(res.error);
+      return;
+    }
     router.refresh();
+  }
+
+  const chatRuns = runs
+    .slice(0, 8)
+    .reverse()
+    .flatMap((run) => {
+      const messages: { key: string; who: string; body: string }[] = [];
+      if (run.purpose !== "digest" && run.prompt) {
+        messages.push({ key: `${run.id}-user`, who: "You", body: run.prompt });
+      }
+      if (run.response) {
+        messages.push({
+          key: `${run.id}-assistant`,
+          who: run.purpose === "digest" ? "Morning brief" : "Assistant",
+          body: run.response,
+        });
+      }
+      return messages;
+    });
+
+  if (answer?.text) {
+    chatRuns.push({ key: "local-answer", who: "Assistant", body: answer.text });
+  }
+
+  if (variant === "drawer") {
+    return (
+      <div className="ai-console-drawer">
+        {!configured && (
+          <div className="ai-drawer-banner">
+            <strong>Assistant not yet connected.</strong> Add your Omega API key in{" "}
+            <a href="/settings">Settings → AI Assistant</a> and use <em>Test</em> to verify it.
+          </div>
+        )}
+
+        {pending.length > 0 && (
+          <section className="ai-drawer-summary">
+            <div className="head">
+              <span className="label">Needs approval</span>
+              <span className="ai-count">{pending.length}</span>
+            </div>
+            <div className="items">
+              {pending.slice(0, 4).map((p) => (
+                <div key={p.id} className="item">
+                  <span className="dot" />
+                  <div className="grow">
+                    <div className="title">{p.summary}</div>
+                    <div className="meta">{p.kind}</div>
+                  </div>
+                  <button className="btn cta" onClick={() => approve(p.id)}>Approve</button>
+                  <button className="btn-ghost cta" onClick={() => reject(p.id)}>Reject</button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {latestBrief?.response && (
+          <section className="ai-drawer-summary">
+            <div className="head">
+              <span className="label">Latest brief</span>
+              <span className="mono ai-dim">{when(latestBrief.created_at)}</span>
+            </div>
+            <div className="ai-brief">{latestBrief.response}</div>
+          </section>
+        )}
+
+        <div className="ai-chatlog" aria-label="Assistant conversation">
+          {chatRuns.length === 0 ? (
+            <div className="ai-drawer-empty">Start a conversation and it will appear here like a chat.</div>
+          ) : (
+            chatRuns.map((message) => (
+              <div key={message.key} className={`ai-msg ${message.who === "You" ? "user" : ""}`}>
+                <div className="who">{message.who}</div>
+                <div className="body">{message.body}</div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {err && <div className="form-err" role="alert">{err}</div>}
+
+        <AiComposer
+          configured={configured}
+          spendToday={spendToday}
+          spendMonth={spendMonth}
+          runCount={runCount}
+          compact
+          onAnswer={(result) => {
+            if ("error" in result) {
+              setErr(result.error);
+              return;
+            }
+            setErr(null);
+            setAnswer(result);
+          }}
+        />
+      </div>
+    );
   }
 
   return (
     <div className="ai-wrap">
       {!configured && (
         <div className="ai-banner">
-          <strong>Assistant not yet connected.</strong> Add your Omega API key in <a className="link" href="/settings">Settings → AI Assistant</a> and use <em>Test</em> to verify it.
+          <strong>Assistant not yet connected.</strong> Add your Omega API key in{" "}
+          <a className="link" href="/settings">Settings → AI Assistant</a> and use <em>Test</em> to verify it.
         </div>
       )}
 
       <div className="ai-grid">
         <section className="set-card">
           <h3><IconSparkle size={16} /> Ask the assistant</h3>
-          <p className="sub">It reads your live workspace (your divisions only), can create tasks and draft notes automatically, and proposes any money or irreversible action for your approval. Model: <span className="mono">claude-opus-4-8</span>.</p>
+          <p className="sub">
+            It reads your live workspace (your divisions only), can create tasks and draft notes
+            automatically, and proposes any money or irreversible action for your approval. Model:{" "}
+            <span className="mono">claude-opus-4-8</span>.
+          </p>
 
-          <textarea
-            className="input textarea"
-            placeholder="e.g. Summarise what needs attention in Construction this week, and create follow-up tasks."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send(); }}
-            rows={3}
-            disabled={!configured || busy === "ask"}
+          <AiComposer
+            configured={configured}
+            spendToday={spendToday}
+            spendMonth={spendMonth}
+            runCount={runCount}
+            onAnswer={(result) => {
+              if ("error" in result) {
+                setErr(result.error);
+                return;
+              }
+              setErr(null);
+              setAnswer(result);
+            }}
           />
           {err && <div className="form-err" style={{ marginTop: 10 }}>{err}</div>}
-
-          <div className="ai-actions">
-            <button className="btn" onClick={send} disabled={!configured || busy !== null}>
-              {busy === "ask" ? "Thinking…" : "Ask"}
-            </button>
-            <button className="btn-ghost" onClick={brief} disabled={!configured || busy !== null}>
-              {busy === "brief" ? "Writing…" : "Generate morning brief"}
-            </button>
-            <span className="ai-spend mono">Today {fmtInr(spendToday)} · Month {fmtInr(spendMonth)} · {runCount} runs</span>
-          </div>
 
           {answer && (
             <div className="ai-answer">
@@ -112,7 +236,8 @@ export function AiConsole({
                 <div className="ai-acts">
                   {answer.actions.map((a, i) => (
                     <span key={i} className={`ai-act ${a.ok ? "ok" : "no"}`}>
-                      {a.ok ? <IconCheck size={12} /> : <IconX size={12} />}{a.detail}
+                      {a.ok ? <IconCheck size={12} /> : <IconX size={12} />}
+                      {a.detail}
                     </span>
                   ))}
                 </div>
@@ -127,7 +252,9 @@ export function AiConsole({
           {latestBrief ? (
             <>
               <div className="ai-brief">{latestBrief.response}</div>
-              <div className="ai-cost mono">{when(latestBrief.created_at)} · {fmtInr(Number(latestBrief.cost_inr))}</div>
+              <div className="ai-cost mono">
+                {when(latestBrief.created_at)} · {fmtInr(Number(latestBrief.cost_inr))}
+              </div>
             </>
           ) : (
             <p className="sub">No brief yet. Hit <strong>Generate morning brief</strong> to get today&apos;s ranked priorities.</p>
@@ -154,7 +281,7 @@ export function AiConsole({
 
       <section className="set-card">
         <h3>Activity &amp; spend</h3>
-        <p className="sub">{isOwner ? "Every AI call across the company" : "Every AI call you've made"} — logged with token usage and rupee cost.</p>
+        <p className="sub">{isOwner ? "Every AI call across the company" : "Every AI call you&apos;ve made"} — logged with token usage and rupee cost.</p>
         {runs.length === 0 ? (
           <p className="sub" style={{ marginBottom: 0 }}>No activity yet.</p>
         ) : (
