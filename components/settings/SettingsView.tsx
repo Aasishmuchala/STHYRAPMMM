@@ -49,14 +49,10 @@ export function SettingsView({
   const [, start] = useTransition();
   const divName = (id: string) =>
     divisions.find((d) => d.id === id)?.name.replace(/^Sthyra\s+/, "") ?? "-";
-
-  function run(fn: () => Promise<{ ok: true } | { error: string }>, onErr: (m: string) => void) {
-    start(async () => {
-      const result = await fn();
-      if ("error" in result) onErr(result.error);
-      else router.refresh();
-    });
-  }
+  const memberName = (id: string) =>
+    members.find((member) => member.id === id)?.full_name
+    ?? members.find((member) => member.id === id)?.email
+    ?? "That member";
 
   const [name, setName] = useState(profile.full_name ?? "");
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -101,9 +97,43 @@ export function SettingsView({
   const [memberDivisionId, setMemberDivisionId] = useState(leadableDivisions[0]?.id ?? "");
   const [memberRole, setMemberRole] = useState("member");
   const [memberError, setMemberError] = useState<string | null>(null);
+  const [memberMessage, setMemberMessage] = useState<string | null>(null);
+  const [memberBusy, setMemberBusy] = useState<"update" | `remove:${string}` | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [companySlug, setCompanySlug] = useState("");
   const [companyError, setCompanyError] = useState<string | null>(null);
+
+  function handleMembershipUpdate() {
+    setMemberError(null);
+    setMemberMessage(null);
+    setMemberBusy("update");
+    start(async () => {
+      const result = await addMembership(memberId, memberDivisionId, memberRole);
+      setMemberBusy(null);
+      if ("error" in result) {
+        setMemberError(result.error);
+        return;
+      }
+      setMemberMessage(`${memberName(memberId)} is now ${memberRole} in ${divName(memberDivisionId)}.`);
+      router.refresh();
+    });
+  }
+
+  function handleMembershipRemove(id: string, divisionId: string) {
+    setMemberError(null);
+    setMemberMessage(null);
+    setMemberBusy(`remove:${id}`);
+    start(async () => {
+      const result = await removeMembership(id);
+      setMemberBusy(null);
+      if ("error" in result) {
+        setMemberError(result.error);
+        return;
+      }
+      setMemberMessage(`Access removed from ${divName(divisionId)}.`);
+      router.refresh();
+    });
+  }
 
   return (
     <div className="settings">
@@ -248,7 +278,11 @@ export function SettingsView({
                         mine.map((item) => (
                           <span className="mdiv" key={item.id}>
                             {divName(item.division_id)} - {item.role}
-                            <button aria-label="Remove" onClick={() => run(() => removeMembership(item.id), setMemberError)}>
+                            <button
+                              aria-label="Remove"
+                              disabled={memberBusy !== null}
+                              onClick={() => handleMembershipRemove(item.id, item.division_id)}
+                            >
                               <X />
                             </button>
                           </span>
@@ -261,11 +295,21 @@ export function SettingsView({
             })
           )}
           {memberError && <div className="form-err" style={{ marginTop: 12 }}>{memberError}</div>}
+          {memberMessage && <div className="form-err" style={{ marginTop: 12, color: "var(--positive)" }}>{memberMessage}</div>}
           {members.length > 0 && leadableDivisions.length > 0 && (
             <div className="set-add">
               <div className="field" style={{ margin: 0 }}>
                 <label className="label" htmlFor="m-user">Member</label>
-                <select id="m-user" className="select" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+                <select
+                  id="m-user"
+                  className="select"
+                  value={memberId}
+                  onChange={(e) => {
+                    setMemberId(e.target.value);
+                    setMemberError(null);
+                    setMemberMessage(null);
+                  }}
+                >
                   {members.map((member) => (
                     <option key={member.id} value={member.id}>
                       {member.full_name ?? member.email}
@@ -275,7 +319,16 @@ export function SettingsView({
               </div>
               <div className="field" style={{ margin: 0 }}>
                 <label className="label" htmlFor="m-div">Division</label>
-                <select id="m-div" className="select" value={memberDivisionId} onChange={(e) => setMemberDivisionId(e.target.value)}>
+                <select
+                  id="m-div"
+                  className="select"
+                  value={memberDivisionId}
+                  onChange={(e) => {
+                    setMemberDivisionId(e.target.value);
+                    setMemberError(null);
+                    setMemberMessage(null);
+                  }}
+                >
                   {leadableDivisions.map((division) => (
                     <option key={division.id} value={division.id}>
                       {division.name.replace(/^Sthyra\s+/, "")}
@@ -286,20 +339,29 @@ export function SettingsView({
               <div className="field" style={{ margin: 0 }}>
                 <label className="label" htmlFor="m-role">Role</label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <select id="m-role" className="select" value={memberRole} onChange={(e) => setMemberRole(e.target.value)} style={{ width: 140 }}>
+                  <select
+                    id="m-role"
+                    className="select"
+                    value={memberRole}
+                    onChange={(e) => {
+                      setMemberRole(e.target.value);
+                      setMemberError(null);
+                      setMemberMessage(null);
+                    }}
+                    style={{ width: 140 }}
+                  >
                     <option value="member">Member</option>
                     <option value="accountant">Accountant</option>
                     <option value="lead">Lead</option>
                     {isOwner && <option value="owner">Owner</option>}
                   </select>
                   <button
+                    type="button"
                     className="btn"
-                    onClick={() => {
-                      setMemberError(null);
-                      run(() => addMembership(memberId, memberDivisionId, memberRole), setMemberError);
-                    }}
+                    disabled={memberBusy !== null}
+                    onClick={handleMembershipUpdate}
                   >
-                    Update
+                    {memberBusy === "update" ? "Updating..." : "Update"}
                   </button>
                 </div>
               </div>
