@@ -41,6 +41,7 @@ type TaskJoinRow = {
   creator: { full_name: string | null } | null;
   cycle: { name: string | null } | null;
   module: { name: string | null } | null;
+  stage: TaskStage | null;
 };
 
 type StageRow = TaskStage;
@@ -110,7 +111,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     ? await Promise.all([
         supabase
           .from("tasks")
-          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name)")
+          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
           .eq("project_id", selectedProjectId)
           .is("deleted_at", null)
           .order("due_date", { nullsFirst: false })
@@ -140,8 +141,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     : await Promise.all([
         supabase
           .from("tasks")
-          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name)")
-          .is("project_id", null)
+          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
+          .eq("assignee_id", user.id)
           .is("deleted_at", null)
           .order("due_date", { nullsFirst: false })
           .limit(1000)
@@ -222,7 +223,18 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     lead_name: module.lead?.full_name ?? null,
   }));
 
-  const stages = (stageRes.data?.length ? stageRes.data : DEFAULT_TASK_STAGES).slice().sort((a, b) => a.position - b.position);
+  const inferredTaskStages = !selectedProjectId
+    ? [...new Map(
+        (taskRes.data ?? [])
+          .map((task) => task.stage)
+          .filter((stage): stage is TaskStage => Boolean(stage))
+          .map((stage) => [stage.id, stage] as const)
+      ).values()].sort((a, b) => a.position - b.position)
+    : [];
+  const stages = (selectedProjectId
+    ? (stageRes.data?.length ? stageRes.data : DEFAULT_TASK_STAGES)
+    : (inferredTaskStages.length ? inferredTaskStages : DEFAULT_TASK_STAGES)
+  ).slice().sort((a, b) => a.position - b.position);
   const requestedTab = sp.tab === "overview" || sp.tab === "epics" || sp.tab === "cycles" || sp.tab === "modules" ? sp.tab : "work-items";
   const tab = selectedProjectId || requestedTab === "work-items" || requestedTab === "epics" ? requestedTab : "work-items";
   const workItemsHref = buildTaskHref(sp, { tab: "work-items", cycle: null, module: null });
