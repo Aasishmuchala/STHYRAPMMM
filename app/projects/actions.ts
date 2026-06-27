@@ -112,6 +112,7 @@ export async function createProjectWithWorkflow(input: {
   target_end_on?: string | null;
   lead_id?: string | null;
   promote_lead?: boolean;
+  budget_paise?: number;
 }): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
@@ -125,43 +126,21 @@ export async function createProjectWithWorkflow(input: {
   const leadResult = await ensureProjectLead(supabase, access.isOwner, input.division_id, input.lead_id, input.promote_lead);
   if ("error" in leadResult) return leadResult;
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .insert({
-      name,
-      division_id: input.division_id,
-      client: input.client?.trim() || null,
-      description: input.description?.trim() || null,
-      starts_on: input.starts_on || null,
-      target_end_on: input.target_end_on || null,
-      lead_id: input.lead_id || null,
-      status: "active",
-      created_by: user.id,
-    })
-    .select("id")
-    .single<{ id: string }>();
-  if (projectError) return { error: projectError.message };
-
-  const { data: workflow, error: workflowError } = await supabase
-    .from("task_workflows")
-    .insert({
-      project_id: project.id,
-      name: `${name} workflow`,
-    })
-    .select("id")
-    .single<{ id: string }>();
-  if (workflowError) return { error: workflowError.message };
-
-  const stageRows = DEFAULT_TASK_STAGES.map((stage, index) => ({
-    workflow_id: workflow.id,
-    key: stage.key,
-    label: stage.label,
-    color: stage.color,
-    position: index,
-    is_done: stage.is_done,
-  }));
-  const { error: stageError } = await supabase.from("workflow_stages").insert(stageRows);
-  if (stageError) return { error: stageError.message };
+  // Atomic project + workflow + stages creation via RPC (audit H29).
+  // If anything inside the RPC fails, the whole transaction rolls back —
+  // no orphan projects without workflows.
+  const { data: projectId, error: rpcError } = await supabase.rpc("create_project_with_workflow", {
+    project_name: name.slice(0, 200),
+    project_client: input.client?.trim()?.slice(0, 200) ?? null,
+    project_description: input.description?.trim()?.slice(0, 4000) ?? null,
+    project_starts_on: input.starts_on || null,
+    project_target_end_on: input.target_end_on || null,
+    project_lead: input.lead_id || null,
+    project_division: input.division_id,
+    project_budget_paise: Math.max(0, Math.floor(input.budget_paise ?? 0)),
+  });
+  if (rpcError) return { error: rpcError.message };
+  if (!projectId) return { error: "Project was created but no ID was returned." };
 
   revalidatePath("/projects");
   revalidatePath("/tasks");

@@ -5,7 +5,14 @@
       "Bash(npx eslint *)",
       "Bash(npx next *)",
       "WebSearch",
-      "WebFetch(domain:www.atlassian.com)"
+      "WebFetch(domain:www.atlassian.com)",
+      "Bash(npm test *)",
+      "Bash(node -e \"console.log\\(\\(50_00_00_000/100\\).toFixed\\(2\\)\\)\")",
+      "Bash(npm run *)",
+      "Bash(awk 'NR==73' README.md)",
+      "Bash(awk 'NR==128,NR==135' README.md)",
+      "Bash(awk 'NR>=130 && NR<=140' README.md)",
+      "Bash(xxd)"
     ]
   }
 }

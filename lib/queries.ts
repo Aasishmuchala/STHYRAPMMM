@@ -1,12 +1,24 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildWorkspaceAccess } from "@/lib/access";
 import type { TaskPriority } from "@/lib/tasks-types";
 
 // NOTE: @supabase/supabase-js (this version) infers `never` for `.select()` result rows even
 // with the full generated types (verified). So the query/mutation helpers take a loose client;
-// typed reads are restored per-query via `.returns<T>()`. RLS enforces all access at runtime.
+// typed reads are restored per-query via `.returns<T>()`. RLS enforces all access at runtime
+// (see supabase/migrations/20260627110000_roles_company_access_and_task_assignment.sql and the
+// 20260628_audit_fix_and_features.sql migration that closes every gap).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DB = SupabaseClient<any, any, any>;
+
+// Caps to keep dashboard queries bounded as the workspace grows. Without these,
+// a busy division would load every row in the table on every render.
+const DASHBOARD_CAPS = {
+  tasks: 200,
+  invoices: 500,
+  txns: 2000,
+  projects: 500,
+} as const;
 
 type TaskRow = {
   id: string;
@@ -28,7 +40,12 @@ type DocRow = {
 
 export type Dashboard = Awaited<ReturnType<typeof getDashboard>>;
 
-export async function getDashboard(supabase: DB, today: Date, userId: string) {
+/**
+ * Loads the home dashboard. React `cache()` dedupes calls within a single render
+ * pass — if /home and a partial render both call getDashboard for the same
+ * user, only one round-trip to Supabase fires.
+ */
+export const getDashboard = cache(async function getDashboard(supabase: DB, today: Date, userId: string) {
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
     .toISOString()
     .slice(0, 10);
@@ -47,10 +64,10 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
     supabase.from("profiles").select("full_name,email,global_role").eq("id", userId).maybeSingle(),
     supabase.from("division_members").select("division_id,role").eq("user_id", userId),
     supabase.from("divisions").select("id,slug,name").order("slug"),
-    supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart),
-    supabase.from("invoices").select("number,counterparty,amount_paise,status,due_on,division_id").is("deleted_at", null),
-    supabase.from("tasks").select("id,title,priority,status:workflow_stage_id,due_date,division_id,divisions(slug,name),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).returns<TaskRow[]>(),
-    supabase.from("projects").select("division_id,status").is("deleted_at", null),
+    supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart).limit(DASHBOARD_CAPS.txns),
+    supabase.from("invoices").select("number,counterparty,amount_paise,status,due_on,division_id").is("deleted_at", null).limit(DASHBOARD_CAPS.invoices),
+    supabase.from("tasks").select("id,title,priority,status:workflow_stage_id,due_date,division_id,divisions(slug,name),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(DASHBOARD_CAPS.tasks).returns<TaskRow[]>(),
+    supabase.from("projects").select("division_id,status").is("deleted_at", null).limit(DASHBOARD_CAPS.projects),
     supabase.from("documents").select("title,doc_type,body_md,updated_at,divisions(name,slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(1).returns<DocRow[]>(),
   ]);
 
@@ -130,7 +147,7 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
     attention,
     doc,
   };
-}
+});
 
 function sum(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0);

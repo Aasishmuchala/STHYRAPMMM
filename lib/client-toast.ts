@@ -17,10 +17,14 @@ export function finishToast<T extends object>(
   options: {
     id: string;
     success: string | ((result: Exclude<T, ErrorResult>) => string);
+    error?: string | ((result: ErrorResult) => string);
   }
 ): result is Exclude<T, ErrorResult> {
   if (isErrorResult(result)) {
-    toast.error(result.error, { id: options.id });
+    const msg = typeof options.error === "function"
+      ? options.error(result)
+      : options.error ?? result.error;
+    toast.error(msg, { id: options.id });
     return false;
   }
 

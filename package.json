@@ -2,13 +2,20 @@
   "name": "sthyra-command-center",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "cypress": "cypress open",
-    "e2e": "cypress run"
+    "e2e": "cypress run",
+    "types:gen": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > lib/database.types.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -22,14 +29,19 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^16.0.0",
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "@vitest/coverage-v8": "^2.1.1",
     "cypress": "^15.17.0",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.9",
+    "happy-dom": "^15.7.4",
     "postcss": "^8.5.1",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.1"
   }
 }

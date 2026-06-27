@@ -8,6 +8,7 @@ import type { Txn, Inv, Bom, Ra, FinView, EmployeeOption, RecurringPayment, Fina
 import { IconPlus, IconDownload, IconDoc } from "@/components/icons";
 import { toCsv, downloadCsv, rupees } from "@/lib/csv";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ForecastView } from "@/components/forecast/ForecastView";
 import { InvoicePrint } from "./InvoicePrint";
 import { RecordModal, type Field } from "./RecordModal";
 import { RecurringPaymentModal } from "./RecurringPaymentModal";
@@ -30,6 +31,7 @@ const VIEWS: { key: FinView; label: string }[] = [
   { key: "recurring", label: "Subscriptions" },
   { key: "bom", label: "BOM" },
   { key: "ra", label: "RA bills" },
+  { key: "forecast", label: "Forecast" },
 ];
 
 function Trash() {
@@ -62,7 +64,7 @@ function Pager({ page, pageSize, total, onPage }: { page: number; pageSize: numb
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const nextInvoiceStatus: Record<string, string> = { draft: "sent", sent: "paid", overdue: "paid", paid: "paid" };
-type StandardModalView = Exclude<FinView, "pnl" | "recurring" | "salaries">;
+type StandardModalView = Exclude<FinView, "pnl" | "recurring" | "salaries" | "forecast">;
 
 export function FinancesView({
   transactions, invoices, bom, ra, recurring, employees, importBatches, divisions, projects, initialDivision, openNew,
@@ -292,7 +294,7 @@ export function FinancesView({
         </div>
         <button className="btn-ghost" onClick={exportCsv} title="Export current view to CSV"><IconDownload size={15} />Export</button>
         {view === "ledger" && <button className="btn-ghost" onClick={() => setImportOpen(true)}>Import CSV</button>}
-        {view !== "pnl" && view !== "recurring" && view !== "salaries" && <button className="btn" onClick={() => setModal(view)}><IconPlus size={15} />Add</button>}
+        {view !== "pnl" && view !== "recurring" && view !== "salaries" && view !== "forecast" && <button className="btn" onClick={() => setModal(view)}><IconPlus size={15} />Add</button>}
         {view === "recurring" && <button className="btn" onClick={() => { setRecurringEditor(null); setRecurringDraftKind("subscription"); setRecurringOpen(true); }}><IconPlus size={15} />Add subscription</button>}
         {view === "salaries" && <button className="btn" onClick={() => { setRecurringEditor(null); setRecurringDraftKind("salary"); setRecurringOpen(true); }}><IconPlus size={15} />Add salary</button>}
       </div>
@@ -402,7 +404,7 @@ export function FinancesView({
                     <td>{i.counterparty ?? "—"}</td>
                     <td className="fsub">{i.division_name.replace(/^Sthyra\s+/, "")}</td>
                     <td className="fsub">{i.due_on ? dueLabel(i.due_on, today) : "—"}</td>
-                    <td><button className={`spill ${i.status}`} title="Click to advance status" disabled={busyId === i.id || i.status === "paid"} onClick={(e) => { e.stopPropagation(); run(i.id, () => setInvoiceStatus(i.id, nextInvoiceStatus[i.status])); }}>{i.status}</button></td>
+                    <td><button className={`spill ${i.status}`} title="Click to advance status" disabled={busyId === i.id || i.status === "paid"} onClick={(e) => { e.stopPropagation(); const nextStatus = nextInvoiceStatus[i.status] ?? i.status; run(i.id, () => setInvoiceStatus(i.id, nextStatus)); }}>{i.status}</button></td>
                     <td className="num">{inr(i.amount_paise)}</td>
                     <td><div className="rowact"><button className="iconbtn" aria-label="Invoice PDF" title="View / Save PDF" onClick={() => setPrintInv(i)}><IconDoc size={14} /></button><button className="iconbtn danger" aria-label="Delete" disabled={busyId === i.id} onClick={() => askDelete(i.id, `invoice ${i.number}`, () => deleteInvoice(i.id))}><Trash /></button></div></td>
                   </tr>
@@ -552,6 +554,13 @@ export function FinancesView({
             if ("ok" in res) router.refresh();
             return res;
           }}
+        />
+      )}
+
+      {view === "forecast" && (
+        <ForecastView
+          divisions={divisions.map((d) => ({ id: d.id, slug: d.slug, name: d.name }))}
+          initialDivisionId={divFilter === "all" ? null : divisions.find((d) => d.slug === divFilter)?.id ?? null}
         />
       )}
 

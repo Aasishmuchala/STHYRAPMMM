@@ -177,25 +177,14 @@ async function persistWorkflowStagePositions(
 ): Promise<Result> {
   if (orderedStageIds.length === 0) return { ok: true };
 
-  const tempBase = orderedStageIds.length + 1000;
-  for (let index = 0; index < orderedStageIds.length; index += 1) {
-    const { error } = await supabase
-      .from("workflow_stages")
-      .update({ position: tempBase + index })
-      .eq("id", orderedStageIds[index])
-      .eq("workflow_id", workflowId);
-    if (error) return { error: error.message };
-  }
-
-  for (let index = 0; index < orderedStageIds.length; index += 1) {
-    const { error } = await supabase
-      .from("workflow_stages")
-      .update({ position: index })
-      .eq("id", orderedStageIds[index])
-      .eq("workflow_id", workflowId);
-    if (error) return { error: error.message };
-  }
-
+  // Atomic reorder via the RPC added in migration 20260628. The previous
+  // implementation used two non-atomic passes that could leave the workflow
+  // half-updated if the network dropped mid-loop (audit H17).
+  const { error } = await supabase.rpc("reorder_workflow_stages", {
+    workflow_id_param: workflowId,
+    ordered_stage_ids: orderedStageIds,
+  });
+  if (error) return { error: error.message };
   return { ok: true };
 }
 
@@ -240,8 +229,26 @@ function slugifyStage(label: string) {
     .slice(0, 40);
 }
 
-function deletionApprovalSecret() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || "sthyra-task-stage-delete";
+// Whitelist of allowed stage colors. CSS custom properties + literal hex are
+// both allowed. Anything else (e.g. `red; background: url(...)`) is rejected
+// to prevent CSS injection (audit 1.5).
+const ALLOWED_STAGE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|var\(--[a-z0-9-]+\))$/;
+function sanitizeStageColor(color: string | null | undefined): string | null {
+  if (!color) return null;
+  const trimmed = color.trim();
+  if (!ALLOWED_STAGE_COLOR_RE.test(trimmed)) return null;
+  return trimmed;
+}
+
+function deletionApprovalSecret(): string {
+  // Use the service role key as the HMAC secret so the cookie can't be forged
+  // from public values. Throws if not configured — no insecure fallback.
+  const secret = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+    || process.env.STAGE_DELETION_SECRET?.trim();
+  if (!secret) {
+    throw new Error("Stage deletion approval is not configured. Set SUPABASE_SERVICE_ROLE_KEY or STAGE_DELETION_SECRET.");
+  }
+  return secret;
 }
 
 function signDeletionApproval(userId: string) {
@@ -428,6 +435,7 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<Res
     .from("tasks")
     .select("division_id,project_id,assignee_id")
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle<{ division_id: string; project_id: string | null; assignee_id: string | null }>();
   if (taskError) return { error: taskError.message };
   if (!task) return { error: "Task not found." };
@@ -444,7 +452,8 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<Res
   const { error } = await supabase
     .from("tasks")
     .update({ workflow_stage_id: stage.data.id, status_key: stage.data.key })
-    .eq("id", id);
+    .eq("id", id)
+    .is("deleted_at", null);
   if (error) return { error: error.message };
 
   touchTaskPaths(task.project_id);
@@ -467,6 +476,8 @@ export async function createTaskStage(input: {
 
   const label = input.label.trim();
   if (!label) return { error: "Stage name is required." };
+
+  const safeColor = sanitizeStageColor(input.color) ?? "var(--accent)";
 
   const baseKey = slugifyStage(label);
   if (!baseKey) return { error: "Use letters or numbers in the stage name." };
@@ -491,7 +502,7 @@ export async function createTaskStage(input: {
       workflow_id: workflow.data.id,
       key,
       label,
-      color: input.color || "var(--accent)",
+      color: safeColor,
       position: stages.data.length + 1000,
       is_done: Boolean(input.is_done),
     })
@@ -523,11 +534,16 @@ export async function updateTaskStage(
   if ("error" in stage) return stage;
   if (!input.label.trim()) return { error: "Stage name is required." };
 
+  const safeColor = sanitizeStageColor(input.color);
+  if (input.color && !safeColor) {
+    return { error: "Stage color must be a hex code (e.g. #6b7280) or a CSS variable." };
+  }
+
   const { error } = await supabase
     .from("workflow_stages")
     .update({
       label: input.label.trim(),
-      color: input.color,
+      ...(safeColor ? { color: safeColor } : {}),
       is_done: input.is_done,
     })
     .eq("id", stage.data.id);
@@ -809,24 +825,36 @@ export async function setTaskCycle(taskId: string, cycleId: string | null): Prom
 
   const { data: task, error: taskErr } = await supabase
     .from("tasks")
-    .select("project_id")
+    .select("project_id,division_id,assignee_id")
     .eq("id", taskId)
-    .maybeSingle<{ project_id: string | null }>();
+    .is("deleted_at", null)
+    .maybeSingle<{ project_id: string | null; division_id: string; assignee_id: string | null }>();
   if (taskErr) return { error: taskErr.message };
   if (!task) return { error: "Task not found." };
+
+  // Auth: managers OR the assignee may change the cycle (including clearing).
+  // Previously clearing a cycle (cycleId = null) skipped auth entirely (audit H-set).
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  const isManager = canManageDivision(access, task.division_id);
+  const isAssignee = task.assignee_id === user.id;
+  if (!isManager && !isAssignee) {
+    return { error: "Only the assignee or a manager can change the cycle." };
+  }
 
   if (cycleId) {
     const cycleCheck = await requireProjectCycle(supabase, task.project_id, cycleId);
     if ("error" in cycleCheck) return cycleCheck;
-    if (!(await canManageWorkflow(supabase, user.id, task.project_id))) {
-      return { error: "Only the owner or this division's lead can change cycles." };
+    // Only managers may ADD tasks to a cycle (assignees can only clear their own).
+    if (!isManager) {
+      return { error: "Only a manager can assign this task to a cycle." };
     }
   }
 
   const { error } = await supabase
     .from("tasks")
     .update({ cycle_id: cycleId || null })
-    .eq("id", taskId);
+    .eq("id", taskId)
+    .is("deleted_at", null);
   if (error) return { error: error.message };
   touchTaskPaths(task.project_id);
   return { ok: true };

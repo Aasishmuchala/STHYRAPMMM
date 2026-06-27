@@ -56,7 +56,11 @@ export function GlobalSearch({ canSeeFinances }: { canSeeFinances: boolean }) {
     if (!open || hits.length === 0) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(a + 1, hits.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); go(hits[active]); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const hit = hits[active];
+      if (hit) go(hit);
+    }
     else if (e.key === "Escape") { setOpen(false); }
   }
 

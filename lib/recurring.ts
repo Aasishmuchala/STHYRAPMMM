@@ -44,8 +44,14 @@ export type RecurringCycle = {
 const DAY = 24 * 60 * 60 * 1000;
 
 export function parseIsoDate(iso: string): Date {
-  const [year, month, day] = iso.split("-").map(Number);
-  return new Date(year, (month || 1) - 1, day || 1);
+  const parts = iso.split("-");
+  const yearValue = Number(parts[0] ?? "1970");
+  const monthValue = Number(parts[1] ?? "1");
+  const dayValue = Number(parts[2] ?? "1");
+  const year = Number.isFinite(yearValue) ? yearValue : 1970;
+  const month = Number.isFinite(monthValue) ? monthValue : 1;
+  const day = Number.isFinite(dayValue) ? dayValue : 1;
+  return new Date(year, month - 1, day);
 }
 
 export function formatIsoDate(date: Date): string {
@@ -60,7 +66,7 @@ function clampDay(year: number, monthIndex: number, day: number): Date {
   return new Date(year, monthIndex, Math.min(day, max));
 }
 
-function addMonthsClamped(iso: string, months: number): string {
+export function addMonthsClamped(iso: string, months: number): string {
   const base = parseIsoDate(iso);
   const anchorDay = base.getDate();
   const targetMonth = base.getMonth() + months;
@@ -90,8 +96,9 @@ function maxDate(a: string, b: string): string {
 }
 
 function effectiveEnd(payment: Pick<RecurringPayment, "ends_on" | "status">, todayIso: string): string {
-  const hardEnd = payment.ends_on ? minDate(payment.ends_on, todayIso) : todayIso;
-  return payment.status === "ended" ? hardEnd : hardEnd;
+  // `status` is a UX hint (badge) — accrual math is bounded by `ends_on` and
+  // `todayIso` only. The ternary that used to live here was a copy-paste trap.
+  return payment.ends_on ? minDate(payment.ends_on, todayIso) : todayIso;
 }
 
 export function monthlyEquivalentPaisa(payment: Pick<RecurringPayment, "cadence" | "amount_paise">): number {

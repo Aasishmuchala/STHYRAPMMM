@@ -108,9 +108,17 @@ export function ProjectsView({
   }
 
   function updateDraft(projectId: string, patch: Partial<ProjectDraft>) {
+    const fallbackDraft: ProjectDraft = {
+      name: "",
+      client: "",
+      description: "",
+      starts_on: "",
+      target_end_on: "",
+      lead_id: "",
+    };
     setDrafts((current) => ({
       ...current,
-      [projectId]: { ...current[projectId], ...patch },
+      [projectId]: { ...(current[projectId] ?? fallbackDraft), ...patch },
     }));
   }
 

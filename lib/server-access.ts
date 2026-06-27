@@ -1,9 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildWorkspaceAccess, type MembershipLike } from "@/lib/access";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type DB = SupabaseClient<any, any, any>;
-/* eslint-enable @typescript-eslint/no-explicit-any */
+import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
 export async function loadUserWorkspaceAccess(supabase: DB, userId: string) {
   const [{ data: profile }, { data: memberships }] = await Promise.all([
@@ -39,4 +37,19 @@ export function canAccessFinanceDivision(access: ReturnType<typeof buildWorkspac
 
 export function canAccessPeople(access: ReturnType<typeof buildWorkspaceAccess>) {
   return access.canSeePeople;
+}
+
+export async function canManageProject(
+  supabase: DB,
+  projectId: string,
+  access: ReturnType<typeof buildWorkspaceAccess>,
+): Promise<boolean> {
+  if (access.isSuperAdmin) return true;
+  const { data } = await supabase
+    .from("projects")
+    .select("division_id")
+    .eq("id", projectId)
+    .maybeSingle<{ division_id: string }>();
+  if (!data?.division_id) return false;
+  return access.manageableDivisionIds.has(data.division_id);
 }

@@ -3,19 +3,25 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getDashboard } from "@/lib/queries";
 import { inrShort, pct, dueLabel, initials } from "@/lib/format";
+import { isCompanyEmail } from "@/lib/auth/companyEmail";
 import { AppShell } from "@/components/shell/AppShell";
 import { GettingStarted } from "@/components/home/GettingStarted";
 import { QuickNew } from "@/components/home/QuickNew";
+import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
 import {
   IconArrowUpRight, IconArrowDownRight, IconClock,
   IconAlertCircle, IconDoc, IconTasks,
 } from "@/components/icons";
 
+import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
+
+// Theme-token priority colors. The previous hex literals ignored user-chosen
+// accents and looked broken on oxblood / harbor themes (audit F1.1).
 const prioColor: Record<string, string> = {
-  highest: "#f87171",
+  highest: "var(--danger)",
   high: "var(--danger)",
   medium: "var(--warning)",
-  low: "#3b82f6",
+  low: "var(--accent)",
   lowest: "var(--text-faint)",
 };
 
@@ -23,23 +29,27 @@ export default async function HomePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  // Re-check company-email gate here too. Previously a non-company account
+  // with a valid session rendered an empty dashboard (audit medium — section 3).
+  if (!isCompanyEmail(user.email)) redirect("/login?error=company-email-only");
 
   const today = new Date();
-  const d = await getDashboard(supabase, today, user.id);
+  const sb = supabase as unknown as DB;
+  const [d, aiData] = await Promise.all([
+    getDashboard(supabase, today, user.id),
+    loadAiConsoleData(sb),
+  ]);
 
   // Onboarding signals (owner only) for the "Get set up" guide.
   let setup: { ai: boolean; clients: boolean; team: boolean; briefs: boolean } | null = null;
   if (d.isOwner) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sb = supabase as unknown as SupabaseClient<any, any, any>;
-    const [{ data: ks }, { count: cc }, { count: mc }, { count: bc }] = await Promise.all([
-      sb.rpc("omega_key_status"),
+    const [{ count: cc }, { count: mc }, { count: bc }] = await Promise.all([
       sb.from("clients").select("id", { count: "exact", head: true }).is("deleted_at", null),
       sb.from("profiles").select("id", { count: "exact", head: true }).eq("is_active", true),
       sb.from("division_briefs").select("division_id", { count: "exact", head: true }),
     ]);
     setup = {
-      ai: Boolean((ks as { configured?: boolean } | null)?.configured),
+      ai: aiData.configured,
       clients: (cc ?? 0) > 0,
       team: (mc ?? 0) > 1,
       briefs: (bc ?? 0) > 0,
@@ -52,8 +62,23 @@ export default async function HomePage() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
-    <AppShell divisions={d.navDivisions} canSeeFinances={d.canSeeFinances} isOwner={d.isOwner} initials={initials(d.profile?.full_name ?? null, d.profile?.email ?? null)}>
-      <main>
+    <AppShell
+      divisions={d.navDivisions}
+      canSeeFinances={d.canSeeFinances}
+      isOwner={d.isOwner}
+      initials={initials(d.profile?.full_name ?? null, d.profile?.email ?? null)}
+      aiInitialData={{
+        configured: aiData.configured,
+        isOwner: d.isOwner,
+        runs: aiData.runs,
+        pending: aiData.pending,
+        latestBrief: aiData.latestBrief,
+        spendToday: aiData.spendToday,
+        spendMonth: aiData.spendMonth,
+        runCount: aiData.runCount,
+      }}
+    >
+      <main id="main">
           <header className="page-head">
             <div>
               <div className="label" style={{ marginBottom: 9 }}>{dateLabel}</div>
@@ -98,7 +123,7 @@ export default async function HomePage() {
             <div>
               <div className="section-h">
                 <span className="label">Division health</span>
-                {d.canSeeFinances && <button className="link">Open finances →</button>}
+                {d.canSeeFinances && <a className="link" href="/finances">Open finances →</a>}
               </div>
               <div className="divs">
                 {d.divisionHealth.map((dv) => (
@@ -119,7 +144,7 @@ export default async function HomePage() {
 
               <div className="section-h">
                 <span className="label">My tasks · across divisions</span>
-                <button className="link">Board →</button>
+                <a className="link" href="/tasks">Board →</a>
               </div>
               {d.myTasks.length > 0 ? (
                 <div className="tasks glass">

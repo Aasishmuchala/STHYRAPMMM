@@ -84,6 +84,7 @@ function defaultStageDrafts(stages: TaskStage[]) {
 function moveItem<T>(items: T[], from: number, to: number) {
   const next = items.slice();
   const [item] = next.splice(from, 1);
+  if (item === undefined) return next;
   next.splice(to, 0, item);
   return next;
 }
@@ -335,11 +336,12 @@ export function TaskBoard({
       };
     });
 
-    const timelineStart = rows.length
-      ? startOfMonth(rows.reduce((min, row) => (row.startDate.getTime() < min.getTime() ? row.startDate : min), rows[0].startDate))
+    const firstRow = rows[0];
+    const timelineStart = firstRow
+      ? startOfMonth(rows.reduce((min, row) => (row.startDate.getTime() < min.getTime() ? row.startDate : min), firstRow.startDate))
       : startOfMonth(todayDate);
-    let timelineEnd = rows.length
-      ? endOfMonth(rows.reduce((max, row) => (row.endDate.getTime() > max.getTime() ? row.endDate : max), rows[0].endDate))
+    let timelineEnd = firstRow
+      ? endOfMonth(rows.reduce((max, row) => (row.endDate.getTime() > max.getTime() ? row.endDate : max), firstRow.endDate))
       : endOfMonth(addMonths(todayDate, 5));
     const minimumTimelineEnd = endOfMonth(addMonths(timelineStart, 5));
     if (timelineEnd.getTime() < minimumTimelineEnd.getTime()) {
@@ -384,9 +386,10 @@ export function TaskBoard({
   }
 
   function updateDraft(stageId: string, patch: Partial<StageDraft>) {
+    const fallbackDraft: StageDraft = { label: "", color: "#2563eb", is_done: false };
     setStageDrafts((current) => ({
       ...current,
-      [stageId]: { ...current[stageId], ...patch },
+      [stageId]: { ...(current[stageId] ?? fallbackDraft), ...patch },
     }));
   }
 
@@ -497,6 +500,7 @@ export function TaskBoard({
   function saveStage(stageId: string) {
     if (!activeProjectId) return;
     const draft = stageDrafts[stageId];
+    if (!draft) return;
     const previousStages = stageList;
     const updatedStages = stageList.map((stage) => (stage.id === stageId ? { ...stage, ...draft } : stage));
     setBoardError(null);

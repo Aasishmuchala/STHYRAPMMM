@@ -3,11 +3,11 @@ export type MembershipLike = {
   role: string;
 };
 
-const SUPER_ADMIN_ROLES = new Set(["super_admin", "owner"]);
-const DIVISION_WORKSPACE_ROLES = new Set(["owner", "lead", "member"]);
-const DIVISION_MANAGER_ROLES = new Set(["owner", "lead"]);
-const DIVISION_FINANCE_ROLES = new Set(["owner", "lead", "accountant"]);
-const DIVISION_PEOPLE_ROLES = new Set(["owner", "lead"]);
+export const SUPER_ADMIN_ROLES = new Set(["super_admin", "owner"]);
+export const DIVISION_WORKSPACE_ROLES = new Set(["owner", "lead", "member"]);
+export const DIVISION_MANAGER_ROLES = new Set(["owner", "lead"]);
+export const DIVISION_FINANCE_ROLES = new Set(["owner", "lead", "accountant"]);
+export const DIVISION_PEOPLE_ROLES = new Set(["owner", "lead"]);
 
 function pickDivisionIds(memberships: MembershipLike[], allowedRoles: Set<string>) {
   return new Set(
@@ -46,8 +46,18 @@ export function buildWorkspaceAccess(globalRole: string | null | undefined, memb
 export function hasDivisionRole(
   memberships: MembershipLike[],
   divisionId: string | null | undefined,
-  allowedRoles: string[]
+  allowedRoles: string[],
 ) {
   if (!divisionId) return false;
-  return memberships.some((membership) => membership.division_id === divisionId && allowedRoles.includes(membership.role));
+  return memberships.some((m) => m.division_id === divisionId && allowedRoles.includes(m.role));
+}
+
+// Convenience overload used by SQL helper parity (lib/server-access.ts).
+// Usage: hasRoleForDivision(role, ["lead", "owner"]) -> boolean
+export function hasRoleForDivision(
+  role: string | null | undefined,
+  allowedRoles: string[],
+): boolean {
+  if (!role) return false;
+  return allowedRoles.includes(role);
 }

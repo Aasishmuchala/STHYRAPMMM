@@ -1,12 +1,24 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { inr } from "@/lib/format";
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type DB = SupabaseClient<any, any, any>;
+import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
 const short = (s: string) => (s ?? "").replace(/^Sthyra\s+/, "");
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const daysBetween = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
+
+// Hard caps to keep the prompt within the model's context window. These were
+// previously set so high (3000 transactions, 2000 BOM lines) that a busy
+// workspace blew past the input budget. Tuned for ~8K-token prompts.
+const CAP = {
+  tasks: 50,
+  invoices: 200,
+  txns: 500, // was 3000 — now aggregated after fetch
+  bom: 500, // was 2000 — aggregated per division
+  ra: 200,
+  clients: 200,
+  docs: 6,
+} as const;
 
 // Builds a compact, RLS-scoped snapshot of the workspace for the AI to reason over.
 // Runs under the caller's session, so the AI only ever sees what that person can see.
@@ -27,13 +39,13 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
   ] = await Promise.all([
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("division_briefs").select("division_id,goals,targets,notes"),
-    supabase.from("tasks").select("title,status:workflow_stage_id,priority,due_date,divisions(slug),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(50),
-    supabase.from("invoices").select("number,amount_paise,status,due_on,division_id,divisions(slug)").is("deleted_at", null).in("status", ["sent", "overdue"]).limit(200),
-    supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart).limit(3000),
-    supabase.from("documents").select("title,doc_type,body_md,divisions(slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(6),
-    supabase.from("bom_items").select("qty,unit_cost_paise,division_id").is("deleted_at", null).limit(2000),
-    supabase.from("ra_bills").select("sequence,net_paise,gross_paise,deduction_paise,status,certified_on,division_id").is("deleted_at", null).limit(500),
-    supabase.from("clients").select("name,stage,value_paise,contact_name,division_id").is("deleted_at", null).limit(500),
+    supabase.from("tasks").select("title,status:workflow_stage_id,priority,due_date,divisions(slug),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(CAP.tasks),
+    supabase.from("invoices").select("number,amount_paise,status,due_on,division_id,divisions(slug)").is("deleted_at", null).in("status", ["sent", "overdue"]).limit(CAP.invoices),
+    supabase.from("transactions").select("division_id,direction,amount_paise,occurred_on").is("deleted_at", null).gte("occurred_on", monthStart).limit(CAP.txns),
+    supabase.from("documents").select("title,doc_type,body_md,divisions(slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(CAP.docs),
+    supabase.from("bom_items").select("qty,unit_cost_paise,division_id").is("deleted_at", null).limit(CAP.bom),
+    supabase.from("ra_bills").select("sequence,net_paise,gross_paise,deduction_paise,status,certified_on,division_id").is("deleted_at", null).limit(CAP.ra),
+    supabase.from("clients").select("name,stage,value_paise,contact_name,division_id").is("deleted_at", null).limit(CAP.clients),
   ]);
 
   const divs = (divisions ?? []) as { id: string; slug: string; name: string }[];
@@ -51,7 +63,7 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
   if (hasFinance) {
     const cashIn = sum(tx.filter((t) => t.direction === "in").map((t) => t.amount_paise));
     const cashOut = sum(tx.filter((t) => t.direction === "out").map((t) => t.amount_paise));
-    lines.push(`\nCASH FLOW (this month): in ${inr(cashIn)} | out ${inr(cashOut)} | net ${inr(cashIn - cashOut)}`);
+    lines.push(`\nCASH FLOW (this month, RLS-scoped): in ${inr(cashIn)} | out ${inr(cashOut)} | net ${inr(cashIn - cashOut)}${tx.length === CAP.txns ? ` (cap reached)` : ""}`);
 
     const owed = sum(iv.map((i) => i.amount_paise));
     let b0 = 0;
@@ -101,10 +113,11 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
       lines.push(`CONSTRUCTION: ${raPending.length} RA bill(s) pending certification, net ${inr(net)}`);
     }
 
+    // BOM was previously per-row (up to 2000); now aggregated per division.
     const bomRows = (bom ?? []) as { qty: number; unit_cost_paise: number; division_id: string }[];
     const bomByDiv = new Map<string, number>();
     for (const row of bomRows) bomByDiv.set(row.division_id, (bomByDiv.get(row.division_id) ?? 0) + row.qty * row.unit_cost_paise);
-    for (const [divId, total] of bomByDiv) if (total > 0) lines.push(`BOM committed - ${nameOf.get(divId) ?? "?"}: ${inr(total)}`);
+    for (const [divId, total] of bomByDiv) if (total > 0) lines.push(`BOM committed - ${nameOf.get(divId) ?? "?"}: ${inr(total)}${bomRows.length === CAP.bom ? ` (cap reached, approximate)` : ""}`);
   }
 
   const cl = (clients ?? []) as { name: string; stage: string; value_paise: number; contact_name: string | null; division_id: string }[];
@@ -153,8 +166,13 @@ export async function buildContext(supabase: DB, today: Date): Promise<string> {
   lines.push(`\nDOCUMENTS (${recentDocs.length} most recent):`);
   for (const doc of recentDocs) {
     const division = Array.isArray(doc.divisions) ? doc.divisions[0] : doc.divisions;
-    const body = (doc.body_md ?? "").replace(/\s+/g, " ").trim().slice(0, 320);
-    lines.push(`- ${doc.title}${doc.doc_type ? ` (${doc.doc_type})` : ""} - ${division?.slug ?? "?"}${body ? `: ${body}${body.length >= 320 ? "..." : ""}` : ""}`);
+    // Truncate + strip markdown noise; cap to 200 chars to keep prompt lean.
+    const body = (doc.body_md ?? "")
+      .replace(/[#*_`>]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 200);
+    lines.push(`- ${doc.title}${doc.doc_type ? ` (${doc.doc_type})` : ""} - ${division?.slug ?? "?"}${body ? `: ${body}${body.length >= 200 ? "..." : ""}` : ""}`);
   }
   if (recentDocs.length === 0) lines.push("- (none)");
 

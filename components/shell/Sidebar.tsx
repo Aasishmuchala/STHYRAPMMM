@@ -6,6 +6,7 @@ import {
   IconHome, IconTasks, IconFinance, IconDoc, IconClients,
   IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers, IconPeople,
 } from "@/components/icons";
+import { FiClock, FiTarget, FiZap } from "react-icons/fi";
 import { DivisionSwitcher } from "./DivisionSwitcher";
 
 type Nav = { slug: string; name: string };
@@ -34,10 +35,10 @@ export function Sidebar({
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
   return (
-    <aside className="side">
+    <aside className="side" aria-label="Primary navigation">
       <div className="brand">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/sthyra-mark.png" alt="" className="brand-mark-img" />
+        <img src="/sthyra-mark.png" alt="Sthyra" className="brand-mark-img" />
         <div>
           <div className="name">Sthyra</div>
           <div className="sub">Redefining Reality</div>
@@ -55,6 +56,12 @@ export function Sidebar({
         </Link>
         <Link href="/tasks" onClick={onNavigate} className={`nav-item ${active("/tasks") ? "active" : ""}`} aria-current={active("/tasks") ? "page" : undefined}>
           <IconTasks size={16} />Tasks
+        </Link>
+        <Link href="/roadmap" onClick={onNavigate} className={`nav-item ${active("/roadmap") ? "active" : ""}`} aria-current={active("/roadmap") ? "page" : undefined}>
+          <FiTarget size={16} />Roadmap
+        </Link>
+        <Link href="/timesheet" onClick={onNavigate} className={`nav-item ${active("/timesheet") ? "active" : ""}`} aria-current={active("/timesheet") ? "page" : undefined}>
+          <FiClock size={16} />Timesheet
         </Link>
         <Link href="/projects" onClick={onNavigate} className={`nav-item ${active("/projects") ? "active" : ""}`} aria-current={active("/projects") ? "page" : undefined}>
           <IconLayers size={16} />Projects
@@ -77,6 +84,9 @@ export function Sidebar({
         <Link href="/documents" onClick={onNavigate} className={`nav-item ${active("/documents") ? "active" : ""}`} aria-current={active("/documents") ? "page" : undefined}>
           <IconDoc size={16} />Documents
         </Link>
+        <Link href="/reports" onClick={onNavigate} className={`nav-item ${active("/reports") ? "active" : ""}`} aria-current={active("/reports") ? "page" : undefined}>
+          <FiZap size={16} />Reports
+        </Link>
       </nav>
 
       {divisions.length > 0 && (
@@ -98,6 +108,11 @@ export function Sidebar({
       )}
 
       <nav className="nav-group" style={{ marginTop: "auto" }} aria-label="Settings">
+        {(isOwner || canSeeFinances) && (
+          <Link href="/automations" onClick={onNavigate} className={`nav-item ${active("/automations") ? "active" : ""}`} aria-current={active("/automations") ? "page" : undefined}>
+            <FiZap size={16} />Automations
+          </Link>
+        )}
         {isOwner && (
           <Link href="/ai" onClick={onNavigate} className={`nav-item ${active("/ai") ? "active" : ""}`} aria-current={active("/ai") ? "page" : undefined}>
             <IconSparkle size={16} />Assistant

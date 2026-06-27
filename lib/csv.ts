@@ -1,11 +1,15 @@
 // Minimal, dependency-free CSV builder + browser download.
 
+function escapeCell(v: string | number | null | undefined): string {
+  const s = String(v ?? "");
+  // Quote when the cell contains a comma, double-quote, CR, or LF.
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export function toCsv(headers: string[], rows: (string | number | null | undefined)[][]): string {
-  const esc = (v: string | number | null | undefined) => {
-    const s = String(v ?? "");
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return [headers.map(esc).join(","), ...rows.map((r) => r.map(esc).join(","))].join("\r\n");
+  const lines = [headers.map(escapeCell).join(",")];
+  for (const r of rows) lines.push(r.map(escapeCell).join(","));
+  return lines.join("\r\n");
 }
 
 export function downloadCsv(filename: string, content: string): void {
@@ -20,4 +24,8 @@ export function downloadCsv(filename: string, content: string): void {
   URL.revokeObjectURL(url);
 }
 
-export const rupees = (paise: number) => Math.round(paise) / 100;
+export const rupees = (paise: number) => {
+  // Two-decimal string for rupee display (used by the CSV export of money columns).
+  if (!Number.isFinite(paise)) return "0.00";
+  return (paise / 100).toFixed(2);
+};

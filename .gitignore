@@ -9,12 +9,17 @@ npm-debug.log*
 .vercel
 next-env.d.ts
 *.tsbuildinfo
+coverage/
 
 # cypress — secrets + run artifacts
 cypress.env.json
 /cypress/screenshots
 /cypress/videos
 /cypress/downloads
+
+# stray local artifacts
+tmp-*.log
+tmp-*.err
 
 # internal planning / strategy — kept out of the public repo (remove these lines if the repo is private)
 /docs

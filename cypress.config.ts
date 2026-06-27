@@ -1,8 +1,9 @@
 import { defineConfig } from "cypress";
 
 export default defineConfig({
+  // Retries used to mask flakiness (audit CI-D3). Surface failures instead.
   retries: {
-    runMode: 2,
+    runMode: 0,
     openMode: 0,
   },
   e2e: {

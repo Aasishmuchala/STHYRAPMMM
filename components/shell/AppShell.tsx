@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { CommandPalette } from "./CommandPalette";
-import { AiDrawerHost } from "./AiDrawerHost";
+import { AiDrawerHost, type AiDrawerData } from "./AiDrawerHost";
 
 type Nav = { slug: string; name: string };
 
 export function AppShell({
-  divisions, canSeeFinances, canSeePeople = canSeeFinances, isOwner = false, initials, children,
+  divisions, canSeeFinances, canSeePeople = canSeeFinances, isOwner = false, initials, children, aiInitialData,
 }: {
   divisions: Nav[];
   canSeeFinances: boolean;
@@ -17,6 +17,7 @@ export function AppShell({
   isOwner?: boolean;
   initials: string;
   children: React.ReactNode;
+  aiInitialData?: AiDrawerData;
 }) {
   const [navOpen, setNavOpen] = useState(false);
 
@@ -29,6 +30,7 @@ export function AppShell({
 
   return (
     <div className={`app${navOpen ? " nav-open" : ""}`}>
+      <a href="#main" className="skip-link">Skip to main content</a>
       <Sidebar divisions={divisions} canSeeFinances={canSeeFinances} canSeePeople={canSeePeople} isOwner={isOwner} onNavigate={() => setNavOpen(false)} />
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <div>
@@ -36,7 +38,7 @@ export function AppShell({
         {children}
       </div>
       <CommandPalette divisions={divisions} canSeeFinances={canSeeFinances} isOwner={isOwner} />
-      <AiDrawerHost />
+      <AiDrawerHost initialData={aiInitialData} />
     </div>
   );
 }

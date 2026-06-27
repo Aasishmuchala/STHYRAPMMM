@@ -166,8 +166,11 @@ export function CsvImportModal({
         const matches = projectLookup.get(normalizeKey(rawProject)) ?? projectLookup.get(rawProject) ?? [];
         const scoped = division ? matches.filter((project) => project.division_id === division.id) : matches;
         if (scoped.length === 1) {
-          projectId = scoped[0].id;
-          projectLabel = scoped[0].name;
+          const match = scoped[0];
+          if (match) {
+            projectId = match.id;
+            projectLabel = match.name;
+          }
         } else if (scoped.length === 0) {
           nextErrors.push(`Row ${rowNo}: project "${rawProject}" was not found in that division.`);
         } else {

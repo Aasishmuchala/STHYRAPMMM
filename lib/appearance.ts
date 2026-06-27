@@ -1,4 +1,13 @@
-export const ALLOWED_THEMES = ["slate", "daybreak", "mist", "harbor"] as const;
+export const ALLOWED_THEMES = [
+  "slate",
+  "daybreak",
+  "mist",
+  "harbor",
+  "nyradna",
+  "midnight",
+  "carbon",
+  "oxblood",
+] as const;
 
 export type WorkspaceTheme = (typeof ALLOWED_THEMES)[number];
 

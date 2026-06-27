@@ -69,6 +69,10 @@ export async function updateProfile(fullName: string): Promise<Result> {
   return done();
 }
 
+// Whitelist of allowed values for invite / membership / division_role enums.
+const ALLOWED_GLOBAL_ROLES = ["member", "owner", "super_admin"] as const;
+const ALLOWED_DIVISION_ROLES = ["member", "lead", "owner", "accountant"] as const;
+
 export async function addInvite(
   email: string, fullName: string, globalRole: string,
   divisionId: string | null, divisionRole: string,
@@ -76,11 +80,23 @@ export async function addInvite(
   const supabase = await db();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+  // Super-admin gate (audit H5). Previously any signed-in user could insert an
+  // invite with `global_role = 'super_admin'`.
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!access.isSuperAdmin) {
+    return { error: "Only the super admin can add invites." };
+  }
   const e = email.trim().toLowerCase();
   if (!e || !e.includes("@")) return { error: "Enter a valid email" };
+  if (!(ALLOWED_GLOBAL_ROLES as readonly string[]).includes(globalRole)) {
+    return { error: "Invalid global role." };
+  }
+  if (divisionId && !(ALLOWED_DIVISION_ROLES as readonly string[]).includes(divisionRole)) {
+    return { error: "Invalid division role." };
+  }
   const { error } = await supabase.from("invite_allowlist").insert({
     email: e,
-    full_name: fullName.trim() || null,
+    full_name: fullName.trim()?.slice(0, 120) || null,
     global_role: globalRole,
     invite_division_id: divisionId,
     invite_division_role: divisionId ? divisionRole : null,
@@ -92,7 +108,15 @@ export async function addInvite(
 
 export async function removeInvite(email: string): Promise<Result> {
   const supabase = await db();
-  const { error } = await supabase.from("invite_allowlist").delete().eq("email", email);
+  // Super-admin gate (audit H4).
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!access.isSuperAdmin) {
+    return { error: "Only the super admin can remove invites." };
+  }
+  const e = email.trim().toLowerCase();
+  const { error } = await supabase.from("invite_allowlist").delete().eq("email", e);
   if (error) return { error: error.message };
   return done();
 }
@@ -101,6 +125,10 @@ export async function addMembership(userId: string, divisionId: string, role: st
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
   if (!userId || !divisionId) return { error: "Pick a member and a division" };
+  // Role whitelist (audit 6.9).
+  if (!(ALLOWED_DIVISION_ROLES as readonly string[]).includes(role)) {
+    return { error: `Invalid role. Allowed: ${ALLOWED_DIVISION_ROLES.join(", ")}` };
+  }
   const { access } = await loadUserWorkspaceAccess(supabase, user.id);
   if (!canManageDivision(access, divisionId)) {
     return { error: "Only the super admin, company owner, or that division's lead can add members here." };

@@ -30,4 +30,4 @@ export type EmployeeOption = {
 
 export type { FinanceImportBatch, RecurringPayment };
 
-export type FinView = "ledger" | "invoices" | "pnl" | "bom" | "ra" | "recurring" | "salaries";
+export type FinView = "ledger" | "invoices" | "pnl" | "bom" | "ra" | "recurring" | "salaries" | "forecast";

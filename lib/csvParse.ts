@@ -49,10 +49,11 @@ export function parseCsv(text: string): string[][] {
 
 export function csvObjects(text: string): Array<Record<string, string>> {
   const rows = parseCsv(text);
-  if (rows.length === 0) return [];
+  const [headerRow, ...valueRows] = rows;
+  if (!headerRow) return [];
 
-  const headers = rows[0].map((header) => header.trim());
-  return rows.slice(1).map((values) => {
+  const headers = headerRow.map((header) => header.trim());
+  return valueRows.map((values) => {
     const out: Record<string, string> = {};
     headers.forEach((header, index) => {
       out[header] = values[index] ?? "";

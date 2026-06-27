@@ -5,9 +5,22 @@ on:
     branches: [main]
   pull_request:
 
+# Cancel any in-flight CI for the same branch when a new push arrives.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Scoped token: only what's needed for status checks.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
 # Required repo secrets (GitHub → Settings → Secrets and variables → Actions):
 #   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
 #   CYPRESS_OWNER_EMAIL, CYPRESS_OWNER_PASSWORD
+#   LEAD_EMAIL, LEAD_PASSWORD, MEMBER_EMAIL, MEMBER_PASSWORD
+#   SUPABASE_PROJECT_REF (optional, for `supabase db lint`)
 
 jobs:
   verify:
@@ -29,17 +42,34 @@ jobs:
           path: ~/.cache/Cypress
           key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: next-${{ runner.os }}-
+
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit dependencies (high+)
+        run: npm audit --audit-level=high || true
+
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
+      - name: Unit tests (Vitest)
+        run: npm test
+
       - name: Build
         run: npm run build
+
+      - name: Supabase DB lint (when configured)
+        if: env.SUPABASE_PROJECT_REF != null
+        run: npx supabase db lint --project-ref "$SUPABASE_PROJECT_REF" || true
 
       - name: Check E2E secret availability
         id: e2e-secrets
@@ -47,6 +77,10 @@ jobs:
         env:
           CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
           CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
+          LEAD_EMAIL: ${{ secrets.LEAD_EMAIL }}
+          LEAD_PASSWORD: ${{ secrets.LEAD_PASSWORD }}
+          MEMBER_EMAIL: ${{ secrets.MEMBER_EMAIL }}
+          MEMBER_PASSWORD: ${{ secrets.MEMBER_PASSWORD }}
         run: |
           missing=0
           for var in \
@@ -66,7 +100,8 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: E2E (Cypress)
+      # Owner-only happy-path specs.
+      - name: E2E (Cypress — owner)
         if: steps.e2e-secrets.outputs.run == 'true'
         uses: cypress-io/github-action@v6
         with:
@@ -74,16 +109,36 @@ jobs:
           start: npm run start
           wait-on: http://localhost:3000/login
           wait-on-timeout: 120
-          command: npx cypress run --spec cypress/e2e/auth.cy.ts,cypress/e2e/clients.cy.ts,cypress/e2e/command-palette.cy.ts,cypress/e2e/wallpaper.cy.ts
+          command: npx cypress run --spec cypress/e2e/auth.cy.ts,cypress/e2e/clients.cy.ts,cypress/e2e/command-palette.cy.ts,cypress/e2e/wallpaper.cy.ts,cypress/e2e/ai.cy.ts,cypress/e2e/tasks.cy.ts,cypress/e2e/finances.cy.ts
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
           CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
 
+      # RBAC spec runs only when member+lead credentials are present.
+      - name: E2E (Cypress — RBAC)
+        if: steps.e2e-secrets.outputs.run == 'true' && env.LEAD_EMAIL != '' && env.MEMBER_EMAIL != ''
+        uses: cypress-io/github-action@v6
+        with:
+          install: false
+          start: npm run start
+          wait-on: http://localhost:3000/login
+          wait-on-timeout: 120
+          command: npx cypress run --spec cypress/e2e/rls-scoping.cy.ts,cypress/e2e/rls-negative.cy.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          CYPRESS_OWNER_EMAIL: ${{ secrets.CYPRESS_OWNER_EMAIL }}
+          CYPRESS_OWNER_PASSWORD: ${{ secrets.CYPRESS_OWNER_PASSWORD }}
+          LEAD_EMAIL: ${{ secrets.LEAD_EMAIL }}
+          LEAD_PASSWORD: ${{ secrets.LEAD_PASSWORD }}
+          MEMBER_EMAIL: ${{ secrets.MEMBER_EMAIL }}
+          MEMBER_PASSWORD: ${{ secrets.MEMBER_PASSWORD }}
+
       - name: Skip E2E when secrets are unavailable
         if: steps.e2e-secrets.outputs.run != 'true'
-        run: echo "Skipping owner-only Cypress because required Supabase/owner secrets are not configured for this run."
+        run: echo "Skipping Cypress because required Supabase/owner secrets are not configured for this run."
 
       - name: Upload Cypress screenshots on failure
         if: failure() && steps.e2e-secrets.outputs.run == 'true'

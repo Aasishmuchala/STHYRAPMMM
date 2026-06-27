@@ -124,6 +124,9 @@ export async function createTransaction(i: {
   if (!user) return { error: "Not authenticated" };
   if (!i.division_id) return { error: "Pick a division" };
   if (!(i.amount_paise > 0)) return { error: "Amount must be greater than zero" };
+  if (!(ALLOWED_TRANSACTION_DIRECTIONS as readonly string[]).includes(i.direction)) {
+    return { error: `Invalid direction. Allowed: ${ALLOWED_TRANSACTION_DIRECTIONS.join(", ")}` };
+  }
   const financeAccess = await requireFinanceAccess(supabase, user, i.division_id);
   if ("error" in financeAccess) return financeAccess;
   const projectScope = await requireProjectDivisionMatch(supabase, i.project_id, i.division_id);
@@ -171,10 +174,17 @@ export async function createInvoice(i: {
   if (error) return { error: error.message };
   return done();
 }
+const ALLOWED_INVOICE_STATUSES = ["draft", "sent", "paid", "overdue", "void"] as const;
+const ALLOWED_TRANSACTION_DIRECTIONS = ["in", "out"] as const;
+
 export async function setInvoiceStatus(id: string, status: string): Promise<Result> {
   const supabase = await db();
   const user = await uid(supabase);
   if (!user) return { error: "Not authenticated" };
+  // Status whitelist (audit 4.8).
+  if (!(ALLOWED_INVOICE_STATUSES as readonly string[]).includes(status)) {
+    return { error: `Invalid status. Allowed: ${ALLOWED_INVOICE_STATUSES.join(", ")}` };
+  }
   const row = await requireExistingFinanceRow(supabase, "invoices", id);
   if ("error" in row) return row;
   const financeAccess = await requireFinanceAccess(supabase, user, row.divisionId);

@@ -102,7 +102,7 @@ async function logRun(supabase: SupabaseClient<any, any, any>, userId: string, r
   purpose: string; model: string; usage: { input_tokens: number; output_tokens: number };
   prompt: string; response: string; actions: Json; status?: string; error?: string;
 }): Promise<{ cost: number; runId: string | null }> {
-  const cost = costInr(row.model, row.usage.input_tokens, row.usage.output_tokens);
+  const cost = costInr(row.model, { input_tokens: row.usage.input_tokens, output_tokens: row.usage.output_tokens });
   const { data } = await supabase.from("ai_runs").insert({
     user_id: userId, purpose: row.purpose, model: row.model,
     input_tokens: row.usage.input_tokens, output_tokens: row.usage.output_tokens, cost_inr: cost,
@@ -158,16 +158,26 @@ export async function askAi(prompt: string): Promise<Result> {
   for (const call of res.toolCalls) {
     try {
       if (call.name === "create_task") {
-        const divId = slugs[call.args.division_slug];
+        const slug = typeof call.args.division_slug === "string" ? call.args.division_slug : "";
+        const divId = slugs[slug];
         if (!divId) { log.push({ tool: "create_task", ok: false, detail: `unknown division ${call.args.division_slug}` }); continue; }
+        // Strict ISO date validation (audit medium — section 3). Previously any
+        // string the LLM emitted was passed straight to Postgres, surfacing as
+        // a confusing "invalid input syntax" error to the user.
+        const rawDue = typeof call.args.due_date === "string" ? call.args.due_date.trim() : "";
+        const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDue) ? rawDue : null;
+        const priority = typeof call.args.priority === "string" &&
+          ["lowest", "low", "medium", "high", "highest"].includes(call.args.priority)
+            ? call.args.priority : "medium";
         const { error } = await supabase.from("tasks").insert({
           title: String(call.args.title).slice(0, 300), division_id: divId,
-          priority: ["lowest", "low", "medium", "high", "highest"].includes(call.args.priority) ? call.args.priority : "medium",
-          status_key: "todo", due_date: call.args.due_date || null, created_by: user.id,
+          priority,
+          status_key: "todo", due_date: dueDate, created_by: user.id,
         });
         log.push(error ? { tool: "create_task", ok: false, detail: error.message } : { tool: "create_task", ok: true, detail: `Task: ${call.args.title}` });
       } else if (call.name === "draft_note") {
-        const divId = slugs[call.args.division_slug];
+        const slug = typeof call.args.division_slug === "string" ? call.args.division_slug : "";
+        const divId = slugs[slug];
         if (!divId) { log.push({ tool: "draft_note", ok: false, detail: `unknown division ${call.args.division_slug}` }); continue; }
         const { error } = await supabase.from("documents").insert({
           title: String(call.args.title).slice(0, 300), division_id: divId, doc_type: "AI draft",
