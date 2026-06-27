@@ -93,8 +93,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
     (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
   );
+  // Don't re-filter by division here: RLS already returns exactly the projects
+  // this user may see — their division projects AND any project they're only an
+  // assignee on. Filtering by workspaceDivisionIds would hide assignee-only
+  // projects (members in a project but not the division), leaving them stuck on
+  // the empty "my items" view.
   const projects: ProjectOpt[] = ((projectRows ?? []) as ProjectOpt[])
-    .filter((p) => access.isSuperAdmin || access.workspaceDivisionIds.has(p.division_id))
     .map((p) => ({ id: p.id, name: p.name, division_id: p.division_id }));
   const members: MemberOpt[] = (memberRows ?? []).map((m) => ({ id: m.id, name: m.full_name ?? "Unknown" }));
 

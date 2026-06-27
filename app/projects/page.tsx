@@ -53,8 +53,12 @@ export default async function ProjectsPage() {
     : divs.filter((division) => access.manageableDivisionIds.has(division.id));
   const manageableDivisionIds = creatableDivisions.map((division) => division.id);
   const taskCounts = new Map<string, number>();
+  let orphanTaskCount = 0;
   for (const row of taskRows ?? []) {
-    if (!row.project_id) continue;
+    if (!row.project_id) {
+      orphanTaskCount += 1;
+      continue;
+    }
     taskCounts.set(row.project_id, (taskCounts.get(row.project_id) ?? 0) + 1);
   }
 
@@ -78,8 +82,10 @@ export default async function ProjectsPage() {
     divisionMemberships = (membershipResult.data ?? []) as DivisionMembershipRow[];
   }
 
+  // Rely on RLS for visibility (division projects + projects the user is only an
+  // assignee on). Re-filtering by workspaceDivisionIds here would blank the page
+  // for members who belong to projects but not the division.
   const projects = ((projectRows ?? []) as ProjectRow[])
-    .filter((project) => access.isSuperAdmin || access.workspaceDivisionIds.has(project.division_id))
     .map((project) => {
     const division = Array.isArray(project.divisions) ? project.divisions[0] : project.divisions;
     const lead = Array.isArray(project.lead) ? project.lead[0] : project.lead;
@@ -108,6 +114,24 @@ export default async function ProjectsPage() {
             <p className="head-sub">Create, assign leads, tune timelines, and open each project&apos;s task board from one compact workspace.</p>
           </div>
         </header>
+        {!access.isSuperAdmin && projects.length === 0 && (
+          <section className="glass" style={{ padding: 18, marginBottom: 16 }}>
+            <p className="sub" style={{ margin: 0 }}>
+              You&apos;re not on any project yet.{orphanTaskCount > 0 ? (
+                <> You have <strong>{orphanTaskCount}</strong> task{orphanTaskCount === 1 ? "" : "s"} that aren&apos;t attached to a project — open them from the <a href="/tasks" style={{ color: "var(--accent)" }}>Tasks board</a>.</>
+              ) : (
+                <> Ask an owner or lead to add you to a project or division.</>
+              )}
+            </p>
+          </section>
+        )}
+        {!access.isSuperAdmin && projects.length > 0 && orphanTaskCount > 0 && (
+          <section className="glass" style={{ padding: "12px 16px", marginBottom: 16 }}>
+            <p className="sub" style={{ margin: 0 }}>
+              You also have <strong>{orphanTaskCount}</strong> task{orphanTaskCount === 1 ? "" : "s"} outside any project — find them on the <a href="/tasks" style={{ color: "var(--accent)" }}>Tasks board</a>.
+            </p>
+          </section>
+        )}
         <ProjectsView
           projects={projects}
           canManageProjects={access.isSuperAdmin || access.manageableDivisionIds.size > 0}
