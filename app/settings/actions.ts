@@ -111,7 +111,34 @@ export async function addMembership(userId: string, divisionId: string, role: st
   if (!access.isSuperAdmin && role === "lead" && !access.companyOwnerDivisionIds.has(divisionId)) {
     return { error: "Only the super admin or this company's owner can grant lead access." };
   }
-  const { error } = await supabase.from("division_members").insert({ user_id: userId, division_id: divisionId, role });
+
+  const { data: existingMembership, error: existingMembershipError } = await supabase
+    .from("division_members")
+    .select("id,role")
+    .eq("user_id", userId)
+    .eq("division_id", divisionId)
+    .maybeSingle<{ id: string; role: string }>();
+  if (existingMembershipError) return { error: existingMembershipError.message };
+
+  if (!access.isSuperAdmin && existingMembership?.role === "owner") {
+    return { error: "Only the super admin can change a company owner." };
+  }
+  if (!access.isSuperAdmin && existingMembership?.role === "lead" && !access.companyOwnerDivisionIds.has(divisionId)) {
+    return { error: "Only the super admin or this company's owner can change lead access." };
+  }
+
+  if (existingMembership) {
+    const { error } = await supabase
+      .from("division_members")
+      .update({ role })
+      .eq("id", existingMembership.id);
+    if (error) return { error: error.message };
+    return done();
+  }
+
+  const { error } = await supabase
+    .from("division_members")
+    .insert({ user_id: userId, division_id: divisionId, role });
   if (error) return { error: error.message };
   return done();
 }

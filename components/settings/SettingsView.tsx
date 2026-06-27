@@ -226,7 +226,7 @@ export function SettingsView({
       {canManageTeam && (
         <section className="set-card">
           <h3>Member access</h3>
-          <p className="sub">Verified `@sthyra.com` users appear here. Assign each person to a company as owner, lead, accountant, or member.</p>
+          <p className="sub">Verified `@sthyra.com` users appear here. Assign or update each person&apos;s company role as owner, lead, accountant, or member.</p>
           {members.length === 0 ? (
             <p className="sub" style={{ margin: 0 }}>No members have joined yet.</p>
           ) : (
@@ -299,7 +299,7 @@ export function SettingsView({
                       run(() => addMembership(memberId, memberDivisionId, memberRole), setMemberError);
                     }}
                   >
-                    Add
+                    Update
                   </button>
                 </div>
               </div>

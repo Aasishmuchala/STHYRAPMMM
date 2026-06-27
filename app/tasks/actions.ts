@@ -170,6 +170,35 @@ async function listWorkflowStages(supabase: SupabaseClient<any, any, any>, workf
   return { ok: true, data: data ?? [] } as const;
 }
 
+async function persistWorkflowStagePositions(
+  supabase: SupabaseClient<any, any, any>,
+  workflowId: string,
+  orderedStageIds: string[]
+): Promise<Result> {
+  if (orderedStageIds.length === 0) return { ok: true };
+
+  const tempBase = orderedStageIds.length + 1000;
+  for (let index = 0; index < orderedStageIds.length; index += 1) {
+    const { error } = await supabase
+      .from("workflow_stages")
+      .update({ position: tempBase + index })
+      .eq("id", orderedStageIds[index])
+      .eq("workflow_id", workflowId);
+    if (error) return { error: error.message };
+  }
+
+  for (let index = 0; index < orderedStageIds.length; index += 1) {
+    const { error } = await supabase
+      .from("workflow_stages")
+      .update({ position: index })
+      .eq("id", orderedStageIds[index])
+      .eq("workflow_id", workflowId);
+    if (error) return { error: error.message };
+  }
+
+  return { ok: true };
+}
+
 async function getFirstWorkflowStage(supabase: SupabaseClient<any, any, any>, workflowId: string): Promise<StageResult> {
   const stages = await listWorkflowStages(supabase, workflowId);
   if ("error" in stages) return stages;
@@ -456,12 +485,6 @@ export async function createTaskStage(input: {
   const insertAfter = input.after_stage_id ? stages.data.findIndex((stage) => stage.id === input.after_stage_id) : stages.data.length - 1;
   const insertAt = insertAfter >= 0 ? insertAfter + 1 : stages.data.length;
 
-  for (let index = stages.data.length - 1; index >= insertAt; index -= 1) {
-    const stage = stages.data[index];
-    const { error } = await supabase.from("workflow_stages").update({ position: index + 1 }).eq("id", stage.id);
-    if (error) return { error: error.message };
-  }
-
   const { data, error } = await supabase
     .from("workflow_stages")
     .insert({
@@ -469,12 +492,18 @@ export async function createTaskStage(input: {
       key,
       label,
       color: input.color || "var(--accent)",
-      position: Math.max(0, Math.min(insertAt, stages.data.length)),
+      position: stages.data.length + 1000,
       is_done: Boolean(input.is_done),
     })
     .select("id,workflow_id,key,label,color,position,is_done")
     .single();
   if (error) return { error: error.message };
+
+  const orderedStageIds = stages.data.map((stage) => stage.id);
+  orderedStageIds.splice(Math.max(0, Math.min(insertAt, orderedStageIds.length)), 0, (data as StageRow).id);
+  const reorderResult = await persistWorkflowStagePositions(supabase, workflow.data.id, orderedStageIds);
+  if ("error" in reorderResult) return reorderResult;
+
   touchTaskPaths(input.project_id);
   return { ok: true, data: data as StageRow };
 }
@@ -517,12 +546,23 @@ export async function reorderTaskStages(projectId: string | null, stageIds: stri
   const workflow = await resolveWorkflow(supabase, projectId);
   if ("error" in workflow) return { error: workflow.error || "Couldn't load this workflow." };
 
+  const stages = await listWorkflowStages(supabase, workflow.data.id);
+  if ("error" in stages) return stages;
+  if (stages.data.length !== stageIds.length) {
+    return { error: "Refresh the board and try reordering the stages again." };
+  }
+  const validStageIds = new Set(stages.data.map((stage) => stage.id));
+  if (new Set(stageIds).size !== stageIds.length || stageIds.some((stageId) => !validStageIds.has(stageId))) {
+    return { error: "Refresh the board and try reordering the stages again." };
+  }
+
   for (let index = 0; index < stageIds.length; index += 1) {
     const stage = await requireWorkflowStage(supabase, workflow.data.id, stageIds[index]);
     if ("error" in stage) return stage;
-    const { error } = await supabase.from("workflow_stages").update({ position: index }).eq("id", stageIds[index]);
-    if (error) return { error: error.message };
   }
+
+  const result = await persistWorkflowStagePositions(supabase, workflow.data.id, stageIds);
+  if ("error" in result) return result;
 
   touchTaskPaths(projectId);
   return { ok: true };
@@ -592,10 +632,8 @@ export async function deleteTaskStage(input: {
   if (error) return { error: error.message };
 
   const remaining = stages.data.filter((item) => item.id !== stage.data.id);
-  for (let index = 0; index < remaining.length; index += 1) {
-    const { error: reorderError } = await supabase.from("workflow_stages").update({ position: index }).eq("id", remaining[index].id);
-    if (reorderError) return { error: reorderError.message };
-  }
+  const reorderResult = await persistWorkflowStagePositions(supabase, workflow.data.id, remaining.map((item) => item.id));
+  if ("error" in reorderResult) return reorderResult;
 
   touchTaskPaths(input.project_id);
   return { ok: true };

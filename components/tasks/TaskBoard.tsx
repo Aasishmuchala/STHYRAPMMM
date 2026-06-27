@@ -97,6 +97,44 @@ function buildTasksHref(searchParams: URLSearchParams, patch: Record<string, str
   return query ? `/tasks?${query}` : "/tasks";
 }
 
+const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" });
+const WINDOW_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+
+function parseDateValue(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function formatRoadmapWindow(start: Date, end: Date) {
+  if (start.toDateString() === end.toDateString()) {
+    return WINDOW_LABEL_FORMATTER.format(start);
+  }
+  return `${WINDOW_LABEL_FORMATTER.format(start)} - ${WINDOW_LABEL_FORMATTER.format(end)}`;
+}
+
 export function TaskBoard({
   tasks,
   stages,
@@ -255,6 +293,79 @@ export function TaskBoard({
   const filteredBoardItems = useMemo(() => filtered.filter((task) => task.item_type !== "epic"), [filtered]);
   const filteredEpics = useMemo(() => filtered.filter((task) => task.item_type === "epic"), [filtered]);
   const epicOptions = useMemo(() => boardTasks.filter((task) => task.item_type === "epic"), [boardTasks]);
+  const epicChildCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const task of boardWorkItems) {
+      if (!task.parent_task_id) continue;
+      counts.set(task.parent_task_id, (counts.get(task.parent_task_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [boardWorkItems]);
+  const epicRoadmap = useMemo(() => {
+    const todayDate = startOfDay(new Date());
+    const cycleById = new Map(cycleList.map((cycle) => [cycle.id, cycle]));
+    const moduleById = new Map(moduleList.map((moduleEntry) => [moduleEntry.id, moduleEntry]));
+
+    const rows = filteredEpics.map((epic, index) => {
+      const stage = stageList.find((item) => item.id === epic.status) ?? null;
+      const cycle = epic.cycle_id ? cycleById.get(epic.cycle_id) ?? null : null;
+      const moduleEntry = epic.module_id ? moduleById.get(epic.module_id) ?? null : null;
+      const cycleStart = parseDateValue(cycle?.starts_on);
+      const cycleEnd = parseDateValue(cycle?.ends_on);
+      const dueDate = parseDateValue(epic.due_date);
+      const fallbackStart = dueDate ? addDays(dueDate, -9) : addDays(todayDate, index * 7);
+      const fallbackEnd = dueDate ? dueDate : addDays(fallbackStart, 12);
+      const startDate = cycleStart ?? (cycleEnd ? addDays(cycleEnd, -13) : fallbackStart);
+      const endDate = cycleEnd ?? (cycleStart ? addDays(cycleStart, 13) : fallbackEnd);
+      const safeEnd = endDate.getTime() < startDate.getTime() ? startDate : endDate;
+
+      return {
+        task: epic,
+        stage,
+        childCount: epicChildCounts.get(epic.id) ?? 0,
+        projectName: epic.project_name ?? activeProject?.name ?? "No project",
+        assigneeName: epic.assignee_name ?? "Unassigned",
+        cycleName: cycle?.name ?? null,
+        moduleName: moduleEntry?.name ?? epic.module_name ?? null,
+        startDate,
+        endDate: safeEnd,
+        windowLabel: formatRoadmapWindow(startDate, safeEnd),
+        barColor: moduleEntry?.color ?? stage?.color ?? "#2563eb",
+      };
+    });
+
+    const timelineStart = rows.length
+      ? startOfMonth(rows.reduce((min, row) => (row.startDate.getTime() < min.getTime() ? row.startDate : min), rows[0].startDate))
+      : startOfMonth(todayDate);
+    let timelineEnd = rows.length
+      ? endOfMonth(rows.reduce((max, row) => (row.endDate.getTime() > max.getTime() ? row.endDate : max), rows[0].endDate))
+      : endOfMonth(addMonths(todayDate, 5));
+    const minimumTimelineEnd = endOfMonth(addMonths(timelineStart, 5));
+    if (timelineEnd.getTime() < minimumTimelineEnd.getTime()) {
+      timelineEnd = minimumTimelineEnd;
+    }
+
+    const months: { key: string; label: string }[] = [];
+    for (let cursor = startOfMonth(timelineStart); cursor.getTime() <= timelineEnd.getTime(); cursor = addMonths(cursor, 1)) {
+      months.push({
+        key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+        label: MONTH_LABEL_FORMATTER.format(cursor),
+      });
+    }
+
+    const totalDays = Math.max(1, Math.ceil((timelineEnd.getTime() - timelineStart.getTime()) / 86400000) + 1);
+    const positionedRows = rows.map((row) => {
+      const startOffset = Math.max(0, Math.floor((row.startDate.getTime() - timelineStart.getTime()) / 86400000));
+      const endOffset = Math.max(startOffset + 1, Math.ceil((row.endDate.getTime() - timelineStart.getTime()) / 86400000) + 1);
+      return {
+        ...row,
+        left: (startOffset / totalDays) * 100,
+        width: Math.max(((endOffset - startOffset) / totalDays) * 100, 7),
+      };
+    });
+
+    return { months, rows: positionedRows };
+  }, [activeProject?.name, cycleList, epicChildCounts, filteredEpics, moduleList, stageList]);
 
   function canMoveTask(task: BoardTask) {
     return canManageWorkflow || task.assignee_id === currentUserId;
@@ -1156,15 +1267,130 @@ export function TaskBoard({
           )}
 
           {activeTab === "epics" ? (
-            <section className="tasks-panel" aria-label="Epic list">
-              <div className="tasks-panel-head">
+            <section className="tasks-panel epic-roadmap-shell" aria-label="Epic roadmap">
+              <div className="tasks-panel-head epic-roadmap-head">
                 <div>
-                  <div className="workspace-tag">Epics</div>
-                  <h3>Planning items stay out of the Kanban</h3>
-                  <p className="tasks-panel-copy">Epics are listed separately so the board stays focused on execution-level work items.</p>
+                  <div className="workspace-tag">Epic roadmap</div>
+                  <h3>Planning stays separate from day-to-day delivery</h3>
+                  <p className="tasks-panel-copy">Epics live in a dedicated timeline view so the Kanban stays focused on execution work, not planning containers.</p>
+                </div>
+                <div className="epic-roadmap-head-stats" aria-label="Epic roadmap summary">
+                  <span>{filteredEpics.length} epics</span>
+                  <span>{filteredEpics.filter((epic) => epic.cycle_id).length} linked to cycles</span>
+                  <span>{filteredEpics.filter((epic) => epic.assignee_id).length} assigned</span>
                 </div>
               </div>
-              <TaskListView tasks={filteredEpics} stages={stageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
+              {epicRoadmap.rows.length === 0 ? (
+                <div className="planning-empty epic-roadmap-empty">
+                  No epics match these filters yet. Create one or loosen the filters to populate the roadmap.
+                </div>
+              ) : (
+                <div className="epic-roadmap-board">
+                  <div className="epic-roadmap-top">
+                    <div className="epic-roadmap-column-labels">
+                      <span>Epic</span>
+                      <span>Status</span>
+                      <span>Owner</span>
+                      <span>Window</span>
+                    </div>
+                    <div
+                      className="epic-roadmap-months"
+                      style={{ gridTemplateColumns: `repeat(${epicRoadmap.months.length}, minmax(120px, 1fr))` }}
+                    >
+                      {epicRoadmap.months.map((month) => (
+                        <span key={month.key}>{month.label}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="epic-roadmap-rows">
+                    {epicRoadmap.rows.map((row) => {
+                      const StageIcon = row.stage ? getTaskStageIcon(row.stage) : FiTarget;
+                      const displayKey = getTaskDisplayKey(row.task);
+                      return (
+                        <button
+                          key={row.task.id}
+                          type="button"
+                          className="epic-roadmap-row"
+                          onClick={() => setDrawer({ mode: "view", task: row.task })}
+                        >
+                          <div className="epic-roadmap-meta">
+                            <div className="epic-roadmap-issue">
+                              <div className="epic-roadmap-issue-top">
+                                <span className="epic-roadmap-key">{displayKey}</span>
+                                <span className="epic-roadmap-type">Epic</span>
+                              </div>
+                              <strong>{row.task.title}</strong>
+                              <span className="epic-roadmap-subcopy">
+                                {row.projectName}
+                                {row.moduleName ? ` · ${row.moduleName}` : ""}
+                                {row.childCount > 0 ? ` · ${row.childCount} child item${row.childCount === 1 ? "" : "s"}` : ""}
+                              </span>
+                            </div>
+
+                            <div className="epic-roadmap-status">
+                              <span
+                                className="epic-roadmap-status-pill"
+                                style={{
+                                  color: row.stage?.color ?? "#526175",
+                                  background: row.stage?.color
+                                    ? `color-mix(in srgb, ${row.stage.color} 14%, white)`
+                                    : "rgba(148, 163, 184, 0.14)",
+                                }}
+                              >
+                                <StageIcon size={13} />
+                                {row.stage?.label ?? "No stage"}
+                              </span>
+                            </div>
+
+                            <div className="epic-roadmap-person">
+                              <span
+                                className="task-avatar"
+                                aria-hidden="true"
+                                style={{ background: avatarBg(row.assigneeName) }}
+                              >
+                                {initials(row.assigneeName, null)}
+                              </span>
+                              <div className="epic-roadmap-person-copy">
+                                <strong>{row.assigneeName}</strong>
+                                <span>{row.task.created_by_name ? `Assigned by ${row.task.created_by_name}` : "No assigner shown"}</span>
+                              </div>
+                            </div>
+
+                            <div className="epic-roadmap-window">
+                              <strong>{row.windowLabel}</strong>
+                              <span>{row.cycleName ?? (row.task.due_date ? "Due-date driven window" : "Auto planned window")}</span>
+                            </div>
+                          </div>
+
+                          <div className="epic-roadmap-track">
+                            <div
+                              className="epic-roadmap-grid"
+                              style={{ gridTemplateColumns: `repeat(${epicRoadmap.months.length}, minmax(120px, 1fr))` }}
+                              aria-hidden="true"
+                            >
+                              {epicRoadmap.months.map((month) => (
+                                <span key={month.key} className="epic-roadmap-grid-cell" />
+                              ))}
+                            </div>
+                            <div
+                              className={`epic-roadmap-bar ${row.stage?.is_done ? "done" : ""}`}
+                              style={{
+                                left: `${row.left}%`,
+                                width: `${row.width}%`,
+                                background: row.barColor,
+                              }}
+                            >
+                              <span>{row.cycleName ?? row.task.title}</span>
+                              <span>{row.childCount} item{row.childCount === 1 ? "" : "s"}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </section>
           ) : viewMode === "list" ? (
             <TaskListView tasks={filteredBoardItems} stages={stageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
