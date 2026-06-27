@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { IconType } from "react-icons";
 import { useDismiss } from "@/lib/useDismiss";
@@ -30,6 +30,7 @@ import { TbSubtask } from "react-icons/tb";
 import { PRIORITY_ICON_META } from "./taskMeta";
 
 type Mode = "view" | "edit" | "create";
+const TASK_DRAFT_STORAGE_PREFIX = "sthyra_task_draft";
 
 const typeMeta: Record<
   WorkItemType,
@@ -58,6 +59,8 @@ export function TaskDrawer({
   stages,
   onClose,
   lockedProjectId,
+  canManageTask,
+  canMoveTask,
 }: {
   initialMode: Mode;
   task?: BoardTask;
@@ -71,6 +74,8 @@ export function TaskDrawer({
   stages: TaskStage[];
   onClose: () => void;
   lockedProjectId?: string | null;
+  canManageTask: boolean;
+  canMoveTask: boolean;
 }) {
   const router = useRouter();
   const lockedProject = lockedProjectId ? projects.find((project) => project.id === lockedProjectId) ?? null : null;
@@ -108,6 +113,32 @@ export function TaskDrawer({
   const selectedProject = projects.find((project) => project.id === (form.project_id ?? lockedProjectId ?? "")) ?? lockedProject;
   const selectedCycle = projectCycles.find((cycle) => cycle.id === form.cycle_id) ?? null;
   const selectedModule = projectModules.find((module) => module.id === form.module_id) ?? null;
+  const draftStorageKey = mode === "view"
+    ? null
+    : `${TASK_DRAFT_STORAGE_PREFIX}:${mode}:${task?.id ?? lockedProjectId ?? "new"}`;
+
+  useEffect(() => {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    const raw = window.sessionStorage.getItem(draftStorageKey);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as Partial<TaskInput>;
+      setForm((current) => ({ ...current, ...saved }));
+      if (saved.status) setStatusLocal(saved.status);
+    } catch {
+      window.sessionStorage.removeItem(draftStorageKey);
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    window.sessionStorage.setItem(draftStorageKey, JSON.stringify(form));
+  }, [draftStorageKey, form]);
+
+  function clearDraft() {
+    if (!draftStorageKey || typeof window === "undefined") return;
+    window.sessionStorage.removeItem(draftStorageKey);
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -118,6 +149,7 @@ export function TaskDrawer({
         setErr(res.error);
         return;
       }
+      clearDraft();
       router.refresh();
       if (mode === "create") onClose();
       else {
@@ -128,7 +160,7 @@ export function TaskDrawer({
   }
 
   function quickStatus(nextStatus: TaskStatus) {
-    if (!task || nextStatus === status) return;
+    if (!task || nextStatus === status || !canMoveTask) return;
     setStatusLocal(nextStatus);
     start(async () => {
       const res = await setTaskStatus(task.id, nextStatus);
@@ -199,7 +231,7 @@ export function TaskDrawer({
             <>
               <div className="qstatus-bar" role="group" aria-label="Move to">
                 {stages.map((stage) => (
-                  <button key={stage.id} type="button" className={status === stage.id ? "on" : ""} onClick={() => quickStatus(stage.id)} disabled={pending}>
+                  <button key={stage.id} type="button" className={status === stage.id ? "on" : ""} onClick={() => quickStatus(stage.id)} disabled={pending || !canMoveTask}>
                     <span className="dot" style={{ background: stage.color }} />
                     {stage.label}
                   </button>
@@ -245,6 +277,7 @@ export function TaskDrawer({
                     </>
                   ) : "Unassigned"}
                 </span>
+                <span className="k">Assigned by</span><span className="v">{task.created_by_name ?? "-"}</span>
                 <span className="k">Parent epic</span><span className="v">{task.parent_task_title ?? "-"}</span>
                 <span className="k">Due</span><span className="v">{task.due_date ? dueLabel(task.due_date, today) : "-"}</span>
               </div>
@@ -257,10 +290,11 @@ export function TaskDrawer({
               )}
 
               <div className="drawer-actions">
-                <button className="btn-danger" onClick={() => setConfirmDel(true)} disabled={pending}>Delete</button>
+                {canManageTask && <button className="btn-danger" onClick={() => setConfirmDel(true)} disabled={pending}>Delete</button>}
                 <div style={{ flex: 1 }} />
-                <button className="btn" onClick={() => setMode("edit")}>Edit</button>
+                {canManageTask && <button className="btn" onClick={() => setMode("edit")}>Edit</button>}
               </div>
+              {!canManageTask && !canMoveTask && <div className="form-err" role="status" style={{ marginTop: 12 }}>You can view this work item, but only its assignee or a manager can move it.</div>}
               {err && <div className="form-err" role="alert" style={{ marginTop: 12 }}>{err}</div>}
             </>
           ) : (

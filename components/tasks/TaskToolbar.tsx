@@ -37,6 +37,7 @@ export function TaskToolbar({
   cycles,
   modules,
   canManageWorkflow,
+  canAdd = true,
   workflowOpen,
   onToggleWorkflow,
   onAdd,
@@ -62,6 +63,7 @@ export function TaskToolbar({
   cycles: CycleOpt[];
   modules: ModuleOpt[];
   canManageWorkflow: boolean;
+  canAdd?: boolean;
   workflowOpen: boolean;
   onToggleWorkflow: () => void;
   onAdd: () => void;
@@ -97,9 +99,9 @@ export function TaskToolbar({
             </button>
           )}
 
-          <button type="button" className="btn" onClick={onAdd}>
+          <button type="button" className="btn" onClick={onAdd} disabled={!canAdd}>
             <FiPlus size={14} />
-            Add work item
+            {canAdd ? "Add work item" : "No add access"}
           </button>
         </div>
       </div>

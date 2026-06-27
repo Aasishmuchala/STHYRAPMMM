@@ -65,7 +65,7 @@ const moduleStatusMeta: Record<ModuleStatus, { label: string; color: string }> =
   archived: { label: "Archived", color: "#94a3b8" },
 };
 type GroupBy = "none" | "project" | "division";
-type TabKey = "overview" | "work-items" | "cycles" | "modules";
+type TabKey = "overview" | "work-items" | "epics" | "cycles" | "modules";
 type DrawerState = { mode: "view"; task: BoardTask } | { mode: "create"; presetStatus: TaskStatus } | null;
 type StageDraft = { label: string; color: string; is_done: boolean };
 type DeleteStageState = {
@@ -107,6 +107,7 @@ export function TaskBoard({
   modules,
   currentUserId,
   canManageWorkflow,
+  canCreateTasks,
   initialDivision,
   activeProjectId,
   initialView = "board",
@@ -124,6 +125,7 @@ export function TaskBoard({
   modules: ModuleOpt[];
   currentUserId: string;
   canManageWorkflow: boolean;
+  canCreateTasks: boolean;
   initialDivision?: string;
   activeProjectId: string | null;
   initialView?: "board" | "list";
@@ -249,7 +251,14 @@ export function TaskBoard({
     ),
     [boardTasks, divFilter, asgFilter, typeFilter, cycleFilter, moduleFilter, mineOnly, currentUserId]
   );
+  const boardWorkItems = useMemo(() => boardTasks.filter((task) => task.item_type !== "epic"), [boardTasks]);
+  const filteredBoardItems = useMemo(() => filtered.filter((task) => task.item_type !== "epic"), [filtered]);
+  const filteredEpics = useMemo(() => filtered.filter((task) => task.item_type === "epic"), [filtered]);
   const epicOptions = useMemo(() => boardTasks.filter((task) => task.item_type === "epic"), [boardTasks]);
+
+  function canMoveTask(task: BoardTask) {
+    return canManageWorkflow || task.assignee_id === currentUserId;
+  }
 
   function groupItems(items: BoardTask[]) {
     if (groupBy === "none") return [{ name: "", items }];
@@ -294,6 +303,14 @@ export function TaskBoard({
 
   function handleTaskDrop(status: TaskStatus, taskId: string) {
     const previousTasks = boardTasks;
+    const task = boardTasks.find((item) => item.id === taskId);
+    if (!task || !canMoveTask(task)) {
+      setBoardError("You can only move tasks assigned to you.");
+      setDraggingId(null);
+      setDragSourceStatus(null);
+      setDragOverCol(null);
+      return;
+    }
     setBoardError(null);
     setDraggingId(null);
     setDragSourceStatus(null);
@@ -543,12 +560,12 @@ export function TaskBoard({
   }
 
   const summary = {
-    filtered: filtered.length,
-    openItems: boardTasks.filter((task) => !stageList.find((stage) => stage.id === task.status)?.is_done).length,
-    doneItems: boardTasks.filter((task) => stageList.find((stage) => stage.id === task.status)?.is_done).length,
+    filtered: filteredBoardItems.length,
+    openItems: boardWorkItems.filter((task) => !stageList.find((stage) => stage.id === task.status)?.is_done).length,
+    doneItems: boardWorkItems.filter((task) => stageList.find((stage) => stage.id === task.status)?.is_done).length,
     epics: boardTasks.filter((task) => task.item_type === "epic").length,
-    bugs: boardTasks.filter((task) => task.item_type === "bug").length,
-    overdue: boardTasks.filter((task) => {
+    bugs: boardWorkItems.filter((task) => task.item_type === "bug").length,
+    overdue: boardWorkItems.filter((task) => {
       if (!task.due_date) return false;
       const isDone = stageList.find((stage) => stage.id === task.status)?.is_done;
       return !isDone && new Date(task.due_date).getTime() < today.getTime();
@@ -563,11 +580,16 @@ export function TaskBoard({
     const PriorityIcon = priority.Icon;
     const displayKey = getTaskDisplayKey(task);
     const contextLabel = getTaskContextLabel(task);
+    const draggable = canMoveTask(task);
     return (
       <article
         className={`task-card ${draggingId === task.id ? "dragging" : ""}`}
-        draggable
+        draggable={draggable}
         onDragStart={(event) => {
+          if (!draggable) {
+            event.preventDefault();
+            return;
+          }
           justDraggedRef.current = true;
           setDraggingId(task.id);
           setDragSourceStatus(task.status);
@@ -626,7 +648,7 @@ export function TaskBoard({
               </span>
             )}
           </div>
-          <span className="task-priority-icon" title={priority.label} aria-label={priority.label} style={{ ["--priority-color" as string]: priority.color }}>
+            <span className="task-priority-icon" title={priority.label} aria-label={priority.label} style={{ ["--priority-color" as string]: priority.color }}>
             <PriorityIcon size={16} />
           </span>
         </div>
@@ -999,7 +1021,7 @@ export function TaskBoard({
         </section>
       )}
 
-      {activeTab === "work-items" && (
+      {(activeTab === "work-items" || activeTab === "epics") && (
         <>
           <TaskToolbar
             view={viewMode}
@@ -1023,9 +1045,13 @@ export function TaskBoard({
             cycles={cycleList}
             modules={moduleList}
             canManageWorkflow={canManageWorkflow}
+            canAdd={canCreateTasks}
             workflowOpen={workflowOpen}
             onToggleWorkflow={() => setWorkflowOpen((value) => !value)}
-            onAdd={() => setDrawer({ mode: "create", presetStatus: defaultCreateStage })}
+            onAdd={() => {
+              if (!canCreateTasks) return;
+              setDrawer({ mode: "create", presetStatus: defaultCreateStage });
+            }}
           />
 
           {canManageWorkflow && workflowOpen && (
@@ -1129,13 +1155,24 @@ export function TaskBoard({
             </section>
           )}
 
-          {viewMode === "list" ? (
-            <TaskListView tasks={filtered} stages={stageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
+          {activeTab === "epics" ? (
+            <section className="tasks-panel" aria-label="Epic list">
+              <div className="tasks-panel-head">
+                <div>
+                  <div className="workspace-tag">Epics</div>
+                  <h3>Planning items stay out of the Kanban</h3>
+                  <p className="tasks-panel-copy">Epics are listed separately so the board stays focused on execution-level work items.</p>
+                </div>
+              </div>
+              <TaskListView tasks={filteredEpics} stages={stageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
+            </section>
+          ) : viewMode === "list" ? (
+            <TaskListView tasks={filteredBoardItems} stages={stageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
           ) : (
             <div className="board-scroll">
               <div className="tasks-board-grid" style={{ gridTemplateColumns: `repeat(${stageList.length}, minmax(252px, 1fr))` }}>
                 {stageList.map((stage) => {
-                  const items = filtered.filter((task) => task.status === stage.id);
+                  const items = filteredBoardItems.filter((task) => task.status === stage.id);
                   const groups = groupItems(items);
                   const StageIcon = getTaskStageIcon(stage);
                   return (
@@ -1226,6 +1263,8 @@ export function TaskBoard({
           stages={stageList}
           onClose={() => setDrawer(null)}
           lockedProjectId={activeProjectId}
+          canManageTask={canManageWorkflow}
+          canMoveTask={drawer.mode === "view" ? canMoveTask(drawer.task) : canCreateTasks}
         />
       )}
 

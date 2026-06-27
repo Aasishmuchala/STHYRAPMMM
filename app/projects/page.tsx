@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { ProjectsView } from "@/components/projects/ProjectsView";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
@@ -41,12 +42,14 @@ export default async function ProjectsPage() {
     supabase.from("tasks").select("project_id").is("deleted_at", null),
   ]);
 
-  const isOwner = profile?.global_role === "owner";
-  const canSeeFinances = isOwner || (memberships ?? []).some((m) => m.role === "lead");
+  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
+  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  if (!access.isSuperAdmin && access.workspaceDivisionIds.size === 0) redirect("/");
+  const canSeeFinances = access.canSeeFinances;
   const divs: DivisionOpt[] = (divisions ?? []).map((d) => ({ id: d.id, slug: d.slug, name: d.name }));
-  const creatableDivisions = isOwner
+  const creatableDivisions = access.isSuperAdmin
     ? divs
-    : divs.filter((division) => (memberships ?? []).some((membership) => membership.role === "lead" && membership.division_id === division.id));
+    : divs.filter((division) => access.manageableDivisionIds.has(division.id));
   const manageableDivisionIds = creatableDivisions.map((division) => division.id);
   const taskCounts = new Map<string, number>();
   for (const row of taskRows ?? []) {
@@ -57,7 +60,7 @@ export default async function ProjectsPage() {
   let members: { id: string; name: string; email: string | null }[] = [];
   let divisionMemberships: DivisionMembershipRow[] = [];
   if (canSeeFinances) {
-    const membershipQuery = isOwner
+    const membershipQuery = access.isSuperAdmin
       ? supabase.from("division_members").select("user_id,division_id,role")
       : manageableDivisionIds.length > 0
         ? supabase.from("division_members").select("user_id,division_id,role").in("division_id", manageableDivisionIds)
@@ -93,7 +96,7 @@ export default async function ProjectsPage() {
   });
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
       <main>
         <header className="projects-page-head">
           <div>
@@ -104,9 +107,9 @@ export default async function ProjectsPage() {
         </header>
         <ProjectsView
           projects={projects}
-          canManageProjects={canSeeFinances}
+          canManageProjects={access.isSuperAdmin || access.manageableDivisionIds.size > 0}
           creatableDivisions={creatableDivisions}
-          isOwner={isOwner}
+          isOwner={access.isSuperAdmin}
           members={members}
           divisionMemberships={divisionMemberships}
         />

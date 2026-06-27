@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { ClientsView } from "@/components/clients/ClientsView";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Client } from "@/lib/clients-types";
@@ -19,25 +20,28 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
 
   const [{ data: profile }, { data: memberships }, { data: divisions }, { data: rows }] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role").eq("user_id", user.id),
+    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("clients").select("id,division_id,name,contact_name,email,phone,stage,value_paise,note,divisions(name,slug)").is("deleted_at", null).order("value_paise", { ascending: false }).returns<Row[]>(),
   ]);
 
-  const isOwner = profile?.global_role === "owner";
-  const canSeeFinances = isOwner || (memberships ?? []).some((m) => m.role === "lead");
-  if (!canSeeFinances) redirect("/");
+  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
+  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  if (!access.canSeeFinances) redirect("/");
 
   const clients: Client[] = (rows ?? []).map((r) => ({
     ...r, division_name: r.divisions?.name ?? "", division_slug: r.divisions?.slug ?? "",
-  }));
-  const divs: DivisionOpt[] = (divisions ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
+  })).filter((client) => access.isSuperAdmin || access.financeDivisionIds.has(client.division_id));
+  const divs: DivisionOpt[] = (divisions ?? [])
+    .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
+    .filter((division) => access.isSuperAdmin || access.financeDivisionIds.has(division.id));
 
   return (
     <AppShell
       divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))}
-      canSeeFinances={canSeeFinances}
-      isOwner={isOwner}
+      canSeeFinances={access.canSeeFinances}
+      canSeePeople={access.canSeePeople}
+      isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
     >
       <main>

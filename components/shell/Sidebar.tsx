@@ -20,11 +20,13 @@ const divisionMeta: Record<string, { Icon: (p: { size?: number }) => React.React
 export function Sidebar({
   divisions,
   canSeeFinances,
+  canSeePeople = canSeeFinances,
   isOwner = false,
   onNavigate,
 }: {
   divisions: Nav[];
   canSeeFinances: boolean;
+  canSeePeople?: boolean;
   isOwner?: boolean;
   onNavigate?: () => void;
 }) {
@@ -57,7 +59,7 @@ export function Sidebar({
         <Link href="/projects" onClick={onNavigate} className={`nav-item ${active("/projects") ? "active" : ""}`} aria-current={active("/projects") ? "page" : undefined}>
           <IconLayers size={16} />Projects
         </Link>
-        {canSeeFinances && (
+        {canSeePeople && (
           <Link href="/people" onClick={onNavigate} className={`nav-item ${active("/people") ? "active" : ""}`} aria-current={active("/people") ? "page" : undefined}>
             <IconPeople size={16} />People
           </Link>

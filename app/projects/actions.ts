@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { loadUserWorkspaceAccess, canManageDivision } from "@/lib/server-access";
 import { DEFAULT_TASK_STAGES } from "@/lib/tasks-types";
 
 type Result =
@@ -25,18 +26,11 @@ async function currentUser() {
 }
 
 async function projectAccess(supabase: SupabaseClient<any, any, any>, userId: string, divisionId: string) {
-  const { data: profile } = await supabase.from("profiles").select("global_role").eq("id", userId).maybeSingle();
-  const isOwner = profile?.global_role === "owner";
-  if (isOwner) return { canManage: true, isOwner: true };
-
-  const { data: membership } = await supabase
-    .from("division_members")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("division_id", divisionId)
-    .eq("role", "lead")
-    .maybeSingle();
-  return { canManage: Boolean(membership), isOwner: false };
+  const { access } = await loadUserWorkspaceAccess(supabase, userId);
+  return {
+    canManage: canManageDivision(access, divisionId),
+    isOwner: access.isSuperAdmin || access.companyOwnerDivisionIds.has(divisionId),
+  };
 }
 
 async function ensureProjectLead(
@@ -58,11 +52,11 @@ async function ensureProjectLead(
   const memberName = profile.full_name ?? profile.email ?? "This member";
   if (!membership) {
     if (!actorIsOwner) {
-      return { error: "Only the owner can assign someone who is not already part of this division." };
+      return { error: "Only the super admin can assign someone who is not already part of this company." };
     }
     if (!promoteLead) {
       return {
-        error: `${memberName} is not in this division yet. Making them project lead will add them to this division as a lead and broaden their access.`,
+        error: `${memberName} is not in this company yet. Making them project lead will add them to this company as a lead and broaden their access.`,
         requiresLeadPromotion: true,
         memberName,
       };
@@ -78,7 +72,7 @@ async function ensureProjectLead(
 
   if (membership.role === "lead") return { ok: true };
   if (!actorIsOwner) {
-    return { error: "Only the owner can promote a member to lead. Pick an existing lead or ask the owner to confirm the promotion." };
+    return { error: "Only the super admin or company owner can promote a member to lead. Pick an existing lead or ask them to confirm the promotion." };
   }
 
   if (!promoteLead) {

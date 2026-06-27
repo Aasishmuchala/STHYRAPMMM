@@ -5,6 +5,11 @@ import { cookies } from "next/headers";
 import { createHmac } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  canAccessWorkspaceDivision,
+  canManageDivision,
+  loadUserWorkspaceAccess,
+} from "@/lib/server-access";
 import { createClient as createAuthClient } from "@supabase/supabase-js";
 import type {
   CycleOpt,
@@ -51,30 +56,13 @@ async function currentUser() {
   return { supabase, user };
 }
 
-async function isOwnerOrLead(supabase: SupabaseClient<any, any, any>, userId: string): Promise<boolean> {
-  const [{ data: profile }, { data: membership }] = await Promise.all([
-    supabase.from("profiles").select("global_role").eq("id", userId).maybeSingle(),
-    supabase.from("division_members").select("id").eq("user_id", userId).eq("role", "lead").maybeSingle(),
-  ]);
-  return profile?.global_role === "owner" || Boolean(membership);
-}
-
 async function canManageWorkflow(supabase: SupabaseClient<any, any, any>, userId: string, projectId: string | null): Promise<boolean> {
-  const { data: profile } = await supabase.from("profiles").select("global_role").eq("id", userId).maybeSingle();
-  if (profile?.global_role === "owner") return true;
   if (!projectId) return false;
 
   const { data: project } = await supabase.from("projects").select("division_id").eq("id", projectId).maybeSingle<{ division_id: string }>();
   if (!project?.division_id) return false;
-
-  const { data: membership } = await supabase
-    .from("division_members")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("division_id", project.division_id)
-    .eq("role", "lead")
-    .maybeSingle();
-  return Boolean(membership);
+  const { access } = await loadUserWorkspaceAccess(supabase, userId);
+  return canManageDivision(access, project.division_id);
 }
 
 async function resolveWorkflow(supabase: SupabaseClient<any, any, any>, projectId: string | null) {
@@ -270,11 +258,37 @@ function touchTaskPaths(projectId?: string | null) {
   if (projectId) revalidatePath(`/tasks?project=${projectId}`);
 }
 
+async function loadProjectDivisionId(
+  supabase: SupabaseClient<any, any, any>,
+  projectId: string | null | undefined
+): Promise<{ ok: true; divisionId: string | null } | { ok: false; error: string }> {
+  if (!projectId) return { ok: true, divisionId: null };
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("division_id")
+    .eq("id", projectId)
+    .is("deleted_at", null)
+    .maybeSingle<{ division_id: string }>();
+  if (error) return { ok: false, error: error.message };
+  if (!project) return { ok: false, error: "Project not found." };
+  return { ok: true, divisionId: project.division_id };
+}
+
 export async function createTask(input: TaskInput): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
   if (!input.title.trim()) return { error: "Title is required" };
   if (!input.division_id) return { error: "Pick a division" };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!canAccessWorkspaceDivision(access, input.division_id)) {
+    return { error: "You don't have access to create work in this company." };
+  }
+
+  const projectDivision = await loadProjectDivisionId(supabase, input.project_id);
+  if (!projectDivision.ok) return { error: projectDivision.error };
+  if (projectDivision.divisionId && projectDivision.divisionId !== input.division_id) {
+    return { error: "Pick a project that belongs to the same company." };
+  }
 
   const workflow = await resolveWorkflow(supabase, input.project_id);
   if ("error" in workflow) return { error: workflow.error || "Couldn't load this workflow." };
@@ -315,15 +329,28 @@ export async function createTask(input: TaskInput): Promise<Result> {
 export async function updateTask(id: string, input: Partial<TaskInput>): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
   const { data: existing, error: existingError } = await supabase
     .from("tasks")
-    .select("project_id,workflow_stage_id,item_type")
+    .select("division_id,project_id,workflow_stage_id,item_type")
     .eq("id", id)
-    .maybeSingle<{ project_id: string | null; workflow_stage_id: string | null; item_type: string | null }>();
+    .maybeSingle<{ division_id: string; project_id: string | null; workflow_stage_id: string | null; item_type: string | null }>();
   if (existingError) return { error: existingError.message };
   if (!existing) return { error: "Task not found." };
+  if (!canManageDivision(access, existing.division_id)) {
+    return { error: "Only the super admin, company owner, or lead can edit this work item." };
+  }
 
   const nextProjectId = input.project_id !== undefined ? input.project_id : existing.project_id;
+  const nextDivisionId = input.division_id ?? existing.division_id;
+  if (!canManageDivision(access, nextDivisionId)) {
+    return { error: "You don't have access to move this work item into that company." };
+  }
+  const projectDivision = await loadProjectDivisionId(supabase, nextProjectId);
+  if (!projectDivision.ok) return { error: projectDivision.error };
+  if (projectDivision.divisionId && projectDivision.divisionId !== nextDivisionId) {
+    return { error: "Pick a project that belongs to the same company." };
+  }
   const workflow = await resolveWorkflow(supabase, nextProjectId);
   if ("error" in workflow) return { error: workflow.error || "Couldn't load this workflow." };
 
@@ -367,13 +394,18 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
 export async function setTaskStatus(id: string, status: TaskStatus): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
   const { data: task, error: taskError } = await supabase
     .from("tasks")
-    .select("project_id")
+    .select("division_id,project_id,assignee_id")
     .eq("id", id)
-    .maybeSingle<{ project_id: string | null }>();
+    .maybeSingle<{ division_id: string; project_id: string | null; assignee_id: string | null }>();
   if (taskError) return { error: taskError.message };
   if (!task) return { error: "Task not found." };
+  const canManage = canManageDivision(access, task.division_id);
+  if (!canManage && task.assignee_id !== user.id) {
+    return { error: "You can only move work items assigned to you." };
+  }
 
   const workflow = await resolveWorkflow(supabase, task.project_id);
   if ("error" in workflow) return { error: workflow.error || "Couldn't load this workflow." };
@@ -499,7 +531,8 @@ export async function reorderTaskStages(projectId: string | null, stageIds: stri
 export async function requestTaskStageDeletionApproval(password: string): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
-  if (!(await isOwnerOrLead(supabase, user.id))) return { error: "Only owners and leads can edit the workflow." };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!access.canManageTeams) return { error: "Only the super admin, company owner, or a lead can edit the workflow." };
 
   const trimmedPassword = password.trim();
   if (!trimmedPassword) return { error: "Enter your account password to continue." };
@@ -571,8 +604,13 @@ export async function deleteTaskStage(input: {
 export async function deleteTask(id: string): Promise<Result> {
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
-  const { data: task, error: taskError } = await supabase.from("tasks").select("project_id").eq("id", id).maybeSingle<{ project_id: string | null }>();
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  const { data: task, error: taskError } = await supabase.from("tasks").select("division_id,project_id").eq("id", id).maybeSingle<{ division_id: string; project_id: string | null }>();
   if (taskError) return { error: taskError.message };
+  if (!task) return { error: "Task not found." };
+  if (!canManageDivision(access, task.division_id)) {
+    return { error: "Only the super admin, company owner, or lead can delete this work item." };
+  }
 
   const { error } = await supabase
     .from("tasks")

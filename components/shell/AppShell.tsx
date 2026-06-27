@@ -9,10 +9,11 @@ import { AiDrawerHost } from "./AiDrawerHost";
 type Nav = { slug: string; name: string };
 
 export function AppShell({
-  divisions, canSeeFinances, isOwner = false, initials, children,
+  divisions, canSeeFinances, canSeePeople = canSeeFinances, isOwner = false, initials, children,
 }: {
   divisions: Nav[];
   canSeeFinances: boolean;
+  canSeePeople?: boolean;
   isOwner?: boolean;
   initials: string;
   children: React.ReactNode;
@@ -28,7 +29,7 @@ export function AppShell({
 
   return (
     <div className={`app${navOpen ? " nav-open" : ""}`}>
-      <Sidebar divisions={divisions} canSeeFinances={canSeeFinances} isOwner={isOwner} onNavigate={() => setNavOpen(false)} />
+      <Sidebar divisions={divisions} canSeeFinances={canSeeFinances} canSeePeople={canSeePeople} isOwner={isOwner} onNavigate={() => setNavOpen(false)} />
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <div>
         <TopBar initials={initials} canSeeFinances={canSeeFinances} onMenu={() => setNavOpen((v) => !v)} />

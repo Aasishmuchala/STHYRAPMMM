@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { canAccessFinanceDivision, loadUserWorkspaceAccess } from "@/lib/server-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RecurringCadence, RecurringKind, RecurringStatus } from "@/lib/recurring";
 
@@ -73,6 +74,45 @@ function normalizeRecurring(input: RecurringInput): RecurringInput | { error: st
   };
 }
 
+async function requireFinanceAccess(supabase: SupabaseClient<any, any, any>, userId: string, divisionId: string) {
+  const { access } = await loadUserWorkspaceAccess(supabase, userId);
+  if (!canAccessFinanceDivision(access, divisionId)) {
+    return { error: "You don't have finance access for this company." } as const;
+  }
+  return { ok: true } as const;
+}
+
+async function requireProjectDivisionMatch(
+  supabase: SupabaseClient<any, any, any>,
+  projectId: string | null,
+  divisionId: string
+) {
+  if (!projectId) return { ok: true } as const;
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("division_id")
+    .eq("id", projectId)
+    .is("deleted_at", null)
+    .maybeSingle<{ division_id: string }>();
+  if (error) return { error: error.message } as const;
+  if (!project) return { error: "Project not found." } as const;
+  if (project.division_id !== divisionId) {
+    return { error: "Pick a project that belongs to the same company." } as const;
+  }
+  return { ok: true } as const;
+}
+
+async function requireExistingFinanceRow(
+  supabase: SupabaseClient<any, any, any>,
+  table: string,
+  id: string
+) {
+  const { data, error } = await supabase.from(table).select("division_id").eq("id", id).maybeSingle<{ division_id: string }>();
+  if (error) return { error: error.message } as const;
+  if (!data) return { error: "Record not found." } as const;
+  return { ok: true, divisionId: data.division_id } as const;
+}
+
 // ---------- TRANSACTIONS ----------
 export async function createTransaction(i: {
   division_id: string; project_id: string | null; kind: string; direction: string;
@@ -84,6 +124,10 @@ export async function createTransaction(i: {
   if (!user) return { error: "Not authenticated" };
   if (!i.division_id) return { error: "Pick a division" };
   if (!(i.amount_paise > 0)) return { error: "Amount must be greater than zero" };
+  const financeAccess = await requireFinanceAccess(supabase, user, i.division_id);
+  if ("error" in financeAccess) return financeAccess;
+  const projectScope = await requireProjectDivisionMatch(supabase, i.project_id, i.division_id);
+  if ("error" in projectScope) return projectScope;
   const { error } = await supabase.from("transactions").insert({
     division_id: i.division_id, project_id: i.project_id, kind: i.kind, direction: i.direction,
     amount_paise: i.amount_paise, category: i.category, status: i.status, occurred_on: i.occurred_on,
@@ -94,6 +138,12 @@ export async function createTransaction(i: {
 }
 export async function deleteTransaction(id: string): Promise<Result> {
   const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+  const row = await requireExistingFinanceRow(supabase, "transactions", id);
+  if ("error" in row) return row;
+  const financeAccess = await requireFinanceAccess(supabase, user, row.divisionId);
+  if ("error" in financeAccess) return financeAccess;
   const { error } = await supabase.from("transactions").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) return { error: error.message };
   return done();
@@ -110,6 +160,10 @@ export async function createInvoice(i: {
   if (!i.division_id) return { error: "Pick a division" };
   if (!i.number?.trim()) return { error: "Invoice number is required" };
   if (!(i.amount_paise > 0)) return { error: "Amount must be greater than zero" };
+  const financeAccess = await requireFinanceAccess(supabase, user, i.division_id);
+  if ("error" in financeAccess) return financeAccess;
+  const projectScope = await requireProjectDivisionMatch(supabase, i.project_id, i.division_id);
+  if ("error" in projectScope) return projectScope;
   const { error } = await supabase.from("invoices").insert({
     division_id: i.division_id, project_id: i.project_id, number: i.number, counterparty: i.counterparty,
     amount_paise: i.amount_paise, status: i.status, issued_on: i.issued_on, due_on: i.due_on, created_by: user,
@@ -119,6 +173,12 @@ export async function createInvoice(i: {
 }
 export async function setInvoiceStatus(id: string, status: string): Promise<Result> {
   const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+  const row = await requireExistingFinanceRow(supabase, "invoices", id);
+  if ("error" in row) return row;
+  const financeAccess = await requireFinanceAccess(supabase, user, row.divisionId);
+  if ("error" in financeAccess) return financeAccess;
   const patch: Record<string, unknown> = { status };
   if (status === "paid") patch.paid_on = new Date().toISOString().slice(0, 10);
   const { error } = await supabase.from("invoices").update(patch).eq("id", id);
@@ -127,6 +187,12 @@ export async function setInvoiceStatus(id: string, status: string): Promise<Resu
 }
 export async function deleteInvoice(id: string): Promise<Result> {
   const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+  const row = await requireExistingFinanceRow(supabase, "invoices", id);
+  if ("error" in row) return row;
+  const financeAccess = await requireFinanceAccess(supabase, user, row.divisionId);
+  if ("error" in financeAccess) return financeAccess;
   const { error } = await supabase.from("invoices").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) return { error: error.message };
   return done();
@@ -141,6 +207,8 @@ export async function createBomItem(i: {
   const user = await uid(supabase);
   if (!user) return { error: "Not authenticated" };
   if (!i.item?.trim()) return { error: "Item name is required" };
+  const financeAccess = await requireFinanceAccess(supabase, user, i.division_id);
+  if ("error" in financeAccess) return financeAccess;
   const { error } = await supabase.from("bom_items").insert({
     division_id: i.division_id, item: i.item, qty: i.qty, unit: i.unit,
     unit_cost_paise: i.unit_cost_paise, category: i.category, vendor: i.vendor, created_by: user,
@@ -150,6 +218,12 @@ export async function createBomItem(i: {
 }
 export async function deleteBomItem(id: string): Promise<Result> {
   const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+  const row = await requireExistingFinanceRow(supabase, "bom_items", id);
+  if ("error" in row) return row;
+  const financeAccess = await requireFinanceAccess(supabase, user, row.divisionId);
+  if ("error" in financeAccess) return financeAccess;
   const { error } = await supabase.from("bom_items").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) return { error: error.message };
   return done();
@@ -165,6 +239,10 @@ export async function createRaBill(i: {
   if (!user) return { error: "Not authenticated" };
   if (!i.division_id) return { error: "Pick a division" };
   if (!(i.sequence > 0)) return { error: "Sequence must be a positive number" };
+  const financeAccess = await requireFinanceAccess(supabase, user, i.division_id);
+  if ("error" in financeAccess) return financeAccess;
+  const projectScope = await requireProjectDivisionMatch(supabase, i.project_id, i.division_id);
+  if ("error" in projectScope) return projectScope;
   const { error } = await supabase.from("ra_bills").insert({
     division_id: i.division_id, project_id: i.project_id, sequence: i.sequence, period: i.period,
     gross_paise: i.gross_paise, deduction_paise: i.deduction_paise, status: i.status, certified_on: i.certified_on, created_by: user,
@@ -174,6 +252,12 @@ export async function createRaBill(i: {
 }
 export async function deleteRaBill(id: string): Promise<Result> {
   const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+  const row = await requireExistingFinanceRow(supabase, "ra_bills", id);
+  if ("error" in row) return row;
+  const financeAccess = await requireFinanceAccess(supabase, user, row.divisionId);
+  if ("error" in financeAccess) return financeAccess;
   const { error } = await supabase.from("ra_bills").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) return { error: error.message };
   return done();
@@ -187,6 +271,10 @@ export async function createRecurringPayment(input: RecurringInput): Promise<Res
 
   const normalized = normalizeRecurring(input);
   if ("error" in normalized) return normalized;
+  const financeAccess = await requireFinanceAccess(supabase, user, normalized.division_id);
+  if ("error" in financeAccess) return financeAccess;
+  const projectScope = await requireProjectDivisionMatch(supabase, normalized.project_id, normalized.division_id);
+  if ("error" in projectScope) return projectScope;
 
   const { error } = await supabase.from("recurring_payments").insert({
     ...normalized,
@@ -199,8 +287,18 @@ export async function createRecurringPayment(input: RecurringInput): Promise<Res
 
 export async function updateRecurringPayment(id: string, input: RecurringInput): Promise<Result> {
   const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
   const normalized = normalizeRecurring(input);
   if ("error" in normalized) return normalized;
+  const existing = await requireExistingFinanceRow(supabase, "recurring_payments", id);
+  if ("error" in existing) return existing;
+  const currentAccess = await requireFinanceAccess(supabase, user, existing.divisionId);
+  if ("error" in currentAccess) return currentAccess;
+  const nextAccess = await requireFinanceAccess(supabase, user, normalized.division_id);
+  if ("error" in nextAccess) return nextAccess;
+  const projectScope = await requireProjectDivisionMatch(supabase, normalized.project_id, normalized.division_id);
+  if ("error" in projectScope) return projectScope;
 
   const { error } = await supabase.from("recurring_payments").update({
     ...normalized,
@@ -212,6 +310,12 @@ export async function updateRecurringPayment(id: string, input: RecurringInput):
 
 export async function deleteRecurringPayment(id: string): Promise<Result> {
   const supabase = await db();
+  const user = await uid(supabase);
+  if (!user) return { error: "Not authenticated" };
+  const row = await requireExistingFinanceRow(supabase, "recurring_payments", id);
+  if ("error" in row) return row;
+  const financeAccess = await requireFinanceAccess(supabase, user, row.divisionId);
+  if ("error" in financeAccess) return financeAccess;
   const today = new Date().toISOString().slice(0, 10);
   const { error } = await supabase.from("recurring_payments").update({
     deleted_at: new Date().toISOString(),
@@ -240,6 +344,10 @@ export async function importTransactionsCsv(fileName: string, rows: CsvTransacti
 
   const divisionIds = [...new Set(rows.map((row) => row.division_id))];
   const projectIds = [...new Set(rows.map((row) => row.project_id).filter((projectId): projectId is string => Boolean(projectId)))];
+  for (const divisionId of divisionIds) {
+    const financeAccess = await requireFinanceAccess(supabase, user, divisionId);
+    if ("error" in financeAccess) return { error: financeAccess.error ?? "You don't have finance access for this company." };
+  }
 
   const [{ data: divisions, error: divisionError }, { data: projects, error: projectError }] = await Promise.all([
     supabase.from("divisions").select("id").in("id", divisionIds),

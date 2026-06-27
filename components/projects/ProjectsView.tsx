@@ -216,8 +216,8 @@ export function ProjectsView({
           </div>
           <div className="projects-section-note">
           {canManageProjects
-            ? "Each project still gets its own workflow automatically. Lead assignment here can also widen access when the owner confirms a promotion."
-            : "Owners and leads create projects. Members can still open any existing board and work inside it."}
+            ? "Each project still gets its own workflow automatically. Lead assignment here can also widen access when the super admin or company owner confirms a promotion."
+            : "Company owners and leads create projects. Members can still open any existing board and work inside it."}
           </div>
           {canManageProjects ? (
             <form onSubmit={submit} className="projects-create-form">
@@ -266,7 +266,7 @@ export function ProjectsView({
               </div>
             </form>
           ) : (
-            <div className="workflow-panel-copy" style={{ fontSize: 13 }}>Project planning stays editable only for leads and the owner, but members still have full board access inside each project.</div>
+            <div className="workflow-panel-copy" style={{ fontSize: 13 }}>Project planning stays editable only for company owners and leads, but members still have full board access inside each project.</div>
           )}
         </section>
 

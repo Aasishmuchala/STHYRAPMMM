@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { buildWorkspaceAccess } from "@/lib/access";
 import type { TaskPriority } from "@/lib/tasks-types";
 
 // NOTE: @supabase/supabase-js (this version) infers `never` for `.select()` result rows even
@@ -55,9 +56,9 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
 
   const openTasks = (tasks ?? []).filter((task) => !task.stage?.is_done);
 
-  const isOwner = profile?.global_role === "owner";
-  const isLeadAnywhere = isOwner || (memberships ?? []).some((m) => m.role === "lead");
-  const canSeeFinances = isLeadAnywhere;
+  const access = buildWorkspaceAccess(profile?.global_role, (memberships ?? []) as { division_id: string; role: string }[]);
+  const isOwner = access.isSuperAdmin;
+  const canSeeFinances = access.canSeeFinances;
 
   const T = txns ?? [];
   const moneyIn = sum(T.filter((t) => t.direction === "in").map((t) => t.amount_paise));
@@ -75,7 +76,9 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
   const activeProjByDiv = countBy((projects ?? []).filter((p) => p.status === "active").map((p) => p.division_id));
   const openTaskByDiv = countBy(openTasks.map((task) => task.division_id));
 
-  const divisionHealth = (divisions ?? []).map((d) => {
+  const divisionHealth = (divisions ?? [])
+    .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id))
+    .map((d) => {
     const rev = revByDiv.get(d.id) ?? 0;
     return {
       slug: d.slug,
@@ -86,7 +89,7 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
       openTasks: openTaskByDiv.get(d.id) ?? 0,
       canSeeFinances,
     };
-  });
+    });
 
   const myTasks = openTasks.slice(0, 6).map((t) => ({
     id: t.id,
@@ -118,7 +121,9 @@ export async function getDashboard(supabase: DB, today: Date, userId: string) {
     profile: profile ?? null,
     isOwner,
     canSeeFinances,
-    navDivisions: (divisions ?? []).map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") })),
+    navDivisions: (divisions ?? [])
+      .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id))
+      .map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") })),
     finance: { moneyIn, moneyOut, owed, margin, overdueCount: overdue.length },
     divisionHealth,
     myTasks,

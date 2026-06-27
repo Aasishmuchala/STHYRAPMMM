@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { PeopleView } from "@/components/people/PeopleView";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Person, PersonMembership, PersonDaily, PersonTask } from "@/components/people/types";
@@ -31,9 +32,9 @@ export default async function PeoplePage({
     supabase.from("division_members").select("id,user_id,division_id,role,divisions(name,slug)"),
   ]);
 
-  const isOwner = profile?.global_role === "owner";
-  const canSeeFinances = isOwner || (memberships ?? []).some((m) => m.role === "lead");
-  if (!canSeeFinances) redirect("/");
+  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
+  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  if (!access.canSeePeople) redirect("/");
 
   // Build membership lookup keyed by user_id
   const membershipsByUser = new Map<string, PersonMembership[]>();
@@ -138,8 +139,9 @@ export default async function PeoplePage({
   return (
     <AppShell
       divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))}
-      canSeeFinances={canSeeFinances}
-      isOwner={isOwner}
+      canSeeFinances={access.canSeeFinances}
+      canSeePeople={access.canSeePeople}
+      isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
     >
       <main>

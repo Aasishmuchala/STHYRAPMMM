@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { PageHeader, Button } from "@/components/ui";
 import { initials } from "@/lib/format";
 import { DEFAULT_TASK_STAGES } from "@/lib/tasks-types";
@@ -30,12 +31,14 @@ type TaskJoinRow = {
   division_id: string;
   project_id: string | null;
   assignee_id: string | null;
+  created_by: string | null;
   cycle_id: string | null;
   module_id: string | null;
   parent_task_id: string | null;
   divisions: { name: string; slug: string } | null;
   projects: { name: string } | null;
   assignee: { full_name: string | null } | null;
+  creator: { full_name: string | null } | null;
   cycle: { name: string | null } | null;
   module: { name: string | null } | null;
 };
@@ -84,8 +87,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     supabase.from("profiles").select("id,full_name").eq("is_active", true),
   ]);
 
-  const divs: DivisionOpt[] = (divisions ?? []).map((d) => ({ id: d.id, slug: d.slug, name: d.name }));
-  const projects: ProjectOpt[] = (projectRows ?? []).map((p) => ({ id: p.id, name: p.name, division_id: p.division_id }));
+  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
+  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  if (!access.isSuperAdmin && access.workspaceDivisionIds.size === 0) redirect("/");
+  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id));
+  const projects: ProjectOpt[] = ((projectRows ?? []) as ProjectOpt[])
+    .filter((p) => access.isSuperAdmin || access.workspaceDivisionIds.has(p.division_id))
+    .map((p) => ({ id: p.id, name: p.name, division_id: p.division_id }));
   const members: MemberOpt[] = (memberRows ?? []).map((m) => ({ id: m.id, name: m.full_name ?? "Unknown" }));
 
   const selectedProjectId = projects.find((p) => p.id === sp.project)?.id ?? projects[0]?.id ?? null;
@@ -101,7 +109,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     ? await Promise.all([
         supabase
           .from("tasks")
-          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),cycle:project_cycles(name),module:project_modules(name)")
+          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name)")
           .eq("project_id", selectedProjectId)
           .is("deleted_at", null)
           .order("due_date", { nullsFirst: false })
@@ -156,13 +164,12 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   }
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
-  const isOwner = profile?.global_role === "owner";
-  const canSeeFinances = isOwner || (memberships ?? []).some((membership) => membership.role === "lead");
-  const canManageWorkflow = isOwner || (
+  const canManageWorkflow = access.isSuperAdmin || (
     selectedProject
-      ? (memberships ?? []).some((membership) => membership.role === "lead" && membership.division_id === selectedProject.division_id)
+      ? access.manageableDivisionIds.has(selectedProject.division_id)
       : false
   );
+  const canCreateTasks = access.isSuperAdmin || access.workspaceDivisionIds.size > 0;
 
   const tasks: BoardTask[] = (taskRes.data ?? []).map((r) => ({
     id: r.id,
@@ -179,6 +186,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     project_name: r.projects?.name ?? null,
     assignee_id: r.assignee_id,
     assignee_name: r.assignee?.full_name ?? null,
+    created_by: r.created_by,
+    created_by_name: r.creator?.full_name ?? null,
     cycle_id: r.cycle_id,
     cycle_name: r.cycle?.name ?? null,
     module_id: r.module_id,
@@ -199,14 +208,17 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   }));
 
   const stages = (stageRes.data?.length ? stageRes.data : DEFAULT_TASK_STAGES).slice().sort((a, b) => a.position - b.position);
-  const tab = sp.tab === "overview" || sp.tab === "cycles" || sp.tab === "modules" ? sp.tab : "work-items";
+  const tab = sp.tab === "overview" || sp.tab === "epics" || sp.tab === "cycles" || sp.tab === "modules" ? sp.tab : "work-items";
   const workItemsHref = buildTaskHref(sp, { tab: "work-items", cycle: null, module: null });
+  const epicsHref = buildTaskHref(sp, { tab: "epics", cycle: null, module: null });
   const overviewHref = buildTaskHref(sp, { tab: "overview", cycle: null, module: null });
   const cyclesHref = buildTaskHref(sp, { tab: "cycles", module: null });
   const modulesHref = buildTaskHref(sp, { tab: "modules", cycle: null });
+  const epicCount = tasks.filter((task) => task.item_type === "epic").length;
+  const boardCount = tasks.filter((task) => task.item_type !== "epic").length;
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
       <main className="tasks-main">
         <PageHeader
           eyebrow="Tasks"
@@ -217,7 +229,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           breadcrumbs={selectedProject ? [{ label: "Projects", href: "/projects" }, { label: selectedProject.name }] : undefined}
           tabs={selectedProject ? [
             { label: "Overview", href: overviewHref, active: tab === "overview" },
-            { label: "Work items", href: workItemsHref, active: tab === "work-items", count: tasks.length },
+            { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
+            { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
             { label: "Cycles", href: cyclesHref, active: tab === "cycles", count: cycles.length },
             { label: "Modules", href: modulesHref, active: tab === "modules", count: modules.length },
           ] : undefined}
@@ -235,6 +248,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           modules={modules}
           currentUserId={user.id}
           canManageWorkflow={canManageWorkflow}
+          canCreateTasks={canCreateTasks}
           initialDivision={divs.find((d) => d.slug === sp.div)?.slug}
           activeProjectId={selectedProjectId}
           initialView={sp.view === "list" ? "list" : "board"}

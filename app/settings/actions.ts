@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeAccentHex } from "@/lib/appearance";
+import { loadUserWorkspaceAccess, canManageDivision } from "@/lib/server-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Result = { ok: true } | { error: string };
@@ -20,24 +21,19 @@ async function currentUser() {
   return { supabase, user };
 }
 
-async function membershipAccess(supabase: SupabaseClient<any, any, any>, userId: string) {
-  const [{ data: profile }, { data: memberships }] = await Promise.all([
-    supabase.from("profiles").select("global_role").eq("id", userId).maybeSingle(),
-    supabase.from("division_members").select("division_id,role").eq("user_id", userId),
-  ]);
-  const isOwner = profile?.global_role === "owner";
-  const leadDivisionIds = new Set(
-    (memberships ?? [])
-      .filter((membership) => membership.role === "lead")
-      .map((membership) => membership.division_id)
-  );
-  return { isOwner, leadDivisionIds };
-}
-
 function done(): Result {
   revalidatePath("/settings");
   revalidatePath("/");
   return { ok: true };
+}
+
+function normalizeDivisionSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
 }
 
 export async function saveAppearance(
@@ -105,12 +101,15 @@ export async function addMembership(userId: string, divisionId: string, role: st
   const { supabase, user } = await currentUser();
   if (!user) return { error: "Not authenticated" };
   if (!userId || !divisionId) return { error: "Pick a member and a division" };
-  const access = await membershipAccess(supabase, user.id);
-  if (!access.isOwner && !access.leadDivisionIds.has(divisionId)) {
-    return { error: "Only the owner or that division's lead can add members here." };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!canManageDivision(access, divisionId)) {
+    return { error: "Only the super admin, company owner, or that division's lead can add members here." };
   }
-  if (!access.isOwner && role === "lead") {
-    return { error: "Only the owner can grant lead access." };
+  if (!access.isSuperAdmin && role === "owner") {
+    return { error: "Only the super admin can assign a company owner." };
+  }
+  if (!access.isSuperAdmin && role === "lead" && !access.companyOwnerDivisionIds.has(divisionId)) {
+    return { error: "Only the super admin or this company's owner can grant lead access." };
   }
   const { error } = await supabase.from("division_members").insert({ user_id: userId, division_id: divisionId, role });
   if (error) return { error: error.message };
@@ -128,17 +127,37 @@ export async function removeMembership(id: string): Promise<Result> {
   if (membershipError) return { error: membershipError.message };
   if (!membership) return { error: "Membership not found." };
 
-  const access = await membershipAccess(supabase, user.id);
-  if (!access.isOwner) {
-    if (!access.leadDivisionIds.has(membership.division_id)) {
-      return { error: "Only the owner or that division's lead can remove this membership." };
-    }
-    if (membership.role === "lead") {
-      return { error: "Only the owner can remove lead access." };
-    }
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!canManageDivision(access, membership.division_id)) {
+    return { error: "Only the super admin, company owner, or that division's lead can remove this membership." };
+  }
+  if (!access.isSuperAdmin && membership.role === "owner") {
+    return { error: "Only the super admin can remove a company owner." };
+  }
+  if (!access.isSuperAdmin && membership.role === "lead" && !access.companyOwnerDivisionIds.has(membership.division_id)) {
+    return { error: "Only the super admin or this company's owner can remove lead access." };
   }
 
   const { error } = await supabase.from("division_members").delete().eq("id", id);
+  if (error) return { error: error.message };
+  return done();
+}
+
+export async function createDivision(name: string, slug: string): Promise<Result> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!access.isSuperAdmin) {
+    return { error: "Only the super admin can create a company." };
+  }
+
+  const cleanName = name.trim();
+  const cleanSlug = normalizeDivisionSlug(slug || name);
+  if (!cleanName) return { error: "Company name is required." };
+  if (!cleanSlug) return { error: "Use letters or numbers for the company slug." };
+
+  const { error } = await supabase.from("divisions").insert({ name: cleanName, slug: cleanSlug });
   if (error) return { error: error.message };
   return done();
 }

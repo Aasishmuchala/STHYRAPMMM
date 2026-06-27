@@ -43,6 +43,8 @@ export type BoardTask = {
   project_name: string | null;
   assignee_id: string | null;
   assignee_name: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
   cycle_id: string | null;
   cycle_name: string | null;
   module_id: string | null;

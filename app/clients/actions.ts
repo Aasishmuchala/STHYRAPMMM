@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { canAccessFinanceDivision, loadUserWorkspaceAccess } from "@/lib/server-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -23,6 +24,10 @@ export async function addClient(input: {
   if (!user) return { error: "Not authenticated" };
   if (!input.name?.trim()) return { error: "Name is required." };
   if (!input.division_id) return { error: "Pick a division." };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!canAccessFinanceDivision(access, input.division_id)) {
+    return { error: "You don't have finance access for this company." };
+  }
   const { error } = await supabase.from("clients").insert({
     division_id: input.division_id,
     name: input.name.trim().slice(0, 200),
@@ -43,6 +48,15 @@ export async function addClient(input: {
 export async function setClientStage(id: string, stage: string): Promise<Result> {
   if (!STAGES.includes(stage)) return { error: "Invalid stage." };
   const supabase = await db();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  const { data: client, error: readError } = await supabase.from("clients").select("division_id").eq("id", id).maybeSingle<{ division_id: string }>();
+  if (readError) return { error: readError.message };
+  if (!client) return { error: "Client not found." };
+  if (!canAccessFinanceDivision(access, client.division_id)) {
+    return { error: "You don't have finance access for this company." };
+  }
   const { error } = await supabase.from("clients").update({ stage, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/clients");
@@ -51,6 +65,15 @@ export async function setClientStage(id: string, stage: string): Promise<Result>
 
 export async function deleteClient(id: string): Promise<Result> {
   const supabase = await db();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  const { data: client, error: readError } = await supabase.from("clients").select("division_id").eq("id", id).maybeSingle<{ division_id: string }>();
+  if (readError) return { error: readError.message };
+  if (!client) return { error: "Client not found." };
+  if (!canAccessFinanceDivision(access, client.division_id)) {
+    return { error: "You don't have finance access for this company." };
+  }
   const { error } = await supabase.from("clients").update({ deleted_at: new Date().toISOString() }).eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/clients");

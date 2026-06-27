@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { AiConsole, type Run, type Pending } from "@/components/ai/AiConsole";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,9 @@ export default async function AiPage() {
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle();
-  const isOwner = profile?.global_role === "owner";
+  const { data: memberships } = await supabase.from("division_members").select("role,division_id").eq("user_id", user.id);
+  const access = buildWorkspaceAccess(profile?.global_role, (memberships ?? []) as { role: string; division_id: string }[]);
+  const isOwner = access.isSuperAdmin;
   // The assistant reads the Vault key, which only the owner can decrypt. Keep it owner-scoped.
   if (!isOwner) redirect("/");
 
@@ -23,22 +26,18 @@ export default async function AiPage() {
   const todayStr = now.toISOString().slice(0, 10);
 
   const [
-    { data: memberships },
     { data: divisions },
     { data: runRows },
     { data: pendingRows },
     { data: monthRows },
     { data: keyStatus },
   ] = await Promise.all([
-    supabase.from("division_members").select("role").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("ai_runs").select("id,purpose,model,input_tokens,output_tokens,cost_inr,prompt,response,actions,status,error,created_at").order("created_at", { ascending: false }).limit(50).returns<Run[]>(),
     supabase.from("ai_pending_actions").select("id,kind,summary,payload,status,created_at").eq("status", "pending").order("created_at", { ascending: false }).returns<Pending[]>(),
     supabase.from("ai_runs").select("cost_inr,created_at").gte("created_at", monthStart),
     supabase.rpc("omega_key_status"),
   ]);
-
-  const canSeeFinances = isOwner || (memberships ?? []).some((m) => m.role === "lead");
 
   const month = (monthRows ?? []) as { cost_inr: number; created_at: string }[];
   const spendMonth = month.reduce((s, r) => s + Number(r.cost_inr || 0), 0);
@@ -51,7 +50,8 @@ export default async function AiPage() {
   return (
     <AppShell
       divisions={(divisions ?? []).map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))}
-      canSeeFinances={canSeeFinances}
+      canSeeFinances={access.canSeeFinances}
+      canSeePeople={access.canSeePeople}
       isOwner={isOwner}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
     >

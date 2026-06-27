@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { FinancesView } from "@/components/finances/FinancesView";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
 import type { Txn, Inv, Bom, Ra, EmployeeOption, RecurringPayment, FinanceImportBatch } from "@/lib/finances-types";
@@ -17,11 +18,11 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
 
   const [{ data: profile }, { data: memberships }] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role").eq("user_id", user.id),
+    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
   ]);
-  const isOwner = profile?.global_role === "owner";
-  const canSeeFinances = isOwner || (memberships ?? []).some((m: { role: string }) => m.role === "lead");
-  if (!canSeeFinances) redirect("/");
+  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
+  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  if (!access.canSeeFinances) redirect("/");
 
   const [
     { data: divisions }, { data: projectRows },
@@ -42,13 +43,25 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
   const dname = (d: Div) => d?.name ?? "";
   const dslug = (d: Div) => d?.slug ?? "";
 
-  const transactions: Txn[] = (txnRows ?? []).map((t) => ({ ...t, division_name: dname(t.divisions), division_slug: dslug(t.divisions), project_name: t.projects?.name ?? null }));
-  const invoices: Inv[] = (invRows ?? []).map((i) => ({ ...i, division_name: dname(i.divisions), division_slug: dslug(i.divisions) }));
-  const bom: Bom[] = (bomRows ?? []).map((b) => ({ ...b, division_name: dname(b.divisions), division_slug: dslug(b.divisions) }));
-  const ra: Ra[] = (raRows ?? []).map((r) => ({ ...r, division_name: dname(r.divisions), division_slug: dslug(r.divisions), project_name: r.projects?.name ?? null }));
+  const transactions: Txn[] = (txnRows ?? [])
+    .map((t) => ({ ...t, division_name: dname(t.divisions), division_slug: dslug(t.divisions), project_name: t.projects?.name ?? null }))
+    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
+  const invoices: Inv[] = (invRows ?? [])
+    .map((i) => ({ ...i, division_name: dname(i.divisions), division_slug: dslug(i.divisions) }))
+    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
+  const bom: Bom[] = (bomRows ?? [])
+    .map((b) => ({ ...b, division_name: dname(b.divisions), division_slug: dslug(b.divisions) }))
+    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
+  const ra: Ra[] = (raRows ?? [])
+    .map((r) => ({ ...r, division_name: dname(r.divisions), division_slug: dslug(r.divisions), project_name: r.projects?.name ?? null }))
+    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
 
-  const divs: DivisionOpt[] = (divisions ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
-  const projects: ProjectOpt[] = (projectRows ?? []).map((p: ProjectOpt) => ({ id: p.id, name: p.name, division_id: p.division_id }));
+  const divs: DivisionOpt[] = (divisions ?? [])
+    .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
+    .filter((division) => access.isSuperAdmin || access.financeDivisionIds.has(division.id));
+  const projects: ProjectOpt[] = (projectRows ?? [])
+    .map((p: ProjectOpt) => ({ id: p.id, name: p.name, division_id: p.division_id }))
+    .filter((project) => access.isSuperAdmin || access.financeDivisionIds.has(project.division_id));
   const divisionMap = new Map(divs.map((division) => [division.id, division]));
   const projectMap = new Map(projects.map((project) => [project.id, project]));
   const employeeMap = new Map((employeeRows ?? []).map((employee) => [employee.id, employee]));
@@ -64,10 +77,10 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
       profile_name: employee?.full_name ?? null,
       profile_email: employee?.email ?? null,
     };
-  });
+  }).filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
       <main>
           <header className="subhead">
             <div>

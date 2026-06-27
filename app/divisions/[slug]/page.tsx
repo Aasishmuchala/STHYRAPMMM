@@ -4,12 +4,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { initials, inrShort, inr, pct, dueLabel } from "@/lib/format";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { avatarBg } from "@/lib/avatar";
 import { IconDoc } from "@/components/icons";
 import { DivisionBriefCard } from "@/components/divisions/DivisionBriefCard";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
-const VALID = ["studios", "digital", "construction", "living_twin"];
 const prioColor: Record<string, string> = {
   highest: "#f87171",
   high: "#fb923c",
@@ -35,7 +35,6 @@ type DocRow = { id: string; title: string; doc_type: string | null; storage_path
 
 export default async function DivisionPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  if (!VALID.includes(slug)) notFound();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
@@ -50,10 +49,13 @@ export default async function DivisionPage({ params }: { params: Promise<{ slug:
     supabase.from("division_members").select("division_id,role").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
   ]);
-  const isOwner = profile?.global_role === "owner";
-  const myRole: string = isOwner ? "owner" : (myMem ?? []).find((m: { division_id: string }) => m.division_id === division.id)?.role ?? "member";
-  const canSeeFinances = isOwner || myRole === "lead";
-  const navCanSeeFinances = isOwner || (myMem ?? []).some((m: { role: string }) => m.role === "lead");
+  const membershipRows = (myMem ?? []) as { division_id: string; role: string }[];
+  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  if (!access.isSuperAdmin && !access.workspaceDivisionIds.has(division.id)) redirect("/");
+  const myRole: string = access.isSuperAdmin
+    ? "super_admin"
+    : membershipRows.find((m) => m.division_id === division.id)?.role ?? "member";
+  const canSeeFinances = access.isSuperAdmin || access.financeDivisionIds.has(division.id);
 
   const today = new Date();
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
@@ -86,12 +88,14 @@ export default async function DivisionPage({ params }: { params: Promise<{ slug:
   const activeProjects = proj.filter((p) => p.status === "active").length;
   const bomTotal = sum(bomItems.map((b) => b.qty * b.unit_cost_paise));
 
-  const divs: DivisionOpt[] = (allDivs ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
-  const canEditBrief = isOwner || myRole === "lead";
+  const divs: DivisionOpt[] = (allDivs ?? [])
+    .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
+    .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id));
+  const canEditBrief = access.isSuperAdmin || access.manageableDivisionIds.has(division.id);
   const brief = (briefRow ?? null) as { goals: string | null; targets: string | null; notes: string | null } | null;
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: short(d.name) }))} canSeeFinances={navCanSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: short(d.name) }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
       <main>
         <header className="subhead">
           <div>

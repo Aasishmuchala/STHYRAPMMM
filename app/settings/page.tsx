@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { isAllowedTheme } from "@/lib/appearance";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
@@ -21,20 +22,22 @@ export default async function SettingsPage() {
     supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
   ]);
-  const isOwner = profile?.global_role === "owner";
   const myMem = (myMemberships ?? []) as { role: string; division_id: string }[];
-  const isLeadAnywhere = myMem.some((m) => m.role === "lead");
-  const canSeeFinances = isOwner || isLeadAnywhere;
-  const canManageTeam = isOwner || isLeadAnywhere;
+  const access = buildWorkspaceAccess(profile?.global_role, myMem);
+  const isSuperAdmin = access.isSuperAdmin;
+  const canSeeFinances = access.canSeeFinances;
+  const canManageTeam = access.canManageTeams;
 
   const divs: DivisionOpt[] = (divisions ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
-  const leadableDivisions: DivisionOpt[] = isOwner ? divs : divs.filter((d) => myMem.some((m) => m.role === "lead" && m.division_id === d.id));
+  const leadableDivisions: DivisionOpt[] = isSuperAdmin
+    ? divs
+    : divs.filter((d) => access.manageableDivisionIds.has(d.id));
   const leadableDivisionIds = leadableDivisions.map((division) => division.id);
 
   let members: Member[] = [];
   let memberships: Membership[] = [];
   if (canManageTeam) {
-    const membershipQuery = isOwner
+    const membershipQuery = isSuperAdmin
       ? supabase.from("division_members").select("id,user_id,division_id,role")
       : leadableDivisionIds.length > 0
         ? supabase.from("division_members").select("id,user_id,division_id,role").in("division_id", leadableDivisionIds)
@@ -48,7 +51,7 @@ export default async function SettingsPage() {
   }
 
   let omegaStatus: { configured: boolean; last4?: string; updated_at?: string } | null = null;
-  if (isOwner) {
+  if (isSuperAdmin) {
     const { data } = await supabase.rpc("omega_key_status");
     omegaStatus = (data as typeof omegaStatus) ?? { configured: false };
   }
@@ -56,7 +59,7 @@ export default async function SettingsPage() {
   const normalizedTheme = isAllowedTheme(profile?.theme) ? profile.theme : "slate";
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isOwner} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
       <main>
         <header className="subhead">
           <div>
@@ -67,7 +70,7 @@ export default async function SettingsPage() {
         </header>
         <SettingsView
           profile={profile ?? { full_name: null, email: user.email ?? null, global_role: "member" }}
-          isOwner={isOwner}
+          isOwner={isSuperAdmin}
           canManageTeam={canManageTeam}
           leadableDivisions={leadableDivisions}
           members={members}

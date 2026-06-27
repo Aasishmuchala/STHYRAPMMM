@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadUserWorkspaceAccess } from "@/lib/server-access";
 import { omegaChat, omegaListModels, resolveOmegaKey, type OmegaTool } from "@/lib/ai/omega";
 import { costInr } from "@/lib/ai/cost";
 import { buildContext } from "@/lib/ai/context";
@@ -21,8 +22,10 @@ type Json = any;
 // action layer too, so it holds even if an OMEGA_API_KEY env override is set or the action is
 // invoked directly outside the owner-gated /ai page.
 async function ownerOnly(supabase: SupabaseClient<any, any, any>): Promise<boolean> {
-  const { data } = await supabase.rpc("is_owner");
-  return Boolean(data);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  return access.isSuperAdmin;
 }
 
 type Result = { ok: true; text: string; actions: ActionLog[]; cost: number } | { error: string };

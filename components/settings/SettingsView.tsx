@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { updateProfile, addMembership, removeMembership } from "@/app/settings/actions";
+import { createDivision, updateProfile, addMembership, removeMembership } from "@/app/settings/actions";
 import { ThemeControls } from "./ThemeControls";
 import { OmegaKeyCard } from "./OmegaKeyCard";
 import type { DivisionOpt } from "@/lib/tasks-types";
@@ -101,6 +101,9 @@ export function SettingsView({
   const [memberDivisionId, setMemberDivisionId] = useState(leadableDivisions[0]?.id ?? "");
   const [memberRole, setMemberRole] = useState("member");
   const [memberError, setMemberError] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState("");
+  const [companySlug, setCompanySlug] = useState("");
+  const [companyError, setCompanyError] = useState<string | null>(null);
 
   return (
     <div className="settings">
@@ -182,10 +185,48 @@ export function SettingsView({
 
       {isOwner && <OmegaKeyCard status={omegaStatus} />}
 
+      {isOwner && (
+        <section className="set-card">
+          <h3>Companies</h3>
+          <p className="sub">Super admins can add a new company workspace, then assign that company&apos;s owner from Member access below.</p>
+          <div className="set-add">
+            <div className="field" style={{ margin: 0 }}>
+              <label className="label" htmlFor="company-name">Company name</label>
+              <input id="company-name" className="input" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Sthyra Interiors" />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label className="label" htmlFor="company-slug">Slug</label>
+              <input id="company-slug" className="input" value={companySlug} onChange={(e) => setCompanySlug(e.target.value)} placeholder="sthyra_interiors" />
+            </div>
+            <div className="field" style={{ margin: 0, alignSelf: "end" }}>
+              <button
+                className="btn"
+                onClick={() => {
+                  setCompanyError(null);
+                  start(async () => {
+                    const result = await createDivision(companyName, companySlug);
+                    if ("error" in result) {
+                      setCompanyError(result.error);
+                      return;
+                    }
+                    setCompanyName("");
+                    setCompanySlug("");
+                    router.refresh();
+                  });
+                }}
+              >
+                Create company
+              </button>
+            </div>
+          </div>
+          {companyError && <div className="form-err" style={{ marginTop: 12 }}>{companyError}</div>}
+        </section>
+      )}
+
       {canManageTeam && (
         <section className="set-card">
           <h3>Member access</h3>
-          <p className="sub">Verified `@sthyra.com` users appear here. Assign divisions and lead access after they join.</p>
+          <p className="sub">Verified `@sthyra.com` users appear here. Assign each person to a company as owner, lead, accountant, or member.</p>
           {members.length === 0 ? (
             <p className="sub" style={{ margin: 0 }}>No members have joined yet.</p>
           ) : (
@@ -195,7 +236,9 @@ export function SettingsView({
                 <div className="set-row" key={member.id} style={{ alignItems: "flex-start" }}>
                   <div className="grow">
                     <div className="rn">
-                      {member.full_name ?? member.email} {member.global_role === "owner" && <span className="role-pill">owner</span>}
+                      {member.full_name ?? member.email}
+                      {member.global_role === "super_admin" && <span className="role-pill">super admin</span>}
+                      {member.global_role === "owner" && <span className="role-pill">legacy owner</span>}
                     </div>
                     <div className="re">{member.email}</div>
                     <div className="member-divs">
@@ -243,9 +286,11 @@ export function SettingsView({
               <div className="field" style={{ margin: 0 }}>
                 <label className="label" htmlFor="m-role">Role</label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <select id="m-role" className="select" value={memberRole} onChange={(e) => setMemberRole(e.target.value)} style={{ width: 100 }}>
+                  <select id="m-role" className="select" value={memberRole} onChange={(e) => setMemberRole(e.target.value)} style={{ width: 140 }}>
                     <option value="member">Member</option>
-                    {isOwner && <option value="lead">Lead</option>}
+                    <option value="accountant">Accountant</option>
+                    <option value="lead">Lead</option>
+                    {isOwner && <option value="owner">Owner</option>}
                   </select>
                   <button
                     className="btn"
