@@ -4,12 +4,16 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { askAi, generateBrief } from "@/app/ai/actions";
 import { beginToast, finishToast } from "@/lib/client-toast";
-import { fmtInr } from "@/lib/ai/cost";
 
-type AskResult = { ok: true; text: string; actions: { tool: string; ok: boolean; detail: string }[]; cost: number };
+type AskResult = {
+  ok: true;
+  text: string;
+  actions: { tool: string; ok: boolean; detail: string }[];
+  cost: number;
+};
 
 /**
- * Shared composer row: textarea, send button, brief button, spend display, hints.
+ * Shared composer row: textarea, send button, brief button, and hints.
  * Used by both the /ai full-screen console and the global drawer.
  */
 export function AiComposer({
@@ -31,6 +35,10 @@ export function AiComposer({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState<null | "ask" | "brief">(null);
   const [err, setErr] = useState<string | null>(null);
+
+  void spendToday;
+  void spendMonth;
+  void runCount;
 
   async function send() {
     const text = input.trim();
@@ -75,8 +83,14 @@ export function AiComposer({
       <textarea
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send(); }}
-        placeholder={compact ? "Ask about your work…" : "e.g. Summarise what needs attention in Construction this week, and create follow-up tasks."}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send();
+        }}
+        placeholder={
+          compact
+            ? "Ask about your work..."
+            : "e.g. Summarise what needs attention in Construction this week, and create follow-up tasks."
+        }
         rows={compact ? 2 : 3}
         disabled={!configured || busy !== null}
         style={compact ? { minHeight: 44 } : undefined}
@@ -84,17 +98,14 @@ export function AiComposer({
       {err && <div className="form-err" style={{ marginTop: 6, fontSize: 12 }}>{err}</div>}
       <div className="row">
         <button type="button" className="btn" onClick={send} disabled={!configured || busy !== null}>
-          {busy === "ask" ? "Thinking…" : "Ask"}
+          {busy === "ask" ? "Thinking..." : "Ask"}
         </button>
         <button type="button" className="btn-ghost" onClick={brief} disabled={!configured || busy !== null}>
-          {busy === "brief" ? "Writing…" : "Morning brief"}
+          {busy === "brief" ? "Writing..." : "Morning brief"}
         </button>
-        <span className="spend">
-          Today {fmtInr(spendToday)} · Month {fmtInr(spendMonth)} · {runCount} runs
-        </span>
       </div>
       <div className="hints">
-        <span><kbd>⌘</kbd><kbd>↵</kbd> send</span>
+        <span><kbd>Ctrl</kbd><kbd>Enter</kbd> send</span>
         <span><kbd>@</kbd> for context</span>
         <span><kbd>/</kbd> for commands</span>
       </div>

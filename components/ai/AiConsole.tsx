@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 import { approvePending, rejectPending } from "@/app/ai/actions";
 import { beginToast, finishToast } from "@/lib/client-toast";
 import { fmtInr } from "@/lib/ai/cost";
@@ -50,6 +51,14 @@ function when(iso: string): string {
   } catch {
     return iso?.slice(0, 16) ?? "";
   }
+}
+
+function AiMarkdown({ text }: { text: string }) {
+  return (
+    <div className="ai-markdown">
+      <ReactMarkdown>{text}</ReactMarkdown>
+    </div>
+  );
 }
 
 export function AiConsole({
@@ -122,13 +131,6 @@ export function AiConsole({
   if (variant === "drawer") {
     return (
       <div className="ai-console-drawer">
-        {!configured && (
-          <div className="ai-drawer-banner">
-            <strong>Assistant not yet connected.</strong> Add your Omega API key in{" "}
-            <a href="/settings">Settings → AI Assistant</a> and use <em>Test</em> to verify it.
-          </div>
-        )}
-
         {pending.length > 0 && (
           <section className="ai-drawer-summary">
             <div className="head">
@@ -157,7 +159,7 @@ export function AiConsole({
               <span className="label">Latest brief</span>
               <span className="mono ai-dim">{when(latestBrief.created_at)}</span>
             </div>
-            <div className="ai-brief">{latestBrief.response}</div>
+            <div className="ai-brief"><AiMarkdown text={latestBrief.response ?? ""} /></div>
           </section>
         )}
 
@@ -168,7 +170,9 @@ export function AiConsole({
             chatRuns.map((message) => (
               <div key={message.key} className={`ai-msg ${message.who === "You" ? "user" : ""}`}>
                 <div className="who">{message.who}</div>
-                <div className="body">{message.body}</div>
+                <div className="body">
+                  {message.who === "You" ? message.body : <AiMarkdown text={message.body} />}
+                </div>
               </div>
             ))
           )}
@@ -200,7 +204,7 @@ export function AiConsole({
       {!configured && (
         <div className="ai-banner">
           <strong>Assistant not yet connected.</strong> Add your Omega API key in{" "}
-          <a className="link" href="/settings">Settings → AI Assistant</a> and use <em>Test</em> to verify it.
+          <a className="link" href="/settings">Settings -&gt; AI Assistant</a> and use <em>Test</em> to verify it.
         </div>
       )}
 
@@ -231,7 +235,7 @@ export function AiConsole({
 
           {answer && (
             <div className="ai-answer">
-              {answer.text && <div className="ai-text">{answer.text}</div>}
+              {answer.text && <div className="ai-text"><AiMarkdown text={answer.text} /></div>}
               {answer.actions.length > 0 && (
                 <div className="ai-acts">
                   {answer.actions.map((a, i) => (
@@ -251,9 +255,9 @@ export function AiConsole({
           <h3>Morning brief</h3>
           {latestBrief ? (
             <>
-              <div className="ai-brief">{latestBrief.response}</div>
+              <div className="ai-brief"><AiMarkdown text={latestBrief.response ?? ""} /></div>
               <div className="ai-cost mono">
-                {when(latestBrief.created_at)} · {fmtInr(Number(latestBrief.cost_inr))}
+                {when(latestBrief.created_at)} - {fmtInr(Number(latestBrief.cost_inr))}
               </div>
             </>
           ) : (
@@ -281,7 +285,7 @@ export function AiConsole({
 
       <section className="set-card">
         <h3>Activity &amp; spend</h3>
-        <p className="sub">{isOwner ? "Every AI call across the company" : "Every AI call you&apos;ve made"} — logged with token usage and rupee cost.</p>
+        <p className="sub">{isOwner ? "Every AI call across the company" : "Every AI call you've made"} - logged with token usage and rupee cost.</p>
         {runs.length === 0 ? (
           <p className="sub" style={{ marginBottom: 0 }}>No activity yet.</p>
         ) : (
@@ -303,7 +307,7 @@ export function AiConsole({
                     <td className="ai-detail">
                       {r.status === "failed"
                         ? <span className="ai-fail">Failed: {r.error}</span>
-                        : (r.purpose === "digest" ? "Morning brief" : (r.prompt || "—"))}
+                        : (r.purpose === "digest" ? "Morning brief" : (r.prompt || "-"))}
                     </td>
                   </tr>
                 ))}

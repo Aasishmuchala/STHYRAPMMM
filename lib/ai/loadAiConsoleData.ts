@@ -43,7 +43,8 @@ export async function loadAiConsoleData(supabase: SupabaseClient<any, any, any>)
 
   const month = (monthRes.data ?? []) as { cost_inr: number; created_at: string }[];
   const runs = (runRes.data ?? []) as Run[];
-  const configured = Boolean((keyRes.data as { configured?: boolean } | null)?.configured);
+  const configured = Boolean(process.env.OMEGA_API_KEY?.trim())
+    || Boolean((keyRes.data as { configured?: boolean } | null)?.configured);
 
   return {
     runs,

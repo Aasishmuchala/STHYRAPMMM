@@ -20,7 +20,8 @@ function asArray(v: unknown): unknown[] {
 
 function safeJson(s: unknown): Json {
   try {
-    return typeof s === "string" ? JSON.parse(s) : (s ?? {});
+    if (typeof s !== "string") return s ?? {};
+    return parseJsonishText(s);
   } catch {
     return {};
   }
@@ -28,6 +29,113 @@ function safeJson(s: unknown): Json {
 
 function asString(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function parseJsonishText(text: string): Json {
+  const raw = text.trim();
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return parseSseText(raw);
+  }
+}
+
+function parseSseText(text: string): Json {
+  const events = text
+    .split(/\r?\n\r?\n/)
+    .map((block) =>
+      block
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n")
+        .trim(),
+    )
+    .filter((payload) => payload && payload !== "[DONE]");
+
+  const parsed = events
+    .map((payload) => {
+      try {
+        return JSON.parse(payload) as Json;
+      } catch {
+        return null;
+      }
+    })
+    .filter((payload): payload is Json => payload !== null);
+
+  for (let i = parsed.length - 1; i >= 0; i -= 1) {
+    const item = parsed[i];
+    if (isObject(item) && Array.isArray(item.choices)) {
+      const first = item.choices[0];
+      if (isObject(first) && isObject(first.message)) return item;
+    }
+  }
+
+  if (parsed.length === 0) return {};
+
+  let content = "";
+  const toolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+  let usage: Record<string, unknown> = {};
+  let id = "";
+  let model = "";
+
+  for (const item of parsed) {
+    if (!isObject(item)) continue;
+    if (!id) id = asString(item.id);
+    if (!model) model = asString(item.model);
+    if (isObject(item.usage)) usage = item.usage;
+
+    const choice0 = Array.isArray(item.choices) ? item.choices[0] : null;
+    if (!isObject(choice0)) continue;
+    const delta = isObject(choice0.delta)
+      ? choice0.delta
+      : isObject(choice0.message)
+        ? choice0.message
+        : {};
+
+    if (typeof delta.content === "string") content += delta.content;
+
+    for (const rawCall of asArray(delta.tool_calls)) {
+      const obj = isObject(rawCall) ? rawCall : {};
+      const idx = typeof obj.index === "number" ? obj.index : 0;
+      const fn = isObject(obj.function) ? obj.function : {};
+      const current = toolCalls.get(idx) ?? { id: "", name: "", arguments: "" };
+      current.id = current.id || asString(obj.id);
+      current.name = current.name || asString(fn.name);
+      current.arguments += asString(fn.arguments);
+      toolCalls.set(idx, current);
+    }
+  }
+
+  return {
+    id,
+    model,
+    usage,
+    choices: [
+      {
+        message: {
+          content,
+          tool_calls: [...toolCalls.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .map(([, call]) => ({
+              id: call.id,
+              type: "function",
+              function: {
+                name: call.name,
+                arguments: call.arguments,
+              },
+            })),
+        },
+      },
+    ],
+  };
+}
+
+async function readJsonishResponse(res: Response): Promise<Json> {
+  const raw = await res.text();
+  return parseJsonishText(raw);
 }
 
 export type OmegaTool = {
@@ -106,6 +214,7 @@ export async function omegaChat(opts: {
     messages: opts.messages,
     temperature: opts.temperature ?? 0.3,
     max_tokens: opts.maxTokens ?? 1500,
+    stream: false,
   };
   if (opts.tools?.length) {
     body.tools = opts.tools;
@@ -124,7 +233,7 @@ export async function omegaChat(opts: {
     const t = await res.text().catch(() => "");
     throw new Error(`Omega ${res.status}: ${t.slice(0, 400)}`);
   }
-  const data: unknown = await res.json();
+  const data: unknown = await readJsonishResponse(res);
   const root = isObject(data) ? data : {};
   const choice0 = Array.isArray(root.choices) ? root.choices[0] : undefined;
   const msg = isObject(choice0) && isObject(choice0.message) ? choice0.message : {};
@@ -159,7 +268,7 @@ export async function omegaListModels(apiKey: string): Promise<string[]> {
     const t = await res.text().catch(() => "");
     throw new Error(`Omega ${res.status}: ${t.slice(0, 300)}`);
   }
-  const data: unknown = await res.json();
+  const data: unknown = await readJsonishResponse(res);
   const root = isObject(data) ? data : {};
   const arr = Array.isArray(root.data) ? root.data : Array.isArray(root.models) ? root.models : [];
   return arr

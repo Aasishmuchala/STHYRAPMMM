@@ -7,6 +7,7 @@ import { buildWorkspaceAccess } from "@/lib/access";
 import { isAllowedTheme } from "@/lib/appearance";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
+import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
 
 type Member = { id: string; full_name: string | null; email: string | null; global_role: string };
 type Membership = { id: string; user_id: string; division_id: string; role: string };
@@ -17,10 +18,11 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: myMemberships }, { data: divisions }] = await Promise.all([
+  const [{ data: profile }, { data: myMemberships }, { data: divisions }, aiData] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role,theme,wallpaper,accent_color").eq("id", user.id).maybeSingle(),
     supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
+    loadAiConsoleData(supabase),
   ]);
   const myMem = (myMemberships ?? []) as { role: string; division_id: string }[];
   const access = buildWorkspaceAccess(profile?.global_role, myMem);
@@ -59,7 +61,22 @@ export default async function SettingsPage() {
   const normalizedTheme = isAllowedTheme(profile?.theme) ? profile.theme : "slate";
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell
+      divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))}
+      canSeeFinances={canSeeFinances}
+      isOwner={isSuperAdmin}
+      initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      aiInitialData={{
+        configured: aiData.configured,
+        isOwner: isSuperAdmin,
+        runs: aiData.runs,
+        pending: aiData.pending,
+        latestBrief: aiData.latestBrief,
+        spendToday: aiData.spendToday,
+        spendMonth: aiData.spendMonth,
+        runCount: aiData.runCount,
+      }}
+    >
       <main>
         <header className="subhead">
           <div>

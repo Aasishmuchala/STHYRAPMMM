@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { getAiDrawerData } from "@/app/ai/actions";
 import { IconSparkle, IconX } from "@/components/icons";
 import { AiConsole, type Pending, type Run } from "@/components/ai/AiConsole";
 
@@ -40,13 +41,23 @@ const EMPTY: AiDrawerData = {
 export function AiDrawerHost({ initialData }: { initialData?: AiDrawerData }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const [data, setData] = useState<AiDrawerData>(initialData ?? EMPTY);
+  const [liveData, setLiveData] = useState<AiDrawerData | null>(null);
+  const data = liveData ?? initialData ?? EMPTY;
+
+  async function refreshData() {
+    const next = await getAiDrawerData();
+    if ("error" in next) return;
+    setLiveData(next);
+  }
 
   // Don't double-mount the drawer on the full-screen /ai route.
   const hideOnAi = path === "/ai";
 
   useEffect(() => {
-    const on = () => setOpen(true);
+    const on = () => {
+      setOpen(true);
+      void refreshData();
+    };
     window.addEventListener("sthyra:open-ai", on);
     return () => window.removeEventListener("sthyra:open-ai", on);
   }, []);
@@ -65,11 +76,11 @@ export function AiDrawerHost({ initialData }: { initialData?: AiDrawerData }) {
     function onUpdated(e: Event) {
       const detail = (e as CustomEvent<Partial<AiDrawerData>>).detail;
       if (!detail) return;
-      setData((prev) => ({ ...prev, ...detail }));
+      setLiveData((prev) => ({ ...(prev ?? initialData ?? EMPTY), ...detail }));
     }
     window.addEventListener("sthyra:ai-data-updated", onUpdated as EventListener);
     return () => window.removeEventListener("sthyra:ai-data-updated", onUpdated as EventListener);
-  }, []);
+  }, [initialData]);
 
   if (hideOnAi) return null;
   if (!open) return null;
@@ -84,9 +95,6 @@ export function AiDrawerHost({ initialData }: { initialData?: AiDrawerData }) {
           <div className="title">
             <IconSparkle size={16} />
             Assistant <span className="model">Opus 4.8</span>
-            {data.pending.length > 0 && (
-              <span className="ai-pill" style={{ marginLeft: 6 }}>{data.pending.length} pending</span>
-            )}
           </div>
           <button className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}>
             <IconX size={15} />
