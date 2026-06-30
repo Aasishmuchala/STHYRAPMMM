@@ -1432,6 +1432,25 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 .ai-dots i:nth-child(2) { animation-delay: -0.12s; }
 @keyframes aiDot { 0%, 80%, 100% { transform: scale(0.5); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
 
+/* ---- attachments ---- */
+.ai-bubble-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.ai-bubble-img { max-width: 180px; max-height: 180px; border-radius: 10px; border: 1px solid var(--line); object-fit: cover; }
+.ai-attach-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px 0; }
+.ai-attach-loading { font-size: 12px; color: var(--text-dim); padding: 0 4px; }
+.ai-attach { position: relative; width: 56px; height: 56px; }
+.ai-attach img { width: 56px; height: 56px; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); }
+.ai-attach button {
+  position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center; border: 0; cursor: pointer;
+  background: var(--text); color: var(--bg-elev);
+}
+.ai-attach-btn {
+  flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; cursor: pointer;
+  background: transparent; color: var(--text-dim); border: 1px solid var(--line); transition: all 0.12s ease;
+}
+.ai-attach-btn:hover:not(:disabled) { color: var(--text); border-color: var(--glass-border); }
+.ai-attach-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* ---- composer ---- */
 .ai-thread-err { margin: 0 14px; }
 .ai-composer-bar { flex: none; display: flex; align-items: flex-end; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line); }
@@ -1457,6 +1476,30 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
   .ai-examples { grid-template-columns: 1fr; }
   .ai-bubble { max-width: 88%; }
 }
+
+/* ---- team skill roles (settings) ---- */
+.roles-people { display: flex; flex-direction: column; gap: 14px; }
+.roles-person { padding: 12px 0; border-top: 1px solid var(--line); }
+.roles-person:first-child { border-top: 0; padding-top: 4px; }
+.roles-person-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.roles-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.role-chip {
+  padding: 6px 11px; border-radius: 999px; font-size: 12px; cursor: pointer;
+  background: transparent; color: var(--text-dim); border: 1px solid var(--line); transition: all 0.12s ease;
+}
+.role-chip:hover { color: var(--text); border-color: var(--glass-border); }
+.role-chip.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 500; }
+
+/* ---- assistant knowledge base (settings) ---- */
+.kb-list { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; }
+.kb-item { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.kb-item .grow { flex: 1; min-width: 0; }
+.kb-title { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.kb-body { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.kb-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.kb-tag { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong, var(--accent)); }
+.kb-del { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; border: 0; cursor: pointer; background: transparent; color: var(--text-faint); }
+.kb-del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 /* ---- welcome / marketing landing ---- */
 .welcome-shell { min-height: 100dvh; display: flex; flex-direction: column; }

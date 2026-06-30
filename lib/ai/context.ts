@@ -39,7 +39,12 @@ type ClientRow = { name: string; stage: string; value_paise: number; contact_nam
 type MemberRow = {
   division_id: string;
   role: string;
+  user_id: string;
   profiles: { full_name: string | null; email: string | null } | { full_name: string | null; email: string | null }[] | null;
+};
+type ProfileRoleRow = {
+  profile_id: string;
+  company_roles: { name: string } | { name: string }[] | null;
 };
 
 function scopeLabel(policy: AiPolicy): string {
@@ -64,6 +69,7 @@ export async function buildContext(supabase: DB, today: Date, policy: AiPolicy):
     { data: ra },
     { data: clients },
     { data: members },
+    { data: profileRoles },
   ] = await Promise.all([
     supabase.from("divisions").select("id,slug,name").order("slug"),
     policy.canSeeBriefs
@@ -94,9 +100,12 @@ export async function buildContext(supabase: DB, today: Date, policy: AiPolicy):
     policy.canSeePeople && policy.manageableDivisionIds.size > 0
       ? supabase
         .from("division_members")
-        .select("division_id,role,profiles!division_members_user_id_fkey(full_name,email)")
+        .select("division_id,role,user_id,profiles!division_members_user_id_fkey(full_name,email)")
         .in("division_id", [...policy.manageableDivisionIds])
       : Promise.resolve({ data: [] as MemberRow[] }),
+    policy.canSeePeople
+      ? supabase.from("profile_roles").select("profile_id,company_roles(name)")
+      : Promise.resolve({ data: [] as ProfileRoleRow[] }),
   ]);
 
   const divs = (divisions ?? []) as DivisionRow[];
@@ -214,19 +223,47 @@ export async function buildContext(supabase: DB, today: Date, policy: AiPolicy):
 
   if (policy.canSeePeople) {
     const teamRows = (members ?? []) as MemberRow[];
+
+    // Map each person -> their skill roles (crafts) for skill-based assignment.
+    const rolesByPerson = new Map<string, string[]>();
+    for (const row of (profileRoles ?? []) as ProfileRoleRow[]) {
+      const role = Array.isArray(row.company_roles) ? row.company_roles[0] : row.company_roles;
+      if (!role?.name) continue;
+      const bucket = rolesByPerson.get(row.profile_id) ?? [];
+      bucket.push(role.name);
+      rolesByPerson.set(row.profile_id, bucket);
+    }
+
     if (teamRows.length) {
-      lines.push("\nTEAM MEMBERS:");
+      lines.push("\nTEAM MEMBERS (name [access role] — skills):");
       const grouped = new Map<string, string[]>();
+      const seen = new Set<string>();
+      const skillIndex = new Map<string, string[]>(); // role/craft -> [people]
       for (const row of teamRows) {
         const person = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
         const label = person?.full_name ?? person?.email ?? "Unknown";
+        const skills = rolesByPerson.get(row.user_id) ?? [];
         const divisionName = nameOf.get(row.division_id) ?? slugOf.get(row.division_id) ?? "?";
         const bucket = grouped.get(divisionName) ?? [];
-        bucket.push(`${label} (${row.role})`);
+        bucket.push(`${label} [${row.role}]${skills.length ? ` — ${skills.join(", ")}` : " — no skill role set"}`);
         grouped.set(divisionName, bucket);
+        if (!seen.has(label)) {
+          seen.add(label);
+          for (const s of skills) {
+            const arr = skillIndex.get(s) ?? [];
+            arr.push(label);
+            skillIndex.set(s, arr);
+          }
+        }
       }
       for (const [divisionName, people] of grouped) {
-        lines.push(`- ${divisionName}: ${people.join(", ")}`);
+        lines.push(`- ${divisionName}: ${people.join("; ")}`);
+      }
+      if (skillIndex.size) {
+        lines.push("\nSKILLS → WHO CAN DO IT (use this to assign tasks by craft):");
+        for (const [skill, people] of skillIndex) {
+          lines.push(`- ${skill}: ${[...new Set(people)].join(", ")}`);
+        }
       }
     }
   }

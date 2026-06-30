@@ -53,9 +53,23 @@ export default async function SettingsPage() {
   }
 
   let omegaStatus: { configured: boolean; last4?: string; updated_at?: string } | null = null;
+  let companyRoles: { id: string; name: string }[] = [];
+  let roleAssignments: Record<string, string[]> = {};
+  let knowledge: { id: string; title: string; body: string; tags: string[] }[] = [];
   if (isSuperAdmin) {
-    const { data } = await supabase.rpc("omega_key_status");
+    const [{ data }, { data: roles }, { data: pr }, { data: kb }] = await Promise.all([
+      supabase.rpc("omega_key_status"),
+      supabase.from("company_roles").select("id,name").order("sort").order("name"),
+      supabase.from("profile_roles").select("profile_id,role_id"),
+      supabase.from("ai_knowledge").select("id,title,body,tags").order("created_at", { ascending: false }),
+    ]);
     omegaStatus = (data as typeof omegaStatus) ?? { configured: false };
+    companyRoles = (roles ?? []) as { id: string; name: string }[];
+    roleAssignments = {};
+    for (const row of (pr ?? []) as { profile_id: string; role_id: string }[]) {
+      (roleAssignments[row.profile_id] ??= []).push(row.role_id);
+    }
+    knowledge = (kb ?? []) as { id: string; title: string; body: string; tags: string[] }[];
   }
 
   const normalizedTheme = isAllowedTheme(profile?.theme) ? profile.theme : "slate";
@@ -97,6 +111,9 @@ export default async function SettingsPage() {
           initialWallpaper={profile?.wallpaper ?? null}
           initialAccent={profile?.accent_color ?? null}
           omegaStatus={omegaStatus}
+          companyRoles={companyRoles}
+          roleAssignments={roleAssignments}
+          knowledge={knowledge}
         />
       </main>
     </AppShell>

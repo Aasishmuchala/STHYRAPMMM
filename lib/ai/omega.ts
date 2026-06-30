@@ -143,9 +143,12 @@ export type OmegaTool = {
   type: "function";
   function: { name: string; description: string; parameters: object };
 };
+export type OmegaContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
 export type OmegaMessage = {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | null;
+  content: string | null | OmegaContentPart[];
   tool_call_id?: string;
   tool_calls?: Array<{
     id: string;

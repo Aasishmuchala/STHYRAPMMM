@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadUserWorkspaceAccess } from "@/lib/server-access";
-import { omegaChat, omegaListModels, resolveOmegaKey, type OmegaMessage } from "@/lib/ai/omega";
+import { omegaChat, omegaListModels, resolveOmegaKey, type OmegaMessage, type OmegaContentPart } from "@/lib/ai/omega";
 import { costInr } from "@/lib/ai/cost";
 import { buildContext } from "@/lib/ai/context";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
@@ -47,6 +47,7 @@ export type ChatMessage = {
   actions?: ActionLog[];
   cost?: number;
   createdAt: string;
+  images?: string[]; // client-side preview only; never persisted
 };
 
 export type SessionSummary = { id: string; title: string; updatedAt: string };
@@ -68,8 +69,34 @@ TOOLS
 PLANNING RULES
 - When asked to plan a project, feature, launch, or deliverable end-to-end, call plan_project with a COMPLETE, ordered breakdown that carries the work from start to finish (discovery → design → build → review → launch/handover).
 - Give EVERY task a realistic due_date, staggered so earlier/blocking work is due first and the last task lands on or before the deadline. Never leave a task without a deadline.
-- Assign each task to a sensible owner from the team list in the snapshot when one fits, and spread the work across the team rather than piling it on one person.
 - Set priorities deliberately: highest/high for blockers and deadline-critical work, medium/low otherwise.
+
+ROLE-BASED ASSIGNMENT (very important)
+- Each person has skill roles (crafts) listed in the snapshot under "TEAM MEMBERS" and "SKILLS → WHO CAN DO IT". Assign every task to the person whose craft fits it, using assignee_name exactly as written in the snapshot.
+- If the user explicitly names who should do a task ("give the lighting to Akash"), assign it ONLY to that person and do not reassign it.
+- Match craft to task: CAD/plan interpretation → Architect / AutoCAD Drafter; 3D modelling → 3D Modeller or 3ds Max & V-Ray Artist; materials → Texturing & Material Artist; lighting → Lighting Artist; V-Ray stills / real-time → 3ds Max & V-Ray Artist / Unreal Engine Developer; compositing & retouch → Graphic Designer cum Post-Production Artist; web / app / deployment → Full Stack Developer; coordination & review → Project Lead / Art Director.
+- If no one has the needed craft, say so plainly and either assign to the closest fit or leave it unassigned — never invent a person who is not in the snapshot.
+
+REALISTIC CAPACITY (do not over-plan)
+- Count how many people actually exist for each craft. Do NOT schedule more parallel tasks of one craft than there are people for it; sequence the rest.
+- Respect the dependency chain (model → texture → light → render → post). A render task cannot be due before its model/lighting tasks.
+- Keep volume sane: prefer a tight set of substantial tasks over dozens of tiny ones. If the deadline is too short for the scope with the team available, say so and propose what is realistically achievable.
+
+ARCHVIZ DOMAIN KNOWLEDGE (use this to break down architectural-visualisation work)
+- Typical inputs: AutoCAD/DWG floor plans, elevations, CAD drawings, reference photos, a brief, and a material/finish schedule.
+- Standard pipeline & owner:
+  1. Brief + reference gathering — Project Lead / Art Director
+  2. CAD/plan interpretation, scale setup, base blockout from the AutoCAD plan — Architect / AutoCAD Drafter → 3D Modeller
+  3. 3D modelling: structure, joinery, furniture, props — 3D Modeller / 3ds Max & V-Ray Artist
+  4. Texturing & materials (PBR, V-Ray materials) — Texturing & Material Artist
+  5. Lighting: daylight, interior, exterior, mood — Lighting Artist
+  6. Cameras & composition — Art Director / 3ds Max Artist
+  7. Rendering: V-Ray stills OR Unreal Engine for real-time walkthrough/VR — 3ds Max & V-Ray Artist / Unreal Engine Developer
+  8. Post-production: compositing, colour grading, retouch — Graphic Designer cum Post-Production Artist
+  9. Client review + revision rounds — Art Director
+  10. Final delivery (stills, animation, 360, real-time/web build) — Full Stack Developer for web/interactive
+- Rough effort guides for a small team: model a room ≈ 0.5–1 day; texturing a set ≈ 0.5 day; lighting a scene ≈ 0.5–1 day; a hero still (render + post) ≈ 0.5–1 day; a set of 5–6 interior stills ≈ 1–2 weeks. Use these to set believable deadlines.
+- When the user references CAD files, AutoCAD plans, or images, treat them as the source of truth for layout/scale and structure tasks around interpreting them — but only claim to have "seen" a file's contents if its text/description is actually in the snapshot or message.
 
 STYLE
 - Be concise and concrete. Use the live snapshot for facts and cite the specific figure when you rely on one.
@@ -77,8 +104,26 @@ STYLE
 - If something is outside the user's access scope or absent from the snapshot, say so plainly instead of guessing.
 - Respect today's date (given in the snapshot) for every deadline.`;
 
-function systemPromptFor(policy: AiPolicy, context: string): string {
-  return `${SYSTEM}\n\nACCESS RULES:\n${aiScopePrompt(policy)}\n\nLIVE WORKSPACE SNAPSHOT (your source of truth for facts):\n${context}`;
+function systemPromptFor(policy: AiPolicy, context: string, knowledge = ""): string {
+  const kb = knowledge
+    ? `\n\nRELEVANT KNOWLEDGE (retrieved from the company knowledge base for this request — treat as authoritative):\n${knowledge}`
+    : "";
+  return `${SYSTEM}\n\nACCESS RULES:\n${aiScopePrompt(policy)}${kb}\n\nLIVE WORKSPACE SNAPSHOT (your source of truth for facts):\n${context}`;
+}
+
+// Full-text retrieval over public.ai_knowledge (the practical RAG). Returns a
+// compact block of the most relevant entries, or "" when nothing matches.
+async function retrieveKnowledge(supabase: SupabaseClient<any, any, any>, query: string): Promise<string> {
+  const q = query.trim();
+  if (!q) return "";
+  try {
+    const { data } = await supabase.rpc("search_ai_knowledge", { q, lim: 4 });
+    const rows = (data ?? []) as { title: string; body: string }[];
+    if (!rows.length) return "";
+    return rows.map((r) => `- ${r.title}: ${r.body}`).join("\n");
+  } catch {
+    return "";
+  }
 }
 
 async function logRun(supabase: SupabaseClient<any, any, any>, userId: string, row: {
@@ -233,9 +278,30 @@ async function loadHistoryForModel(
 // Ask — the agent loop
 // ---------------------------------------------------------------------------
 
-export async function askAi(sessionIdInput: string | null, prompt: string): Promise<AskResult> {
+export type AiAttachment = { name: string; dataUrl: string };
+
+// Accept only inline image data URLs, capped in count and size, so a malformed
+// or oversized upload can't blow up the request.
+function sanitizeAttachments(input: AiAttachment[] | undefined): AiAttachment[] {
+  if (!Array.isArray(input)) return [];
+  const out: AiAttachment[] = [];
+  for (const a of input.slice(0, 6)) {
+    const url = typeof a?.dataUrl === "string" ? a.dataUrl : "";
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(url)) continue;
+    if (url.length > 8_000_000) continue; // ~6MB image
+    out.push({ name: String(a.name ?? "image").slice(0, 120), dataUrl: url });
+  }
+  return out;
+}
+
+export async function askAi(
+  sessionIdInput: string | null,
+  prompt: string,
+  attachmentsInput?: AiAttachment[],
+): Promise<AskResult> {
   const p = prompt.trim();
-  if (!p) return { error: "Ask something first." };
+  const attachments = sanitizeAttachments(attachmentsInput);
+  if (!p && attachments.length === 0) return { error: "Ask something first." };
 
   const supabase = await db();
   const { user, policy } = await currentUserAndPolicy(supabase);
@@ -274,12 +340,26 @@ export async function askAi(sessionIdInput: string | null, prompt: string): Prom
   const history = await loadHistoryForModel(supabase, sessionId, user.id);
   const ctx = await buildToolContext(supabase, user.id, policy, null);
   const tools = toolsForPolicy(policy);
+  const knowledge = await retrieveKnowledge(supabase, p);
+
+  const userText = p || "Please review the attached image(s).";
+  const userContent: string | OmegaContentPart[] = attachments.length
+    ? [
+        { type: "text", text: userText },
+        ...attachments.map((a): OmegaContentPart => ({ type: "image_url", image_url: { url: a.dataUrl } })),
+      ]
+    : userText;
 
   const messages: OmegaMessage[] = [
-    { role: "system", content: systemPromptFor(policy, context) },
+    { role: "system", content: systemPromptFor(policy, context, knowledge) },
     ...history,
-    { role: "user", content: p },
+    { role: "user", content: userContent },
   ];
+
+  // What we persist as the prompt text (data URLs are never stored).
+  const promptForLog = attachments.length
+    ? `${userText}\n[${attachments.length} image(s) attached: ${attachments.map((a) => a.name).join(", ")}]`
+    : p;
 
   const allLogs: ActionLog[] = [];
   let finalText = "";
@@ -328,7 +408,7 @@ export async function askAi(sessionIdInput: string | null, prompt: string): Prom
     await logRun(supabase, user.id, {
       sessionId, purpose: "ask", model: AI_MODEL,
       usage: { input_tokens: totalIn, output_tokens: totalOut },
-      prompt: p, response: finalText, actions: allLogs,
+      prompt: promptForLog, response: finalText, actions: allLogs,
       status: "failed", error: e instanceof Error ? e.message : String(e),
     });
     return { error: e instanceof Error ? e.message : "AI call failed" };
@@ -342,18 +422,18 @@ export async function askAi(sessionIdInput: string | null, prompt: string): Prom
   const { cost } = await logRun(supabase, user.id, {
     sessionId, purpose: "ask", model: AI_MODEL,
     usage: { input_tokens: totalIn, output_tokens: totalOut },
-    prompt: p, response: finalText, actions: allLogs,
+    prompt: promptForLog, response: finalText, actions: allLogs,
   });
 
   // Title the session from its first message; always bump updated_at.
-  const nextTitle = title === "New chat" ? titleFromPrompt(p) : title;
+  const nextTitle = title === "New chat" ? titleFromPrompt(p || promptForLog) : title;
   await supabase
     .from("ai_sessions")
     .update({ title: nextTitle, updated_at: new Date().toISOString() })
     .eq("id", sessionId)
     .eq("user_id", user.id);
 
-  await notify(supabase, user.id, "ai", p.slice(0, 80), finalText || "(action taken)");
+  await notify(supabase, user.id, "ai", promptForLog.slice(0, 80), finalText || "(action taken)");
   revalidatePath("/ai");
   revalidatePath("/");
   revalidatePath("/tasks");

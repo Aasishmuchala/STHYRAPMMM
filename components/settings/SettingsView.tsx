@@ -7,6 +7,8 @@ import { beginToast, finishToast } from "@/lib/client-toast";
 import { createDivision, updateProfile, addMembership, removeMembership } from "@/app/settings/actions";
 import { ThemeControls } from "./ThemeControls";
 import { OmegaKeyCard } from "./OmegaKeyCard";
+import { TeamRolesCard, type CompanyRole, type RolePerson } from "./TeamRolesCard";
+import { KnowledgeCard, type KnowledgeEntry } from "./KnowledgeCard";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 type Profile = { full_name: string | null; email: string | null; global_role: string };
@@ -33,6 +35,9 @@ export function SettingsView({
   initialWallpaper,
   initialAccent,
   omegaStatus,
+  companyRoles = [],
+  roleAssignments = {},
+  knowledge = [],
 }: {
   profile: Profile;
   isOwner: boolean;
@@ -45,6 +50,9 @@ export function SettingsView({
   initialWallpaper: string | null;
   initialAccent: string | null;
   omegaStatus: { configured: boolean; last4?: string; updated_at?: string } | null;
+  companyRoles?: CompanyRole[];
+  roleAssignments?: Record<string, string[]>;
+  knowledge?: KnowledgeEntry[];
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -377,6 +385,16 @@ export function SettingsView({
           )}
         </section>
       )}
+
+      {isOwner && (
+        <TeamRolesCard
+          people={members as RolePerson[]}
+          roles={companyRoles}
+          assignments={roleAssignments}
+        />
+      )}
+
+      {isOwner && <KnowledgeCard entries={knowledge} />}
     </div>
   );
 }
