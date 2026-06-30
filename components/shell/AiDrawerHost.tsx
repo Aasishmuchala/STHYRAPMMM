@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { getAiDrawerData } from "@/app/ai/actions";
-import { IconSparkle, IconX } from "@/components/icons";
+import { IconX } from "@/components/icons";
 import { AiConsole, type Pending, type Run } from "@/components/ai/AiConsole";
 
 /**
@@ -93,14 +93,15 @@ export function AiDrawerHost({ initialData }: { initialData?: AiDrawerData }) {
       <aside className="ai-drawer" data-testid="ai-drawer" role="dialog" aria-label="Assistant">
         <div className="ai-drawer-head">
           <div className="title">
-            <IconSparkle size={16} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ai-agent.png" srcSet="/ai-agent.png 1x, /ai-agent@2x.png 2x" width={24} height={24} alt="" className="ai-avatar" draggable={false} />
             Assistant <span className="model">Opus 4.8</span>
           </div>
           <button className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}>
             <IconX size={15} />
           </button>
         </div>
-        <div className="ai-drawer-body">
+        <div className="ai-drawer-body ai-drawer-body--chat">
           <AiConsole
             configured={data.configured}
             isOwner={data.isOwner}

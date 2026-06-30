@@ -4,6 +4,7 @@
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readSharedOmegaKey } from "@/lib/ai/keyBridge";
 
 const BASE = process.env.OMEGA_BASE_URL || "https://omega.kesarcloud.in/v1";
 
@@ -170,10 +171,11 @@ export async function resolveOmegaKey(supabase: LooseSupabase): Promise<string |
   try {
     const { data } = (await supabase.rpc("get_omega_key")) as { data: unknown };
     const k = typeof data === "string" ? data : null;
-    return k && k.trim() ? k.trim() : null;
+    if (k && k.trim()) return k.trim();
   } catch {
-    return null;
+    // Fall back to the shared service-role mirror below.
   }
+  return readSharedOmegaKey();
 }
 
 // Simple exponential backoff for transient 429/5xx from the gateway.

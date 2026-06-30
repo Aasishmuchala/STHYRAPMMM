@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Run, Pending } from "@/components/ai/AiConsole";
+import { hasSharedOmegaKey } from "@/lib/ai/keyBridge";
 
 export type AiConsoleData = {
   runs: Run[];
@@ -21,7 +22,7 @@ export async function loadAiConsoleData(supabase: SupabaseClient<any, any, any>)
   const monthStart = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-01`;
   const todayStr = now.toISOString().slice(0, 10);
 
-  const [runRes, pendingRes, monthRes, keyRes] = await Promise.all([
+  const [runRes, pendingRes, monthRes, keyRes, sharedKeyConfigured] = await Promise.all([
     supabase
       .from("ai_runs")
       .select("id,purpose,model,input_tokens,output_tokens,cost_inr,prompt,response,actions,status,error,created_at")
@@ -39,12 +40,14 @@ export async function loadAiConsoleData(supabase: SupabaseClient<any, any, any>)
       .select("cost_inr,created_at")
       .gte("created_at", monthStart),
     supabase.rpc("omega_key_status"),
+    hasSharedOmegaKey(),
   ]);
 
   const month = (monthRes.data ?? []) as { cost_inr: number; created_at: string }[];
   const runs = (runRes.data ?? []) as Run[];
   const configured = Boolean(process.env.OMEGA_API_KEY?.trim())
-    || Boolean((keyRes.data as { configured?: boolean } | null)?.configured);
+    || Boolean((keyRes.data as { configured?: boolean } | null)?.configured)
+    || sharedKeyConfigured;
 
   return {
     runs,
