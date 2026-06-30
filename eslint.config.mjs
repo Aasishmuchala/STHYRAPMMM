@@ -24,6 +24,7 @@ const config = [
       "node_modules/**",
       "out/**",
       "build/**",
+      "public/**", // static assets (e.g. the bundled pdf.js worker); never lint
       "next-env.d.ts",
       "coverage/**",
       "lib/database.types.ts", // generated; do not hand-edit
