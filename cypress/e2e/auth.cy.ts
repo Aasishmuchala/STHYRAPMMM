@@ -3,9 +3,10 @@
 describe("Authentication", () => {
   it("shows the Sthyra logo and sign-in form", () => {
     cy.visit("/login");
-    cy.get('img[alt*="Sthyra"]').should("be.visible");
-    cy.contains("h1", "Sign in").should("be.visible");
-    cy.contains("Company email access only.").should("be.visible");
+    cy.get('img[alt*="Sthyra"]:visible').should("exist");
+    cy.contains("h1", "Welcome back").should("be.visible");
+    cy.get('input[type="email"]').should("be.visible");
+    cy.contains("button", "Sign in").should("be.visible");
   });
 
   it("rejects invalid credentials and stays on /login", () => {

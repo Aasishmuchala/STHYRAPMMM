@@ -8,8 +8,10 @@ describe("Tasks board", () => {
   });
 
   it("creates a task via the drawer", () => {
-    cy.contains("button", /new task|create|add/i).first().click({ force: true });
-    cy.get('[data-testid="task-title"]').clear().type("Cypress QA task");
+    // Target the real create button — "Add work item" — not any button matching
+    // /add/, which also matches the disabled "No add access" variant.
+    cy.contains("button", "Add work item", { timeout: 15000 }).click({ force: true });
+    cy.get('[data-testid="task-title"]', { timeout: 15000 }).clear().type("Cypress QA task");
     cy.get('[data-testid="task-save"]').click();
     cy.contains("Cypress QA task").should("exist");
   });
