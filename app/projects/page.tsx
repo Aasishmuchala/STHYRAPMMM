@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { ProjectsView } from "@/components/projects/ProjectsView";
 import { buildWorkspaceAccess } from "@/lib/access";
+import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
@@ -48,9 +49,14 @@ export default async function ProjectsPage() {
   const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
     (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
   );
-  const creatableDivisions = access.isSuperAdmin
+  // Scope the project list to the one active company (owners may pick "all").
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
+  // New projects can only be created inside the active company, so the create
+  // form's Division dropdown offers just that company (all of them under "all").
+  const creatableDivisions = (access.isSuperAdmin
     ? divs
-    : divs.filter((division) => access.manageableDivisionIds.has(division.id));
+    : divs.filter((division) => access.manageableDivisionIds.has(division.id))
+  ).filter((division) => activeCompany.scope.has(division.id));
   const manageableDivisionIds = creatableDivisions.map((division) => division.id);
   const taskCounts = new Map<string, number>();
   let orphanTaskCount = 0;
@@ -82,10 +88,11 @@ export default async function ProjectsPage() {
     divisionMemberships = (membershipResult.data ?? []) as DivisionMembershipRow[];
   }
 
-  // Rely on RLS for visibility (division projects + projects the user is only an
-  // assignee on). Re-filtering by workspaceDivisionIds here would blank the page
-  // for members who belong to projects but not the division.
+  // RLS bounds visibility (division projects + projects the user is only an
+  // assignee on); we then narrow to the active company so only that company's
+  // projects show. Owners on "all companies" see everything they can access.
   const projects = ((projectRows ?? []) as ProjectRow[])
+    .filter((project) => activeCompany.scope.has(project.division_id))
     .map((project) => {
     const division = Array.isArray(project.divisions) ? project.divisions[0] : project.divisions;
     const lead = Array.isArray(project.lead) ? project.lead[0] : project.lead;

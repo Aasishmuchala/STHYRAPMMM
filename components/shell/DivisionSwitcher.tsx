@@ -1,19 +1,50 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { IconLayers, IconChevronDown } from "@/components/icons";
 
 type Nav = { slug: string; name: string };
 
-export function DivisionSwitcher({ divisions }: { divisions: Nav[] }) {
-  const router = useRouter();
-  const path = usePathname();
-  const [open, setOpen] = useState(false);
-  const current = divisions.find((d) => path === `/divisions/${d.slug}`);
-  const label = current ? current.name : "All divisions";
+const COOKIE = "sthyra_active_company";
+const ALL = "all";
+const ONE_YEAR = 60 * 60 * 24 * 365;
 
-  function go(href: string) { setOpen(false); router.push(href); }
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  const value = match?.[1];
+  return value ? decodeURIComponent(value) : null;
+}
+
+// Persistent "active company" switcher. Picking a company writes the cookie and
+// refreshes the current route, so every server page re-renders scoped to that
+// one company (see lib/activeCompany.ts). "All companies" is owner-only.
+export function DivisionSwitcher({ divisions, canPickAll = false }: { divisions: Nav[]; canPickAll?: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [activeSlug, setActiveSlug] = useState<string | null>(null);
+
+  // Read the cookie after mount. Doing it here (rather than during render) keeps
+  // SSR and the first client paint identical — no hydration mismatch — and the
+  // server has already scoped this render to the same default company.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveSlug(readCookie(COOKIE));
+  }, []);
+
+  const showingAll = canPickAll && activeSlug === ALL;
+  const current = divisions.find((d) => d.slug === activeSlug);
+  // No cookie yet → the server defaults to the first company, so mirror that.
+  const selectedSlug = showingAll ? ALL : (current?.slug ?? divisions[0]?.slug ?? null);
+  const label = showingAll ? "All companies" : (current?.name ?? divisions[0]?.name ?? "No company");
+
+  function pick(slug: string) {
+    document.cookie = `${COOKIE}=${encodeURIComponent(slug)}; path=/; max-age=${ONE_YEAR}; samesite=lax`;
+    setActiveSlug(slug);
+    setOpen(false);
+    router.refresh();
+  }
 
   return (
     <div className="dsw">
@@ -30,9 +61,11 @@ export function DivisionSwitcher({ divisions }: { divisions: Nav[] }) {
         <>
           <div className="notif-backdrop" onClick={() => setOpen(false)} />
           <div className="dsw-pop glass" role="menu">
-            <button className={`dsw-item ${!current ? "on" : ""}`} onClick={() => go("/")} role="menuitem">All divisions</button>
+            {canPickAll && (
+              <button className={`dsw-item ${showingAll ? "on" : ""}`} onClick={() => pick(ALL)} role="menuitem">All companies</button>
+            )}
             {divisions.map((d) => (
-              <button key={d.slug} className={`dsw-item ${current?.slug === d.slug ? "on" : ""}`} onClick={() => go(`/divisions/${d.slug}`)} role="menuitem">{d.name}</button>
+              <button key={d.slug} className={`dsw-item ${selectedSlug === d.slug ? "on" : ""}`} onClick={() => pick(d.slug)} role="menuitem">{d.name}</button>
             ))}
           </div>
         </>

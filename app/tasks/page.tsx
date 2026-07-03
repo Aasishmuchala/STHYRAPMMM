@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { buildWorkspaceAccess } from "@/lib/access";
+import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { PageHeader, Button } from "@/components/ui";
 import { initials } from "@/lib/format";
 import { DEFAULT_TASK_STAGES } from "@/lib/tasks-types";
@@ -93,12 +94,17 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
     (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
   );
-  // Don't re-filter by division here: RLS already returns exactly the projects
-  // this user may see — their division projects AND any project they're only an
-  // assignee on. Filtering by workspaceDivisionIds would hide assignee-only
-  // projects (members in a project but not the division), leaving them stuck on
-  // the empty "my items" view.
+  // Scope everything on this page to the one company the user has active. Owners
+  // may opt into "all companies"; everyone else always sees a single company.
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
+  // The board's filter row and new-task division picker offer only the active
+  // company; the sidebar switcher keeps the full `divs` list for switching.
+  const scopedDivs: DivisionOpt[] = divs.filter((d) => activeCompany.scope.has(d.id));
+  // RLS already returns exactly the projects this user may see (their division
+  // projects AND any project they're only an assignee on). We then narrow to the
+  // active company so the project switcher and boards only show that company.
   const projects: ProjectOpt[] = ((projectRows ?? []) as ProjectOpt[])
+    .filter((p) => activeCompany.scope.has(p.division_id))
     .map((p) => ({ id: p.id, name: p.name, division_id: p.division_id }));
   const members: MemberOpt[] = (memberRows ?? []).map((m) => ({ id: m.id, name: m.full_name ?? "Unknown" }));
 
@@ -147,6 +153,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .from("tasks")
           .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
           .eq("assignee_id", user.id)
+          .in("division_id", activeCompany.scopeDivisionIds)
           .is("deleted_at", null)
           .order("due_date", { nullsFirst: false })
           .limit(1000)
@@ -286,7 +293,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
         <TaskBoard
           tasks={tasks}
           stages={stages}
-          divisions={divs}
+          divisions={scopedDivs}
           projects={projects}
           members={members}
           cycles={cycles}
@@ -294,7 +301,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           currentUserId={user.id}
           canManageWorkflow={canManageWorkflow}
           canCreateTasks={canCreateTasks}
-          initialDivision={divs.find((d) => d.slug === sp.div)?.slug}
+          initialDivision={scopedDivs.find((d) => d.slug === sp.div)?.slug}
           activeProjectId={selectedProjectId}
           initialView={sp.view === "list" ? "list" : "board"}
           initialTab={tab}

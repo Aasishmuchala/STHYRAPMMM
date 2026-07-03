@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { PeopleView } from "@/components/people/PeopleView";
 import { buildWorkspaceAccess } from "@/lib/access";
+import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Person, PersonMembership, PersonDaily, PersonTask } from "@/components/people/types";
@@ -69,13 +70,25 @@ export default async function PeoplePage({
     memberships: membershipsByUser.get(r.profile_id) ?? [],
   }));
 
+  // Scope the roster to the active company. A person is an "employee" of a
+  // company when they hold a division_members row in it; super-admins aren't
+  // employees but can view any company, and "All companies" shows everyone.
+  const accessibleDivs: DivisionOpt[] = (divisions ?? [])
+    .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
+    .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id) || access.peopleDivisionIds.has(d.id));
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), accessibleDivs, access.isSuperAdmin);
+  const scopedDivs: DivisionOpt[] = accessibleDivs.filter((d) => activeCompany.scope.has(d.id));
+  const scopedPeople: Person[] = people.filter((p) =>
+    (membershipsByUser.get(p.id) ?? []).some((m) => activeCompany.scope.has(m.division_id))
+  );
+
   // Optional: fetch last 30 days of completion history + recently completed tasks for the
   // selected user. Done in parallel with the page data so the heavy queries don't block render.
   let daily: PersonDaily[] = [];
   let recentDone: PersonTask[] = [];
   let openTasks: PersonTask[] = [];
   let selectedId: string | null = null;
-  if (sp?.user && people.some((p) => p.id === sp.user)) {
+  if (sp?.user && scopedPeople.some((p) => p.id === sp.user)) {
     selectedId = sp.user;
     const since = new Date();
     since.setDate(since.getDate() - 29); // 30 inclusive
@@ -134,11 +147,9 @@ export default async function PeoplePage({
       }));
   }
 
-  const divs: DivisionOpt[] = (divisions ?? []).map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }));
-
   return (
     <AppShell
-      divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))}
+      divisions={accessibleDivs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))}
       canSeeFinances={access.canSeeFinances}
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
@@ -153,8 +164,8 @@ export default async function PeoplePage({
           </div>
         </header>
         <PeopleView
-          people={people}
-          divisions={divs.map((d) => ({ id: d.id, slug: d.slug, name: d.name }))}
+          people={scopedPeople}
+          divisions={scopedDivs.map((d) => ({ id: d.id, slug: d.slug, name: d.name }))}
           selectedId={selectedId}
           daily={daily}
           recentDone={recentDone}

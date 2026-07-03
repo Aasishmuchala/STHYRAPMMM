@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { FinancesView } from "@/components/finances/FinancesView";
 import { buildWorkspaceAccess } from "@/lib/access";
+import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
 import type { Txn, Inv, Bom, Ra, EmployeeOption, RecurringPayment, FinanceImportBatch } from "@/lib/finances-types";
@@ -43,25 +44,34 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
   const dname = (d: Div) => d?.name ?? "";
   const dslug = (d: Div) => d?.slug ?? "";
 
-  const transactions: Txn[] = (txnRows ?? [])
-    .map((t) => ({ ...t, division_name: dname(t.divisions), division_slug: dslug(t.divisions), project_name: t.projects?.name ?? null }))
-    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
-  const invoices: Inv[] = (invRows ?? [])
-    .map((i) => ({ ...i, division_name: dname(i.divisions), division_slug: dslug(i.divisions) }))
-    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
-  const bom: Bom[] = (bomRows ?? [])
-    .map((b) => ({ ...b, division_name: dname(b.divisions), division_slug: dslug(b.divisions) }))
-    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
-  const ra: Ra[] = (raRows ?? [])
-    .map((r) => ({ ...r, division_name: dname(r.divisions), division_slug: dslug(r.divisions), project_name: r.projects?.name ?? null }))
-    .filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
-
+  // Full list of finance-accessible companies (feeds the switcher + view). The
+  // data below is then scoped to the single active company (owners may pick
+  // "all"), so the ledger shows one company at a time instead of every division.
   const divs: DivisionOpt[] = (divisions ?? [])
     .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
     .filter((division) => access.isSuperAdmin || access.financeDivisionIds.has(division.id));
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
+  const inScope = (divisionId: string) => activeCompany.scope.has(divisionId);
+  // Filter row + new-transaction division picker offer only the active company;
+  // full `divs` is still used below for label lookups and the sidebar switcher.
+  const scopedDivs: DivisionOpt[] = divs.filter((d) => inScope(d.id));
+
+  const transactions: Txn[] = (txnRows ?? [])
+    .map((t) => ({ ...t, division_name: dname(t.divisions), division_slug: dslug(t.divisions), project_name: t.projects?.name ?? null }))
+    .filter((row) => inScope(row.division_id));
+  const invoices: Inv[] = (invRows ?? [])
+    .map((i) => ({ ...i, division_name: dname(i.divisions), division_slug: dslug(i.divisions) }))
+    .filter((row) => inScope(row.division_id));
+  const bom: Bom[] = (bomRows ?? [])
+    .map((b) => ({ ...b, division_name: dname(b.divisions), division_slug: dslug(b.divisions) }))
+    .filter((row) => inScope(row.division_id));
+  const ra: Ra[] = (raRows ?? [])
+    .map((r) => ({ ...r, division_name: dname(r.divisions), division_slug: dslug(r.divisions), project_name: r.projects?.name ?? null }))
+    .filter((row) => inScope(row.division_id));
+
   const projects: ProjectOpt[] = (projectRows ?? [])
     .map((p: ProjectOpt) => ({ id: p.id, name: p.name, division_id: p.division_id }))
-    .filter((project) => access.isSuperAdmin || access.financeDivisionIds.has(project.division_id));
+    .filter((project) => inScope(project.division_id));
   const divisionMap = new Map(divs.map((division) => [division.id, division]));
   const projectMap = new Map(projects.map((project) => [project.id, project]));
   const employeeMap = new Map((employeeRows ?? []).map((employee) => [employee.id, employee]));
@@ -77,7 +87,7 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
       profile_name: employee?.full_name ?? null,
       profile_email: employee?.email ?? null,
     };
-  }).filter((row) => access.isSuperAdmin || access.financeDivisionIds.has(row.division_id));
+  }).filter((row) => inScope(row.division_id));
 
   return (
     <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
@@ -97,9 +107,9 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
             recurring={recurring}
             employees={employeeRows ?? []}
             importBatches={importBatches ?? []}
-            divisions={divs}
+            divisions={scopedDivs}
             projects={projects}
-            initialDivision={divs.find((d) => d.slug === sp.div)?.slug}
+            initialDivision={scopedDivs.find((d) => d.slug === sp.div)?.slug}
             openNew={sp.new === "1"}
           />
         </main>

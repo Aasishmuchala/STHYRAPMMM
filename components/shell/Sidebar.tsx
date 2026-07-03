@@ -47,7 +47,7 @@ export function Sidebar({
 
       {/* Workspace pill — lives in the sidebar instead of the top bar (Plane-style). */}
       <div style={{ padding: "4px 14px 10px" }}>
-        <DivisionSwitcher divisions={divisions} />
+        <DivisionSwitcher divisions={divisions} canPickAll={isOwner} />
       </div>
 
       <nav className="nav-group" aria-label="Workspace">
