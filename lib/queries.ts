@@ -27,6 +27,8 @@ type TaskRow = {
   status: string;
   due_date: string | null;
   division_id: string;
+  assignee_id: string | null;
+  project_id: string | null;
   divisions: { slug: string; name: string } | null;
   stage: { is_done: boolean } | null;
 };
@@ -66,8 +68,8 @@ export const getDashboard = cache(async function getDashboard(supabase: DB, toda
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("transactions").select("division_id,direction,amount_paise").is("deleted_at", null).gte("occurred_on", monthStart).limit(DASHBOARD_CAPS.txns),
     supabase.from("invoices").select("number,counterparty,amount_paise,status,due_on,division_id").is("deleted_at", null).limit(DASHBOARD_CAPS.invoices),
-    supabase.from("tasks").select("id,title,priority,status:workflow_stage_id,due_date,division_id,divisions(slug,name),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(DASHBOARD_CAPS.tasks).returns<TaskRow[]>(),
-    supabase.from("projects").select("division_id,status").is("deleted_at", null).limit(DASHBOARD_CAPS.projects),
+    supabase.from("tasks").select("id,title,priority,status:workflow_stage_id,due_date,division_id,assignee_id,project_id,divisions(slug,name),stage:workflow_stages!tasks_workflow_stage_id_fkey(is_done)").is("deleted_at", null).order("due_date", { nullsFirst: false }).limit(DASHBOARD_CAPS.tasks).returns<TaskRow[]>(),
+    supabase.from("projects").select("id,division_id,status,lead_id").is("deleted_at", null).limit(DASHBOARD_CAPS.projects),
     supabase.from("documents").select("title,doc_type,body_md,updated_at,divisions(name,slug)").is("deleted_at", null).eq("status", "active").order("updated_at", { ascending: false }).limit(1).returns<DocRow[]>(),
   ]);
 
@@ -90,25 +92,40 @@ export const getDashboard = cache(async function getDashboard(supabase: DB, toda
   const revByDiv = new Map<string, number>();
   for (const t of T) if (t.direction === "in") revByDiv.set(t.division_id, (revByDiv.get(t.division_id) ?? 0) + t.amount_paise);
   const maxRev = Math.max(1, ...revByDiv.values());
-  const activeProjByDiv = countBy((projects ?? []).filter((p) => p.status === "active").map((p) => p.division_id));
+
+  const projectsList = (projects ?? []) as { id: string; division_id: string; status: string; lead_id: string | null }[];
+  // Whole-division tallies (for managers).
+  const activeProjByDiv = countBy(projectsList.filter((p) => p.status === "active").map((p) => p.division_id));
   const openTaskByDiv = countBy(openTasks.map((task) => task.division_id));
+
+  // The viewer's own tallies (for plain members): their open tasks, and the
+  // active projects they're involved in — ones they lead or have a task in.
+  const myOpenTasks = openTasks.filter((task) => task.assignee_id === userId);
+  const myProjectIds = new Set<string>();
+  for (const t of tasks ?? []) if (t.assignee_id === userId && t.project_id) myProjectIds.add(t.project_id);
+  for (const p of projectsList) if (p.lead_id === userId) myProjectIds.add(p.id);
+  const myActiveProjByDiv = countBy(projectsList.filter((p) => p.status === "active" && myProjectIds.has(p.id)).map((p) => p.division_id));
+  const myOpenTaskByDiv = countBy(myOpenTasks.map((task) => task.division_id));
 
   const divisionHealth = (divisions ?? [])
     .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id))
     .map((d) => {
     const rev = revByDiv.get(d.id) ?? 0;
+    // Managers see the whole division's counts; a plain member sees only theirs.
+    const manages = access.isSuperAdmin || access.manageableDivisionIds.has(d.id);
     return {
       slug: d.slug,
       name: d.name.replace(/^Sthyra\s+/, ""),
       revenuePaise: rev,
       bar: Math.round((rev / maxRev) * 100),
-      activeProjects: activeProjByDiv.get(d.id) ?? 0,
-      openTasks: openTaskByDiv.get(d.id) ?? 0,
+      activeProjects: (manages ? activeProjByDiv : myActiveProjByDiv).get(d.id) ?? 0,
+      openTasks: (manages ? openTaskByDiv : myOpenTaskByDiv).get(d.id) ?? 0,
       canSeeFinances,
     };
     });
 
-  const myTasks = openTasks.slice(0, 6).map((t) => ({
+  // "My tasks" is always the viewer's own assigned, open work.
+  const myTasks = myOpenTasks.slice(0, 6).map((t) => ({
     id: t.id,
     title: t.title,
     priority: t.priority,

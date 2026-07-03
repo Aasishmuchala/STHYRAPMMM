@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { PeopleView } from "@/components/people/PeopleView";
 import { buildWorkspaceAccess } from "@/lib/access";
-import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
+import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Person, PersonMembership, PersonDaily, PersonTask } from "@/components/people/types";
@@ -77,9 +77,9 @@ export default async function PeoplePage({
     .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
     .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id) || access.peopleDivisionIds.has(d.id));
   const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), accessibleDivs, access.isSuperAdmin);
-  const scopedDivs: DivisionOpt[] = accessibleDivs.filter((d) => activeCompany.scope.has(d.id));
+  const scopedDivs: DivisionOpt[] = accessibleDivs.filter((d) => isInScope(activeCompany, d.id));
   const scopedPeople: Person[] = people.filter((p) =>
-    (membershipsByUser.get(p.id) ?? []).some((m) => activeCompany.scope.has(m.division_id))
+    (membershipsByUser.get(p.id) ?? []).some((m) => isInScope(activeCompany, m.division_id))
   );
 
   // Optional: fetch last 30 days of completion history + recently completed tasks for the

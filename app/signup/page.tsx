@@ -9,18 +9,7 @@ import {
   isCompanyEmail,
   normalizeEmail,
 } from "@/lib/auth/companyEmail";
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "11px 13px",
-  borderRadius: 9,
-  background: "var(--glass)",
-  border: "1px solid var(--line)",
-  color: "var(--text)",
-  fontSize: 14,
-  fontFamily: "inherit",
-  outline: "none",
-};
+import { AuthLayout } from "@/components/auth/AuthLayout";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -106,102 +95,76 @@ export default function SignupPage() {
   }
 
   return (
-    <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 24 }}>
-      <div className="glass" style={{ width: "100%", maxWidth: 380, borderRadius: 18, padding: 34 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/sthyra-logo.png" alt="Sthyra - Redefining Reality" className="logo-img" />
+    <AuthLayout>
+      <h1 className="auth-title">Create your account</h1>
+      <p className="auth-subtitle">
+        Only <strong>@{companyEmailDomain()}</strong> addresses can access the workspace.
+      </p>
 
-        <h1 className="display" style={{ fontSize: 22, marginBottom: 4, textAlign: "center" }}>
-          Set up your account
-        </h1>
-        <p style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 22 }}>
-          Only @{companyEmailDomain()} addresses can access the Sthyra dashboard. Email verification is currently skipped.
-        </p>
+      <form onSubmit={createAccount} className="auth-form">
+        <div className="auth-field">
+          <label htmlFor="name" className="auth-label">Full name</label>
+          <input
+            id="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="auth-input"
+            placeholder="Your name"
+          />
+        </div>
 
-        <form onSubmit={createAccount} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <label htmlFor="name" className="label">Full name</label>
-            <input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={inputStyle}
-              placeholder="Your name"
-            />
-          </div>
+        <div className="auth-field">
+          <label htmlFor="email" className="auth-label">Work email</label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="auth-input"
+            placeholder={`you@${companyEmailDomain()}`}
+          />
+        </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <label htmlFor="email" className="label">Work email</label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={inputStyle}
-              placeholder={`you@${companyEmailDomain()}`}
-            />
-          </div>
+        <div className="auth-field">
+          <label htmlFor="pw" className="auth-label">Password</label>
+          <input
+            id="pw"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            className="auth-input"
+            placeholder="At least 8 characters"
+          />
+        </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <label htmlFor="pw" className="label">Password</label>
-            <input
-              id="pw"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={pw}
-              onChange={(e) => setPw(e.target.value)}
-              style={inputStyle}
-              placeholder="At least 8 characters"
-            />
-          </div>
+        <div className="auth-field">
+          <label htmlFor="pw2" className="auth-label">Confirm password</label>
+          <input
+            id="pw2"
+            type="password"
+            autoComplete="new-password"
+            required
+            value={pw2}
+            onChange={(e) => setPw2(e.target.value)}
+            className="auth-input"
+            placeholder="••••••••"
+          />
+        </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <label htmlFor="pw2" className="label">Confirm password</label>
-            <input
-              id="pw2"
-              type="password"
-              autoComplete="new-password"
-              required
-              value={pw2}
-              onChange={(e) => setPw2(e.target.value)}
-              style={inputStyle}
-              placeholder="********"
-            />
-          </div>
+        {err && <div role="alert" className="auth-note err">{err}</div>}
 
-          {err && (
-            <div
-              role="alert"
-              style={{
-                fontSize: 12.5,
-                color: "var(--danger)",
-                background: "color-mix(in srgb, var(--danger) 8%, transparent)",
-                border: "1px solid var(--danger-soft)",
-                borderRadius: 8,
-                padding: "9px 11px",
-              }}
-            >
-              {err}
-            </div>
-          )}
+        <button type="submit" className="auth-btn" disabled={busy}>
+          {busy ? "Creating account…" : "Create account"}
+        </button>
+      </form>
 
-          <button
-            type="submit"
-            className="btn"
-            disabled={busy}
-            style={{ justifyContent: "center", padding: "11px", marginTop: 4, opacity: busy ? 0.7 : 1 }}
-          >
-            {busy ? "Creating account..." : "Create account"}
-          </button>
-        </form>
-
-        <p style={{ marginTop: 18, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center" }}>
-          Already have an account? <a href="/login" style={{ color: "var(--accent)" }}>Sign in</a>
-        </p>
-      </div>
-    </div>
+      <p className="auth-switch">
+        Already have an account? <a href="/login" className="auth-link">Sign in</a>
+      </p>
+    </AuthLayout>
   );
 }

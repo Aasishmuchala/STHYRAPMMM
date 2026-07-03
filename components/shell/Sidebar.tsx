@@ -6,7 +6,7 @@ import {
   IconHome, IconTasks, IconFinance, IconDoc, IconClients,
   IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers, IconPeople,
 } from "@/components/icons";
-import { FiClock, FiTarget, FiZap } from "react-icons/fi";
+import { FiClock, FiTarget, FiZap, FiUserCheck } from "react-icons/fi";
 import { DivisionSwitcher } from "./DivisionSwitcher";
 
 type Nav = { slug: string; name: string };
@@ -62,6 +62,9 @@ export function Sidebar({
         </Link>
         <Link href="/timesheet" onClick={onNavigate} className={`nav-item ${active("/timesheet") ? "active" : ""}`} aria-current={active("/timesheet") ? "page" : undefined}>
           <FiClock size={16} />Timesheet
+        </Link>
+        <Link href="/attendance" onClick={onNavigate} className={`nav-item ${active("/attendance") ? "active" : ""}`} aria-current={active("/attendance") ? "page" : undefined}>
+          <FiUserCheck size={16} />Attendance
         </Link>
         <Link href="/projects" onClick={onNavigate} className={`nav-item ${active("/projects") ? "active" : ""}`} aria-current={active("/projects") ? "page" : undefined}>
           <IconLayers size={16} />Projects

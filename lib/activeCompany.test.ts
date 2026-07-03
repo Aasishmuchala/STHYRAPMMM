@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveActiveCompany, ALL_COMPANIES, type CompanyDivision } from "./activeCompany";
+import { resolveActiveCompany, isInScope, ALL_COMPANIES, type CompanyDivision } from "./activeCompany";
 
 const DIVS: CompanyDivision[] = [
   { id: "d1", slug: "alpha", name: "Alpha" },
@@ -57,11 +57,26 @@ describe("resolveActiveCompany", () => {
     expect(r.scopeDivisionIds).toEqual([]);
   });
 
-  it("handles a non-owner with no accessible companies", () => {
+  it("handles a non-owner with no accessible companies (unscoped)", () => {
     const r = resolveActiveCompany("alpha", [], false);
     expect(r.activeSlug).toBeNull();
     expect(r.activeDivisionId).toBeNull();
     expect(r.scopeDivisionIds).toEqual([]);
+    expect(r.unscoped).toBe(true);
+  });
+
+  it("isInScope: a member with no company (unscoped) sees any row — never filtered to nothing", () => {
+    const memberNoCompany = resolveActiveCompany(null, [], false);
+    expect(memberNoCompany.unscoped).toBe(true);
+    expect(isInScope(memberNoCompany, "d1")).toBe(true);
+    expect(isInScope(memberNoCompany, "anything")).toBe(true);
+  });
+
+  it("isInScope: a scoped company only matches its own division", () => {
+    const scoped = resolveActiveCompany("bravo", DIVS, false);
+    expect(scoped.unscoped).toBe(false);
+    expect(isInScope(scoped, "d2")).toBe(true);
+    expect(isInScope(scoped, "d1")).toBe(false);
   });
 
   it("only ever includes ids the user can access (scope ⊆ accessible)", () => {

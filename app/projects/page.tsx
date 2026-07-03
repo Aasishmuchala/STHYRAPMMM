@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { ProjectsView } from "@/components/projects/ProjectsView";
 import { buildWorkspaceAccess } from "@/lib/access";
-import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
+import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
@@ -40,7 +40,7 @@ export default async function ProjectsPage() {
     supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("projects").select("id,name,division_id,client,description,starts_on,target_end_on,lead_id,lead:profiles!projects_lead_id_fkey(full_name),divisions(name)").is("deleted_at", null).eq("status", "active").order("name"),
-    supabase.from("tasks").select("project_id").is("deleted_at", null),
+    supabase.from("tasks").select("project_id,assignee_id").is("deleted_at", null),
   ]);
 
   const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
@@ -56,16 +56,24 @@ export default async function ProjectsPage() {
   const creatableDivisions = (access.isSuperAdmin
     ? divs
     : divs.filter((division) => access.manageableDivisionIds.has(division.id))
-  ).filter((division) => activeCompany.scope.has(division.id));
+  ).filter((division) => isInScope(activeCompany, division.id));
   const manageableDivisionIds = creatableDivisions.map((division) => division.id);
+  // Two tallies per project: the whole team's task count (for managers) and the
+  // viewer's own assigned count (for plain members).
   const taskCounts = new Map<string, number>();
+  const myTaskCounts = new Map<string, number>();
+  const myProjectIds = new Set<string>();
   let orphanTaskCount = 0;
-  for (const row of taskRows ?? []) {
+  for (const row of (taskRows ?? []) as { project_id: string | null; assignee_id: string | null }[]) {
     if (!row.project_id) {
-      orphanTaskCount += 1;
+      if (row.assignee_id === user.id) orphanTaskCount += 1;
       continue;
     }
     taskCounts.set(row.project_id, (taskCounts.get(row.project_id) ?? 0) + 1);
+    if (row.assignee_id === user.id) {
+      myProjectIds.add(row.project_id);
+      myTaskCounts.set(row.project_id, (myTaskCounts.get(row.project_id) ?? 0) + 1);
+    }
   }
 
   let members: { id: string; name: string; email: string | null }[] = [];
@@ -88,14 +96,24 @@ export default async function ProjectsPage() {
     divisionMemberships = (membershipResult.data ?? []) as DivisionMembershipRow[];
   }
 
-  // RLS bounds visibility (division projects + projects the user is only an
-  // assignee on); we then narrow to the active company so only that company's
-  // projects show. Owners on "all companies" see everything they can access.
+  // Narrow to the active company, then to what this viewer may see: managers
+  // (super-admin / owner / lead of the division) see every project; a plain
+  // member sees only projects they're involved in — ones they lead or have a
+  // task assigned in.
   const projects = ((projectRows ?? []) as ProjectRow[])
-    .filter((project) => activeCompany.scope.has(project.division_id))
+    .filter((project) => isInScope(activeCompany, project.division_id))
+    .filter((project) =>
+      access.isSuperAdmin ||
+      access.manageableDivisionIds.has(project.division_id) ||
+      project.lead_id === user.id ||
+      myProjectIds.has(project.id)
+    )
     .map((project) => {
     const division = Array.isArray(project.divisions) ? project.divisions[0] : project.divisions;
     const lead = Array.isArray(project.lead) ? project.lead[0] : project.lead;
+    // Managers see the project's full task count; a plain member sees only the
+    // number of tasks assigned to them.
+    const viewerManages = access.isSuperAdmin || access.manageableDivisionIds.has(project.division_id);
     return {
       id: project.id,
       name: project.name,
@@ -107,7 +125,7 @@ export default async function ProjectsPage() {
       target_end_on: project.target_end_on ?? null,
       lead_id: project.lead_id ?? null,
       lead_name: lead?.full_name ?? null,
-      openTasks: taskCounts.get(project.id) ?? 0,
+      openTasks: (viewerManages ? taskCounts : myTaskCounts).get(project.id) ?? 0,
     };
     });
 

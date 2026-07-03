@@ -30,7 +30,19 @@ export type ActiveCompany = {
   /** Same as `scope`, as an array for `.in("division_id", …)` queries. */
   scopeDivisionIds: string[];
   isAll: boolean;
+  /**
+   * True when there is no company scope to apply (the user belongs to no
+   * company). Callers MUST NOT filter in this case — an empty scope means
+   * "show everything RLS already allows" (e.g. a member's own assigned work),
+   * NOT "hide everything".
+   */
+  unscoped: boolean;
 };
+
+/** Does a row's division fall within the active scope? Empty scope = always. */
+export function isInScope(active: ActiveCompany, divisionId: string): boolean {
+  return active.unscoped || active.scope.has(divisionId);
+}
 
 /**
  * Resolve the active company from the cookie slug against the divisions the
@@ -64,6 +76,7 @@ export function resolveActiveCompany(
       scope: new Set([match.id]),
       scopeDivisionIds: [match.id],
       isAll: false,
+      unscoped: false,
     };
   }
 
@@ -75,18 +88,22 @@ export function resolveActiveCompany(
       scope: new Set(allIds),
       scopeDivisionIds: allIds,
       isAll: true,
+      unscoped: allIds.length === 0,
     };
   }
 
   // Non-owners are scoped to their first (usually only) company.
   const first = accessibleDivs[0] ?? null;
   if (!first) {
+    // The user belongs to no company (e.g. a member with assigned work but no
+    // division membership). Don't scope — their own work must still show.
     return {
       activeSlug: null,
       activeDivisionId: null,
       scope: new Set<string>(),
       scopeDivisionIds: [],
       isAll: false,
+      unscoped: true,
     };
   }
   return {
@@ -95,5 +112,6 @@ export function resolveActiveCompany(
     scope: new Set([first.id]),
     scopeDivisionIds: [first.id],
     isAll: false,
+    unscoped: false,
   };
 }

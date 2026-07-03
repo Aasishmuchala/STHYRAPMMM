@@ -60,12 +60,26 @@ export async function saveAppearance(
   return { ok: true };
 }
 
-export async function updateProfile(fullName: string): Promise<Result> {
+export async function updateProfile(fullName: string, phone?: string | null): Promise<Result> {
   const supabase = await db();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
-  const { error } = await supabase.from("profiles").update({ full_name: fullName.trim() || null }).eq("id", user.id);
-  if (error) return { error: error.message };
+
+  const update: Record<string, unknown> = { full_name: fullName.trim() || null };
+  if (phone !== undefined) {
+    // Keep it forgiving: allow "+", digits, spaces, dashes, parens; store a
+    // compact form or null when blank. (No OTP verification for now.)
+    const raw = (phone ?? "").trim();
+    const cleaned = raw.replace(/[^\d+]/g, "");
+    if (raw && cleaned.replace(/\D/g, "").length < 7) return { error: "Enter a valid phone number." };
+    update.phone = cleaned || null;
+  }
+
+  const { error } = await supabase.from("profiles").update(update).eq("id", user.id);
+  if (error) {
+    if (/duplicate|unique/i.test(error.message)) return { error: "That phone number is already linked to another account." };
+    return { error: error.message };
+  }
   return done();
 }
 

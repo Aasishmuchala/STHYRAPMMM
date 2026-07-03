@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { buildWorkspaceAccess } from "@/lib/access";
-import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
+import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { PageHeader, Button } from "@/components/ui";
 import { initials } from "@/lib/format";
 import { DEFAULT_TASK_STAGES } from "@/lib/tasks-types";
@@ -81,12 +81,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     { data: divisions },
     { data: projectRows },
     { data: memberRows },
+    { data: myTaskProjectRows },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
     supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
-    supabase.from("projects").select("id,name,division_id").is("deleted_at", null).eq("status", "active").order("name"),
+    supabase.from("projects").select("id,name,division_id,lead_id").is("deleted_at", null).eq("status", "active").order("name"),
     supabase.from("profiles").select("id,full_name").eq("is_active", true),
+    supabase.from("tasks").select("project_id").eq("assignee_id", user.id).is("deleted_at", null),
   ]);
 
   const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
@@ -99,12 +101,24 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
   // The board's filter row and new-task division picker offer only the active
   // company; the sidebar switcher keeps the full `divs` list for switching.
-  const scopedDivs: DivisionOpt[] = divs.filter((d) => activeCompany.scope.has(d.id));
-  // RLS already returns exactly the projects this user may see (their division
-  // projects AND any project they're only an assignee on). We then narrow to the
-  // active company so the project switcher and boards only show that company.
-  const projects: ProjectOpt[] = ((projectRows ?? []) as ProjectOpt[])
-    .filter((p) => activeCompany.scope.has(p.division_id))
+  const scopedDivs: DivisionOpt[] = divs.filter((d) => isInScope(activeCompany, d.id));
+  // Projects a plain member may see: only ones they're involved in — the ones
+  // they lead or have a task assigned in. Managers (owner/lead of the division,
+  // or super-admin) see every project in the active company.
+  const myProjectIds = new Set(
+    ((myTaskProjectRows ?? []) as { project_id: string | null }[])
+      .map((r) => r.project_id)
+      .filter((id): id is string => Boolean(id))
+  );
+  const projectRowsTyped = (projectRows ?? []) as (ProjectOpt & { lead_id: string | null })[];
+  const projects: ProjectOpt[] = projectRowsTyped
+    .filter((p) => isInScope(activeCompany, p.division_id))
+    .filter((p) =>
+      access.isSuperAdmin ||
+      access.manageableDivisionIds.has(p.division_id) ||
+      p.lead_id === user.id ||
+      myProjectIds.has(p.id)
+    )
     .map((p) => ({ id: p.id, name: p.name, division_id: p.division_id }));
   const members: MemberOpt[] = (memberRows ?? []).map((m) => ({ id: m.id, name: m.full_name ?? "Unknown" }));
 
@@ -117,16 +131,43 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     throw new Error(workflowRes.error.message);
   }
 
+  // "My items" board (no project selected): the user's assigned tasks, narrowed
+  // to the active company. When unscoped (a member with no company) we DON'T add
+  // the division filter, so their own assigned work always shows.
+  let assigneeTasksQuery = supabase
+    .from("tasks")
+    .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
+    .eq("assignee_id", user.id);
+  if (!activeCompany.unscoped) {
+    assigneeTasksQuery = assigneeTasksQuery.in("division_id", activeCompany.scopeDivisionIds);
+  }
+  const assigneeTasks = assigneeTasksQuery
+    .is("deleted_at", null)
+    .order("due_date", { nullsFirst: false })
+    .limit(1000)
+    .returns<TaskJoinRow[]>();
+
+  // Project board visibility: managers (super-admin / owner / lead of the
+  // project's division) see every task; a plain member sees only the tasks
+  // assigned to them — never the whole company's board.
+  const selectedProjectDivisionId = projects.find((p) => p.id === selectedProjectId)?.division_id ?? null;
+  const viewerManagesTasks = access.isSuperAdmin || (selectedProjectDivisionId != null && access.manageableDivisionIds.has(selectedProjectDivisionId));
+  let projectTasksQuery = supabase
+    .from("tasks")
+    .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
+    .eq("project_id", selectedProjectId ?? "");
+  if (!viewerManagesTasks) {
+    projectTasksQuery = projectTasksQuery.eq("assignee_id", user.id);
+  }
+  const projectTasks = projectTasksQuery
+    .is("deleted_at", null)
+    .order("due_date", { nullsFirst: false })
+    .limit(1000)
+    .returns<TaskJoinRow[]>();
+
   const [taskRes, stageRes, cycleRes, moduleRes] = selectedProjectId
     ? await Promise.all([
-        supabase
-          .from("tasks")
-          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
-          .eq("project_id", selectedProjectId)
-          .is("deleted_at", null)
-          .order("due_date", { nullsFirst: false })
-          .limit(1000)
-          .returns<TaskJoinRow[]>(),
+        projectTasks,
         supabase
           .from("workflow_stages")
           .select("id,workflow_id,key,label,color,position,is_done")
@@ -149,15 +190,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
           .returns<ModuleRow[]>(),
       ])
     : await Promise.all([
-        supabase
-          .from("tasks")
-          .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
-          .eq("assignee_id", user.id)
-          .in("division_id", activeCompany.scopeDivisionIds)
-          .is("deleted_at", null)
-          .order("due_date", { nullsFirst: false })
-          .limit(1000)
-          .returns<TaskJoinRow[]>(),
+        assigneeTasks,
         workflowRes.data
           ? supabase
               .from("workflow_stages")

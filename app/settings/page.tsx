@@ -19,7 +19,7 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   const [{ data: profile }, { data: myMemberships }, { data: divisions }, aiData] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role,theme,wallpaper,accent_color").eq("id", user.id).maybeSingle(),
+    supabase.from("profiles").select("full_name,email,global_role,theme,wallpaper,accent_color,phone").eq("id", user.id).maybeSingle(),
     supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     supabase.from("divisions").select("id,slug,name").order("slug"),
     loadAiConsoleData(supabase),
@@ -35,6 +35,15 @@ export default async function SettingsPage() {
     ? divs
     : divs.filter((d) => access.manageableDivisionIds.has(d.id));
   const leadableDivisionIds = leadableDivisions.map((division) => division.id);
+
+  let attendanceLocations: { id: string; division_id: string; name: string; latitude: number; longitude: number; radius_m: number }[] = [];
+  if (canManageTeam) {
+    const { data: locs } = await supabase
+      .from("attendance_locations")
+      .select("id,division_id,name,latitude,longitude,radius_m")
+      .order("name");
+    attendanceLocations = (locs ?? []) as typeof attendanceLocations;
+  }
 
   let members: Member[] = [];
   let memberships: Membership[] = [];
@@ -114,6 +123,7 @@ export default async function SettingsPage() {
           companyRoles={companyRoles}
           roleAssignments={roleAssignments}
           knowledge={knowledge}
+          attendanceLocations={attendanceLocations}
         />
       </main>
     </AppShell>

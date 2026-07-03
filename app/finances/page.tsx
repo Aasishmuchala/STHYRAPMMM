@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { FinancesView } from "@/components/finances/FinancesView";
 import { buildWorkspaceAccess } from "@/lib/access";
-import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
+import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
 import type { Txn, Inv, Bom, Ra, EmployeeOption, RecurringPayment, FinanceImportBatch } from "@/lib/finances-types";
@@ -51,7 +51,7 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
     .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
     .filter((division) => access.isSuperAdmin || access.financeDivisionIds.has(division.id));
   const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
-  const inScope = (divisionId: string) => activeCompany.scope.has(divisionId);
+  const inScope = (divisionId: string) => isInScope(activeCompany, divisionId);
   // Filter row + new-transaction division picker offer only the active company;
   // full `divs` is still used below for label lookups and the sidebar switcher.
   const scopedDivs: DivisionOpt[] = divs.filter((d) => inScope(d.id));

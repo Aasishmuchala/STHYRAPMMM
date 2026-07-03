@@ -9,9 +9,10 @@ import { ThemeControls } from "./ThemeControls";
 import { OmegaKeyCard } from "./OmegaKeyCard";
 import { TeamRolesCard, type CompanyRole, type RolePerson } from "./TeamRolesCard";
 import { KnowledgeCard, type KnowledgeEntry } from "./KnowledgeCard";
+import { AttendanceLocationsCard, type AttendanceLocation } from "./AttendanceLocationsCard";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
-type Profile = { full_name: string | null; email: string | null; global_role: string };
+type Profile = { full_name: string | null; email: string | null; global_role: string; phone?: string | null };
 type Member = { id: string; full_name: string | null; email: string | null; global_role: string };
 type Membership = { id: string; user_id: string; division_id: string; role: string };
 
@@ -38,6 +39,7 @@ export function SettingsView({
   companyRoles = [],
   roleAssignments = {},
   knowledge = [],
+  attendanceLocations = [],
 }: {
   profile: Profile;
   isOwner: boolean;
@@ -53,6 +55,7 @@ export function SettingsView({
   companyRoles?: CompanyRole[];
   roleAssignments?: Record<string, string[]>;
   knowledge?: KnowledgeEntry[];
+  attendanceLocations?: AttendanceLocation[];
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -64,6 +67,7 @@ export function SettingsView({
     ?? "That member";
 
   const [name, setName] = useState(profile.full_name ?? "");
+  const [phone, setPhone] = useState(profile.phone ?? "");
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
 
@@ -115,6 +119,17 @@ export function SettingsView({
   const [companySlug, setCompanySlug] = useState("");
   const [companyError, setCompanyError] = useState<string | null>(null);
 
+  // Group the (otherwise very long) settings into tabs. A plain member sees only
+  // Appearance + Account; managers/owners get Team and AI too.
+  const tabs = [
+    { key: "appearance", label: "Appearance" },
+    { key: "account", label: "Account" },
+    ...(canManageTeam || isOwner ? [{ key: "team", label: "Team & companies" }] : []),
+    ...(canManageTeam ? [{ key: "attendance", label: "Attendance" }] : []),
+    ...(isOwner ? [{ key: "ai", label: "AI assistant" }] : []),
+  ];
+  const [tab, setTab] = useState("appearance");
+
   function handleMembershipUpdate() {
     setMemberError(null);
     setMemberMessage(null);
@@ -151,12 +166,30 @@ export function SettingsView({
 
   return (
     <div className="settings">
+      <div role="tablist" aria-label="Settings sections" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            className="pill"
+            onClick={() => setTab(t.key)}
+            style={tab === t.key ? { background: "var(--accent)", color: "#fff", borderColor: "var(--accent)" } : undefined}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "appearance" && (
       <section className="set-card">
         <h3>Appearance</h3>
         <p className="sub">Choose a theme and an optional wallpaper. Applies instantly and syncs to your account.</p>
         <ThemeControls initialTheme={initialTheme} initialWallpaper={initialWallpaper} initialAccent={initialAccent} />
       </section>
+      )}
 
+      {tab === "account" && (
       <section className="set-card">
         <h3>Profile</h3>
         <p className="sub">Your name as it appears across the workspace.</p>
@@ -176,6 +209,22 @@ export function SettingsView({
           <label className="label">Email</label>
           <input className="input" value={profile.email ?? ""} disabled style={{ opacity: 0.6 }} />
         </div>
+        <div className="field">
+          <label className="label" htmlFor="s-phone">Phone number</label>
+          <input
+            id="s-phone"
+            className="input"
+            type="tel"
+            autoComplete="tel"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              setProfileSaved(false);
+            }}
+            placeholder="+91 98765 43210"
+          />
+          <p className="sub" style={{ marginTop: 6, marginBottom: 0 }}>Used for attendance reminders (WhatsApp/SMS) once messaging is enabled.</p>
+        </div>
         {profileError && <div className="form-err">{profileError}</div>}
         <div className="modal-actions">
           {profileSaved && <span style={{ color: "var(--positive)", fontSize: 12, marginRight: "auto" }}>Saved</span>}
@@ -186,7 +235,7 @@ export function SettingsView({
               setProfileSaved(false);
               start(async () => {
                 const toastId = beginToast("Saving profile...");
-                const result = await updateProfile(name);
+                const result = await updateProfile(name, phone);
                 if (!finishToast(result, { id: toastId, success: "Profile saved." })) {
                   setProfileError(result.error);
                   return;
@@ -200,7 +249,9 @@ export function SettingsView({
           </button>
         </div>
       </section>
+      )}
 
+      {tab === "account" && (
       <section className="set-card">
         <h3>Password</h3>
         <p className="sub">Set a new password after you verify your company email.</p>
@@ -227,10 +278,11 @@ export function SettingsView({
           </div>
         </form>
       </section>
+      )}
 
-      {isOwner && <OmegaKeyCard status={omegaStatus} />}
+      {tab === "ai" && isOwner && <OmegaKeyCard status={omegaStatus} />}
 
-      {isOwner && (
+      {tab === "team" && isOwner && (
         <section className="set-card">
           <h3>Companies</h3>
           <p className="sub">Super admins can add a new company workspace, then assign that company&apos;s owner from Member access below.</p>
@@ -269,7 +321,7 @@ export function SettingsView({
         </section>
       )}
 
-      {canManageTeam && (
+      {tab === "team" && canManageTeam && (
         <section className="set-card">
           <h3>Member access</h3>
           <p className="sub">Verified `@sthyra.com` users appear here. Assign or update each person&apos;s company role as owner, lead, accountant, or member.</p>
@@ -386,7 +438,7 @@ export function SettingsView({
         </section>
       )}
 
-      {isOwner && (
+      {tab === "team" && isOwner && (
         <TeamRolesCard
           people={members as RolePerson[]}
           roles={companyRoles}
@@ -394,7 +446,11 @@ export function SettingsView({
         />
       )}
 
-      {isOwner && <KnowledgeCard entries={knowledge} />}
+      {tab === "attendance" && canManageTeam && (
+        <AttendanceLocationsCard locations={attendanceLocations} divisions={leadableDivisions} />
+      )}
+
+      {tab === "ai" && isOwner && <KnowledgeCard entries={knowledge} />}
     </div>
   );
 }
