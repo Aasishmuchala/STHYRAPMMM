@@ -37,11 +37,13 @@ export type ActiveCompany = {
  * user may access.
  *
  * Rules:
- *  - owner picked "all"           → aggregate across all accessible divisions
- *  - a valid, accessible slug     → that single company
- *  - no cookie / stale / no access → default to the FIRST accessible company
- *    (so the default is always ONE company, never the mixed view the user
- *    complained about)
+ *  - a valid, accessible slug is ALWAYS honored → that single company
+ *  - otherwise (no cookie / stale slug / explicit "all"):
+ *      · owners (canPickAll)  → "All companies" (they see everything by default
+ *        and narrow via the switcher — an owner must never be dropped into one
+ *        arbitrary, possibly-empty company)
+ *      · everyone else        → their FIRST accessible company (employees are
+ *        always scoped to the one company they belong to)
  *
  * `accessibleDivs` MUST already be ordered by slug and filtered to what the
  * user can see, so the default here matches the switcher's default label.
@@ -52,8 +54,21 @@ export function resolveActiveCompany(
   canPickAll: boolean,
 ): ActiveCompany {
   const allIds = accessibleDivs.map((d) => d.id);
+  const match = slug ? accessibleDivs.find((d) => d.slug === slug) : undefined;
 
-  if (canPickAll && slug === ALL_COMPANIES) {
+  // An explicit, valid company pick always wins — including for owners.
+  if (match) {
+    return {
+      activeSlug: match.slug,
+      activeDivisionId: match.id,
+      scope: new Set([match.id]),
+      scopeDivisionIds: [match.id],
+      isAll: false,
+    };
+  }
+
+  // No valid selection. Owners fall back to the all-companies view.
+  if (canPickAll) {
     return {
       activeSlug: ALL_COMPANIES,
       activeDivisionId: null,
@@ -63,9 +78,9 @@ export function resolveActiveCompany(
     };
   }
 
-  const match = slug ? accessibleDivs.find((d) => d.slug === slug) : undefined;
-  const active = match ?? accessibleDivs[0] ?? null;
-  if (!active) {
+  // Non-owners are scoped to their first (usually only) company.
+  const first = accessibleDivs[0] ?? null;
+  if (!first) {
     return {
       activeSlug: null,
       activeDivisionId: null,
@@ -74,12 +89,11 @@ export function resolveActiveCompany(
       isAll: false,
     };
   }
-
   return {
-    activeSlug: active.slug,
-    activeDivisionId: active.id,
-    scope: new Set([active.id]),
-    scopeDivisionIds: [active.id],
+    activeSlug: first.slug,
+    activeDivisionId: first.id,
+    scope: new Set([first.id]),
+    scopeDivisionIds: [first.id],
     isAll: false,
   };
 }

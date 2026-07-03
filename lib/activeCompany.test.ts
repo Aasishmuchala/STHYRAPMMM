@@ -8,16 +8,25 @@ const DIVS: CompanyDivision[] = [
 ];
 
 describe("resolveActiveCompany", () => {
-  it("defaults to the first accessible company when no cookie is set", () => {
+  it("owners default to 'all companies' when no cookie is set", () => {
     const r = resolveActiveCompany(null, DIVS, true);
+    expect(r.isAll).toBe(true);
+    expect(r.activeSlug).toBe(ALL_COMPANIES);
+    expect(r.activeDivisionId).toBeNull();
+    expect(r.scopeDivisionIds).toEqual(["d1", "d2", "d3"]);
+  });
+
+  it("non-owners default to their first company when no cookie is set", () => {
+    const r = resolveActiveCompany(null, DIVS, false);
+    expect(r.isAll).toBe(false);
     expect(r.activeSlug).toBe("alpha");
     expect(r.activeDivisionId).toBe("d1");
     expect(r.scopeDivisionIds).toEqual(["d1"]);
-    expect(r.isAll).toBe(false);
   });
 
-  it("scopes to a single company by slug", () => {
+  it("an explicit valid slug is honored, even for owners", () => {
     const r = resolveActiveCompany("bravo", DIVS, true);
+    expect(r.isAll).toBe(false);
     expect(r.activeDivisionId).toBe("d2");
     expect([...r.scope]).toEqual(["d2"]);
   });
@@ -36,14 +45,20 @@ describe("resolveActiveCompany", () => {
     expect(r.scopeDivisionIds).toEqual(["d1"]);
   });
 
-  it("a stale/unknown slug falls back to the first company, never the mixed view", () => {
+  it("a stale/unknown slug falls back to the owner default (all companies)", () => {
     const r = resolveActiveCompany("deleted-co", DIVS, true);
-    expect(r.activeDivisionId).toBe("d1");
-    expect(r.scopeDivisionIds).toEqual(["d1"]);
+    expect(r.isAll).toBe(true);
+    expect(r.scopeDivisionIds).toEqual(["d1", "d2", "d3"]);
   });
 
-  it("handles a user with no accessible companies", () => {
+  it("handles an owner with no accessible companies", () => {
     const r = resolveActiveCompany("alpha", [], true);
+    expect(r.activeDivisionId).toBeNull();
+    expect(r.scopeDivisionIds).toEqual([]);
+  });
+
+  it("handles a non-owner with no accessible companies", () => {
+    const r = resolveActiveCompany("alpha", [], false);
     expect(r.activeSlug).toBeNull();
     expect(r.activeDivisionId).toBeNull();
     expect(r.scopeDivisionIds).toEqual([]);

@@ -33,9 +33,10 @@ export function DivisionSwitcher({ divisions, canPickAll = false }: { divisions:
     setActiveSlug(readCookie(COOKIE));
   }, []);
 
-  const showingAll = canPickAll && activeSlug === ALL;
   const current = divisions.find((d) => d.slug === activeSlug);
-  // No cookie yet → the server defaults to the first company, so mirror that.
+  // Mirror the server default (see resolveActiveCompany): owners with no valid
+  // selection land on "All companies"; everyone else on their first company.
+  const showingAll = canPickAll && !current;
   const selectedSlug = showingAll ? ALL : (current?.slug ?? divisions[0]?.slug ?? null);
   const label = showingAll ? "All companies" : (current?.name ?? divisions[0]?.name ?? "No company");
 
