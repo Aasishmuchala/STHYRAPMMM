@@ -24,17 +24,19 @@ function NavGroup({
   title,
   items,
   activeHref,
+  defaultOpen = false,
   onNavigate,
 }: {
   title: string;
   items: Item[];
   activeHref: (href: string) => boolean;
+  defaultOpen?: boolean;
   onNavigate?: () => void;
 }) {
   const visible = items.filter((i) => i.show);
   // Keep a group open if it holds the current route.
   const hasActive = visible.some((i) => activeHref(i.href));
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
   const isOpen = open || hasActive;
   if (visible.length === 0) return null;
 
@@ -138,7 +140,7 @@ export function Sidebar({
       </nav>
 
       {groups.map((g) => (
-        <NavGroup key={g.title} title={g.title} items={g.items} activeHref={active} onNavigate={onNavigate} />
+        <NavGroup key={g.title} title={g.title} items={g.items} activeHref={active} defaultOpen={g.title === "Work"} onNavigate={onNavigate} />
       ))}
 
       {divisions.length > 0 && (

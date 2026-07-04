@@ -4620,12 +4620,13 @@ html[data-workspace-surface="plane"] .skel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;                 /* full width of the sidebar content */
-  margin: 0 0 8px;             /* breathing room below the header */
-  padding: 13px 14px;          /* taller */
+  width: 100%;
+  margin: 2px 0;
+  padding: 7px 4px 8px;
   border: none;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--text-dim) 8%, transparent);
+  border-bottom: 1px solid var(--line);   /* bottom line, not a container */
+  border-radius: 0;
+  background: none;
   color: var(--text-dim);
   font-family: inherit;
   font-size: 11px;
@@ -4633,11 +4634,10 @@ html[data-workspace-surface="plane"] .skel {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.nav-seg-toggle:hover { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text); }
+.nav-seg-toggle:hover { color: var(--text); border-color: color-mix(in srgb, var(--text-dim) 45%, transparent); }
 .nav-seg-caret { display: inline-flex; opacity: 0.55; transition: transform 0.15s ease; }
-.nav-seg-toggle { margin: 0 0 4px; }
 /* Tighter spacing between sections + a fully-scrollable sidebar whose scrollbar
    is hidden (content can exceed the viewport on smaller laptops). */
 .side > .nav-group { gap: 3px; }
