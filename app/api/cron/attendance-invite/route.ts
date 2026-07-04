@@ -83,15 +83,25 @@ async function run(request: Request): Promise<Response> {
   const expiresAt = Date.now() + 16 * 60 * 60 * 1000; // valid through the workday
   const base = baseUrl();
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   let sent = 0;
   const failures: string[] = [];
   for (const p of recipients) {
     const token = signAttendanceToken(p.id, expiresAt);
     const link = `${base}/attendance/check-in?t=${token}`;
-    const name = (p.full_name || p.email || "there").split(" ")[0];
-    const res = await sendEmail(p.email as string, "Mark your attendance for today", inviteHtml(name!, link));
+    const name = (p.full_name || p.email || "there").split(" ")[0] || "there";
+
+    let res = await sendEmail(p.email as string, "Mark your attendance for today", inviteHtml(name, link));
+    // Resend allows ~2 requests/sec; back off and retry once on a rate-limit.
+    if (!res.ok && /429|rate.?limit/i.test(res.error ?? "")) {
+      await sleep(1200);
+      res = await sendEmail(p.email as string, "Mark your attendance for today", inviteHtml(name, link));
+    }
     if (res.ok) sent += 1;
     else failures.push(`${p.email}: ${res.error}`);
+
+    await sleep(600); // stay under the 2 req/s limit
   }
 
   return NextResponse.json({ ok: true, recipients: recipients.length, sent, failed: failures.length, failures: failures.slice(0, 5) });
