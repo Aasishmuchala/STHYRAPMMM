@@ -4620,20 +4620,23 @@ html[data-workspace-surface="plane"] .skel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: calc(100% - 16px);
-  margin: 4px 8px 2px;
-  padding: 6px 10px;
+  width: 100%;                 /* full width of the sidebar content */
+  margin: 0 0 8px;             /* breathing room below the header */
+  padding: 13px 14px;          /* taller */
   border: none;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text-dim) 9%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-dim) 8%, transparent);
   color: var(--text-dim);
   font-family: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.nav-seg-toggle:hover { background: color-mix(in srgb, var(--text-dim) 16%, transparent); color: var(--text); }
+.nav-seg-toggle:hover { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text); }
 .nav-seg-caret { display: inline-flex; opacity: 0.55; transition: transform 0.15s ease; }
+/* More air between the accordion sections. */
+.side > .nav-group { gap: 3px; }
+.side { gap: 30px; }
