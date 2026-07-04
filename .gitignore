@@ -24,3 +24,6 @@ tmp-*.err
 # internal planning / strategy — kept out of the public repo (remove these lines if the repo is private)
 /docs
 /design
+
+.env.local
+.env.example
