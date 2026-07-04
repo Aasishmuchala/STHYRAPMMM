@@ -4613,3 +4613,27 @@ html[data-workspace-surface="plane"] .skel {
   .auth-brand { display: none; }
   .auth-card-brand { display: flex; }
 }
+
+/* Sidebar accordion group headers — small uppercase label on a subtle pill so
+   it reads as a clickable/collapsible section, with a rotating caret. */
+.nav-seg-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - 16px);
+  margin: 4px 8px 2px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-dim) 9%, transparent);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.nav-seg-toggle:hover { background: color-mix(in srgb, var(--text-dim) 16%, transparent); color: var(--text); }
+.nav-seg-caret { display: inline-flex; opacity: 0.55; transition: transform 0.15s ease; }

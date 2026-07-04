@@ -42,13 +42,12 @@ function NavGroup({
     <nav className="nav-group" aria-label={title}>
       <button
         type="button"
-        className="seg label nav-seg-toggle"
+        className="nav-seg-toggle"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={isOpen}
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", font: "inherit" }}
       >
         <span>{title}</span>
-        <span style={{ display: "inline-flex", transform: isOpen ? "none" : "rotate(-90deg)", transition: "transform .15s ease", opacity: 0.6 }}>
+        <span className="nav-seg-caret" style={{ transform: isOpen ? "none" : "rotate(-90deg)" }}>
           <IconChevronDown size={13} />
         </span>
       </button>
