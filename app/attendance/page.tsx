@@ -167,7 +167,7 @@ export default async function AttendancePage() {
                     <tr key={i} style={{ borderTop: "1px solid var(--border, rgba(0,0,0,.06))" }}>
                       <td style={{ padding: "10px 6px", fontWeight: 600 }}>{p.name}</td>
                       <td style={{ padding: "10px 6px" }}>{p.present}</td>
-                      <td className="sub" style={{ padding: "10px 6px" }}>{p.last ? new Date(p.last).toLocaleString() : "—"}</td>
+                      <td className="sub" style={{ padding: "10px 6px" }}>{p.last ? new Date(p.last).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" }) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>

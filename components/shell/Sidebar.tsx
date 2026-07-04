@@ -1,15 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconHome, IconTasks, IconFinance, IconDoc, IconClients,
-  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers, IconPeople,
+  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconSettings, IconSparkle, IconLayers, IconPeople, IconChevronDown,
 } from "@/components/icons";
-import { FiClock, FiTarget, FiZap, FiUserCheck } from "react-icons/fi";
+import { FiClock, FiTarget, FiZap, FiUserCheck, FiTrendingUp } from "react-icons/fi";
 import { DivisionSwitcher } from "./DivisionSwitcher";
 
 type Nav = { slug: string; name: string };
+type Item = { href: string; label: string; Icon: React.ComponentType<{ size?: number }>; show: boolean };
 
 const divisionMeta: Record<string, { Icon: (p: { size?: number }) => React.ReactElement; dot: string }> = {
   studios: { Icon: IconStudios, dot: "var(--positive)" },
@@ -17,6 +19,50 @@ const divisionMeta: Record<string, { Icon: (p: { size?: number }) => React.React
   construction: { Icon: IconConstruction, dot: "var(--warning)" },
   living_twin: { Icon: IconLivingTwin, dot: "var(--accent)" },
 };
+
+function NavGroup({
+  title,
+  items,
+  activeHref,
+  onNavigate,
+}: {
+  title: string;
+  items: Item[];
+  activeHref: (href: string) => boolean;
+  onNavigate?: () => void;
+}) {
+  const visible = items.filter((i) => i.show);
+  // Keep a group open if it holds the current route.
+  const hasActive = visible.some((i) => activeHref(i.href));
+  const [open, setOpen] = useState(true);
+  const isOpen = open || hasActive;
+  if (visible.length === 0) return null;
+
+  return (
+    <nav className="nav-group" aria-label={title}>
+      <button
+        type="button"
+        className="seg label nav-seg-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={isOpen}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", font: "inherit" }}
+      >
+        <span>{title}</span>
+        <span style={{ display: "inline-flex", transform: isOpen ? "none" : "rotate(-90deg)", transition: "transform .15s ease", opacity: 0.6 }}>
+          <IconChevronDown size={13} />
+        </span>
+      </button>
+      {isOpen && visible.map((i) => {
+        const active = activeHref(i.href);
+        return (
+          <Link key={i.href} href={i.href} onClick={onNavigate} className={`nav-item ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}>
+            <i.Icon size={16} />{i.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 export function Sidebar({
   divisions,
@@ -34,6 +80,43 @@ export function Sidebar({
   const path = usePathname();
   const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
+  const groups: { title: string; items: Item[] }[] = [
+    {
+      title: "Work",
+      items: [
+        { href: "/tasks", label: "Tasks", Icon: IconTasks, show: true },
+        { href: "/roadmap", label: "Roadmap", Icon: FiTarget, show: true },
+        { href: "/projects", label: "Projects", Icon: IconLayers, show: true },
+        { href: "/timesheet", label: "Timesheet", Icon: FiClock, show: true },
+      ],
+    },
+    {
+      title: "Sales & CRM",
+      items: [
+        { href: "/sales", label: "Sales", Icon: FiTrendingUp, show: true },
+        { href: "/clients", label: "Clients", Icon: IconClients, show: canSeeFinances },
+      ],
+    },
+    {
+      title: "Team",
+      items: [
+        { href: "/people", label: "People", Icon: IconPeople, show: canSeePeople },
+        { href: "/attendance", label: "Attendance", Icon: FiUserCheck, show: true },
+      ],
+    },
+    {
+      title: "Finance",
+      items: [{ href: "/finances", label: "Finances", Icon: IconFinance, show: canSeeFinances }],
+    },
+    {
+      title: "Library",
+      items: [
+        { href: "/documents", label: "Documents", Icon: IconDoc, show: true },
+        { href: "/reports", label: "Reports", Icon: FiZap, show: true },
+      ],
+    },
+  ];
+
   return (
     <aside className="side" aria-label="Primary navigation">
       <div className="brand">
@@ -45,52 +128,19 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Workspace pill — lives in the sidebar instead of the top bar (Plane-style). */}
       <div style={{ padding: "4px 14px 10px" }}>
         <DivisionSwitcher divisions={divisions} canPickAll={isOwner} />
       </div>
 
-      <nav className="nav-group" aria-label="Workspace">
+      <nav className="nav-group" aria-label="Home">
         <Link href="/" onClick={onNavigate} className={`nav-item ${active("/") ? "active" : ""}`} aria-current={active("/") ? "page" : undefined}>
           <IconHome size={16} />Home · Inbox
         </Link>
-        <Link href="/tasks" onClick={onNavigate} className={`nav-item ${active("/tasks") ? "active" : ""}`} aria-current={active("/tasks") ? "page" : undefined}>
-          <IconTasks size={16} />Tasks
-        </Link>
-        <Link href="/roadmap" onClick={onNavigate} className={`nav-item ${active("/roadmap") ? "active" : ""}`} aria-current={active("/roadmap") ? "page" : undefined}>
-          <FiTarget size={16} />Roadmap
-        </Link>
-        <Link href="/timesheet" onClick={onNavigate} className={`nav-item ${active("/timesheet") ? "active" : ""}`} aria-current={active("/timesheet") ? "page" : undefined}>
-          <FiClock size={16} />Timesheet
-        </Link>
-        <Link href="/attendance" onClick={onNavigate} className={`nav-item ${active("/attendance") ? "active" : ""}`} aria-current={active("/attendance") ? "page" : undefined}>
-          <FiUserCheck size={16} />Attendance
-        </Link>
-        <Link href="/projects" onClick={onNavigate} className={`nav-item ${active("/projects") ? "active" : ""}`} aria-current={active("/projects") ? "page" : undefined}>
-          <IconLayers size={16} />Projects
-        </Link>
-        {canSeePeople && (
-          <Link href="/people" onClick={onNavigate} className={`nav-item ${active("/people") ? "active" : ""}`} aria-current={active("/people") ? "page" : undefined}>
-            <IconPeople size={16} />People
-          </Link>
-        )}
-        {canSeeFinances && (
-          <Link href="/clients" onClick={onNavigate} className={`nav-item ${active("/clients") ? "active" : ""}`} aria-current={active("/clients") ? "page" : undefined}>
-            <IconClients size={16} />Clients
-          </Link>
-        )}
-        {canSeeFinances && (
-          <Link href="/finances" onClick={onNavigate} className={`nav-item ${active("/finances") ? "active" : ""}`} aria-current={active("/finances") ? "page" : undefined}>
-            <IconFinance size={16} />Finances
-          </Link>
-        )}
-        <Link href="/documents" onClick={onNavigate} className={`nav-item ${active("/documents") ? "active" : ""}`} aria-current={active("/documents") ? "page" : undefined}>
-          <IconDoc size={16} />Documents
-        </Link>
-        <Link href="/reports" onClick={onNavigate} className={`nav-item ${active("/reports") ? "active" : ""}`} aria-current={active("/reports") ? "page" : undefined}>
-          <FiZap size={16} />Reports
-        </Link>
       </nav>
+
+      {groups.map((g) => (
+        <NavGroup key={g.title} title={g.title} items={g.items} activeHref={active} onNavigate={onNavigate} />
+      ))}
 
       {divisions.length > 0 && (
         <nav className="nav-group" aria-label="Your teams">
