@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 import { nearestLocation } from "@/lib/geo";
+import { verifyAttendanceToken } from "@/lib/attendanceToken";
 
 type Result<T = unknown> = ({ ok: true } & T) | { error: string };
 
@@ -120,5 +122,60 @@ export async function checkIn(
   }
 
   revalidatePath("/attendance");
+  return { ok: true, locationName: nearest.location.name, distanceMeters: distance };
+}
+
+// ── Token check-in: tapped from the 6am email link, no login required ───────
+// The signed token identifies the user; we verify it, then use the service role
+// to record their attendance (there's no session to satisfy RLS at 6am).
+export async function checkInWithToken(
+  token: string,
+  latitude: number,
+  longitude: number,
+  accuracyM: number | null,
+): Promise<Result<{ locationName: string; distanceMeters: number }>> {
+  const verified = verifyAttendanceToken(token);
+  if (!verified) return { error: "This attendance link is invalid or has expired. Sign in to check in instead." };
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return { error: "We couldn't read your location. Enable GPS/location permission and try again." };
+  }
+
+  const admin = createServiceClient() as unknown as DB;
+
+  const { data: mems } = await admin.from("division_members").select("division_id").eq("user_id", verified.userId);
+  const divIds = ((mems ?? []) as { division_id: string }[]).map((m) => m.division_id);
+  if (divIds.length === 0) return { error: "You're not assigned to a company yet." };
+
+  const { data: locRows, error: locError } = await admin
+    .from("attendance_locations")
+    .select("id,division_id,name,latitude,longitude,radius_m")
+    .in("division_id", divIds)
+    .returns<LocationRow[]>();
+  if (locError) return { error: locError.message };
+  const locations = locRows ?? [];
+  if (locations.length === 0) return { error: "No attendance locations set up for your company yet." };
+
+  const accuracy = Number.isFinite(accuracyM ?? NaN) ? Math.max(0, accuracyM as number) : 0;
+  const nearest = nearestLocation({ latitude, longitude }, locations, accuracy);
+  if (!nearest) return { error: "No attendance locations found." };
+  const distance = Math.round(nearest.distanceMeters);
+  if (!nearest.ok) {
+    return { error: `You're ${distance}m from "${nearest.location.name}" — move within ${nearest.location.radius_m}m and retry.` };
+  }
+
+  const { error: insertError } = await admin.from("attendance_records").insert({
+    user_id: verified.userId,
+    division_id: nearest.location.division_id,
+    location_id: nearest.location.id,
+    latitude,
+    longitude,
+    accuracy_m: accuracy || null,
+    distance_m: distance,
+    status: "present",
+  });
+  if (insertError) {
+    if (/duplicate|unique/i.test(insertError.message)) return { error: "You've already checked in today." };
+    return { error: insertError.message };
+  }
   return { ok: true, locationName: nearest.location.name, distanceMeters: distance };
 }

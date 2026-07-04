@@ -37,12 +37,17 @@ export async function updateSession(request: NextRequest) {
   const isPublicSignupApi =
     pathname.startsWith("/api/signup/create") ||
     pathname.startsWith("/api/signup/finalize");
+  // The attendance check-in page authenticates via a signed token (from the 6am
+  // email) and the cron route via its own Bearer secret — neither uses a session,
+  // so they must bypass the login redirect. Both gate themselves internally.
+  const isPublicAttendance = pathname.startsWith("/attendance/check-in");
+  const isCronApi = pathname.startsWith("/api/cron");
   const isAuthRoute =
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/signup");
 
-  if (!hasCompanyEmail && !isAuthRoute && !isPublicSignupApi) {
+  if (!hasCompanyEmail && !isAuthRoute && !isPublicSignupApi && !isPublicAttendance && !isCronApi) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     if (user && !isCompanyEmail(user.email)) {

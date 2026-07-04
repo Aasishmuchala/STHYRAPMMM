@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { checkIn } from "../actions";
+import { checkIn, checkInWithToken } from "../actions";
 
 type Phase = "idle" | "locating" | "submitting" | "done" | "error";
 
-export function CheckInClient({ userName }: { userName: string }) {
+export function CheckInClient({ userName, token }: { userName: string; token?: string | null }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
@@ -23,7 +23,10 @@ export function CheckInClient({ userName }: { userName: string }) {
       async (pos) => {
         setPhase("submitting");
         const { latitude, longitude, accuracy } = pos.coords;
-        const result = await checkIn(latitude, longitude, Number.isFinite(accuracy) ? accuracy : null);
+        const acc = Number.isFinite(accuracy) ? accuracy : null;
+        const result = token
+          ? await checkInWithToken(token, latitude, longitude, acc)
+          : await checkIn(latitude, longitude, acc);
         if ("error" in result) {
           setPhase("error");
           setMessage(result.error);
