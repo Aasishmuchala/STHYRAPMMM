@@ -230,3 +230,24 @@ export async function createDivision(name: string, slug: string): Promise<Result
   if (error) return { error: error.message };
   return done();
 }
+
+// Permanently delete a company and EVERYTHING under it. Every table that
+// references divisions is ON DELETE CASCADE (projects, tasks, transactions,
+// invoices, members, attendance, …), so one delete removes it all. Super-admin
+// only — gated here and by the "super admins manage divisions" RLS policy.
+export async function deleteDivision(divisionId: string): Promise<Result> {
+  const { supabase, user } = await currentUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { access } = await loadUserWorkspaceAccess(supabase, user.id);
+  if (!access.isSuperAdmin) {
+    return { error: "Only the super admin can delete a company." };
+  }
+  if (!divisionId) return { error: "No company selected." };
+
+  const { error } = await supabase.from("divisions").delete().eq("id", divisionId);
+  if (error) {
+    return { error: error.message.includes("policy") ? "Only the super admin can delete a company." : error.message };
+  }
+  return done();
+}

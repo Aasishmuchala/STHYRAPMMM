@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { beginToast, finishToast } from "@/lib/client-toast";
-import { createDivision, updateProfile, addMembership, removeMembership } from "@/app/settings/actions";
+import { createDivision, deleteDivision, updateProfile, addMembership, removeMembership } from "@/app/settings/actions";
 import { ThemeControls } from "./ThemeControls";
 import { OmegaKeyCard } from "./OmegaKeyCard";
 import { TeamRolesCard, type CompanyRole, type RolePerson } from "./TeamRolesCard";
@@ -118,6 +118,23 @@ export function SettingsView({
   const [companyName, setCompanyName] = useState("");
   const [companySlug, setCompanySlug] = useState("");
   const [companyError, setCompanyError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+
+  function handleCompanyDelete(divisionId: string, displayName: string) {
+    setCompanyError(null);
+    start(async () => {
+      const toastId = beginToast("Deleting company…");
+      const result = await deleteDivision(divisionId);
+      if (!finishToast(result, { id: toastId, success: `Deleted ${displayName} and all its data.` })) {
+        setCompanyError(result.error);
+        return;
+      }
+      setDeletingId(null);
+      setDeleteConfirm("");
+      router.refresh();
+    });
+  }
 
   // Group the (otherwise very long) settings into tabs. A plain member sees only
   // Appearance + Account; managers/owners get Team and AI too.
@@ -318,6 +335,53 @@ export function SettingsView({
             </div>
           </div>
           {companyError && <div className="form-err" style={{ marginTop: 12 }}>{companyError}</div>}
+
+          {divisions.length > 0 && (
+            <div style={{ marginTop: 22, paddingTop: 18, borderTop: "1px solid var(--line)" }}>
+              <h4 style={{ margin: "0 0 4px", color: "var(--danger)" }}>Danger zone — delete a company</h4>
+              <p className="sub" style={{ marginTop: 0 }}>
+                Deleting a company permanently removes <strong>all</strong> of its projects, tasks, finances, documents,
+                members and attendance. This cannot be undone.
+              </p>
+              {divisions.map((d) => {
+                const label = d.name.replace(/^Sthyra\s+/, "");
+                return (
+                  <div className="set-row" key={d.id} style={{ alignItems: "center" }}>
+                    <div className="grow"><div className="rn">{label}</div></div>
+                    {deletingId === d.id ? (
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <input
+                          className="input"
+                          style={{ width: 200 }}
+                          placeholder={`Type "${label}" to confirm`}
+                          value={deleteConfirm}
+                          onChange={(e) => setDeleteConfirm(e.target.value)}
+                          autoFocus
+                        />
+                        <button
+                          className="btn"
+                          style={{ background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}
+                          disabled={deleteConfirm.trim() !== label}
+                          onClick={() => handleCompanyDelete(d.id, label)}
+                        >
+                          Delete forever
+                        </button>
+                        <button className="btn" onClick={() => { setDeletingId(null); setDeleteConfirm(""); }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn"
+                        style={{ color: "var(--danger)" }}
+                        onClick={() => { setDeletingId(d.id); setDeleteConfirm(""); setCompanyError(null); }}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 
