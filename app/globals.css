@@ -4637,6 +4637,15 @@ html[data-workspace-surface="plane"] .skel {
 }
 .nav-seg-toggle:hover { background: color-mix(in srgb, var(--text-dim) 15%, transparent); color: var(--text); }
 .nav-seg-caret { display: inline-flex; opacity: 0.55; transition: transform 0.15s ease; }
-/* More air between the accordion sections. */
+.nav-seg-toggle { margin: 0 0 4px; }
+/* Tighter spacing between sections + a fully-scrollable sidebar whose scrollbar
+   is hidden (content can exceed the viewport on smaller laptops). */
 .side > .nav-group { gap: 3px; }
-.side { gap: 30px; }
+.side {
+  gap: 8px;
+  overflow-y: auto;
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* legacy Edge/IE */
+  overscroll-behavior: contain;
+}
+.side::-webkit-scrollbar { width: 0; height: 0; display: none; }  /* Chrome/Safari */
