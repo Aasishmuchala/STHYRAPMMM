@@ -23,8 +23,10 @@ describe("Authentication", () => {
     cy.visit("/");
     cy.contains("h1", "Good").should("be.visible"); // "Good morning/afternoon, Aasish"
     cy.get("aside.side").within(() => {
+      // Nav is grouped into collapsible sections; expand Finance to reveal its item.
+      cy.contains("button", "Finance").click();
       cy.contains("Finances").should("exist");
-      cy.contains("Assistant").should("exist");
+      cy.contains("Assistant").should("exist"); // bottom nav, always visible
     });
     cy.contains("Money in").should("exist"); // finance tiles
   });
