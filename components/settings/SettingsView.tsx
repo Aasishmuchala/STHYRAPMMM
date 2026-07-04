@@ -24,6 +24,18 @@ function X() {
   );
 }
 
+// Destructive actions are always solid red on white text — never themed.
+const DANGER_BTN: React.CSSProperties = {
+  background: "#dc2626",
+  color: "#fff",
+  border: "none",
+  borderRadius: 9,
+  padding: "8px 16px",
+  fontWeight: 600,
+  fontSize: 13.5,
+  cursor: "pointer",
+};
+
 export function SettingsView({
   profile,
   isOwner,
@@ -343,43 +355,17 @@ export function SettingsView({
                 Deleting a company permanently removes <strong>all</strong> of its projects, tasks, finances, documents,
                 members and attendance. This cannot be undone.
               </p>
-              {divisions.map((d) => {
-                const label = d.name.replace(/^Sthyra\s+/, "");
-                return (
-                  <div className="set-row" key={d.id} style={{ alignItems: "center" }}>
-                    <div className="grow"><div className="rn">{label}</div></div>
-                    {deletingId === d.id ? (
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <input
-                          className="input"
-                          style={{ width: 200 }}
-                          placeholder={`Type "${label}" to confirm`}
-                          value={deleteConfirm}
-                          onChange={(e) => setDeleteConfirm(e.target.value)}
-                          autoFocus
-                        />
-                        <button
-                          className="btn"
-                          style={{ background: "var(--danger)", borderColor: "var(--danger)", color: "#fff" }}
-                          disabled={deleteConfirm.trim() !== label}
-                          onClick={() => handleCompanyDelete(d.id, label)}
-                        >
-                          Delete forever
-                        </button>
-                        <button className="btn" onClick={() => { setDeletingId(null); setDeleteConfirm(""); }}>Cancel</button>
-                      </div>
-                    ) : (
-                      <button
-                        className="btn"
-                        style={{ color: "var(--danger)" }}
-                        onClick={() => { setDeletingId(d.id); setDeleteConfirm(""); setCompanyError(null); }}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+              {divisions.map((d) => (
+                <div className="set-row" key={d.id} style={{ alignItems: "center" }}>
+                  <div className="grow"><div className="rn">{d.name.replace(/^Sthyra\s+/, "")}</div></div>
+                  <button
+                    style={DANGER_BTN}
+                    onClick={() => { setDeletingId(d.id); setDeleteConfirm(""); setCompanyError(null); }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -515,6 +501,56 @@ export function SettingsView({
       )}
 
       {tab === "ai" && isOwner && <KnowledgeCard entries={knowledge} />}
+
+      {deletingId && (() => {
+        const d = divisions.find((x) => x.id === deletingId);
+        if (!d) return null;
+        const label = d.name.replace(/^Sthyra\s+/, "");
+        const canDelete = deleteConfirm.trim() === label;
+        const close = () => { setDeletingId(null); setDeleteConfirm(""); setCompanyError(null); };
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={close}
+            style={{ position: "fixed", inset: 0, background: "rgba(2,6,23,0.55)", backdropFilter: "blur(2px)", display: "grid", placeItems: "center", zIndex: 200, padding: 20 }}
+          >
+            <div className="glass" onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 440, padding: 24, borderRadius: 16 }}>
+              <h3 style={{ margin: "0 0 8px", color: "#dc2626" }}>Delete &ldquo;{label}&rdquo;?</h3>
+              <p className="sub" style={{ marginTop: 0 }}>
+                This permanently deletes <strong>all</strong> of {label}&apos;s projects, tasks, finances, documents, members and
+                attendance. This action <strong>cannot be undone</strong>.
+              </p>
+              <label className="label" htmlFor="del-confirm" style={{ display: "block", marginBottom: 6 }}>
+                Type <strong>{label}</strong> to confirm
+              </label>
+              <input
+                id="del-confirm"
+                className="input"
+                autoFocus
+                value={deleteConfirm}
+                placeholder={label}
+                onChange={(e) => setDeleteConfirm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && canDelete) handleCompanyDelete(d.id, label);
+                  if (e.key === "Escape") close();
+                }}
+              />
+              {companyError && <div className="form-err" style={{ marginTop: 10 }}>{companyError}</div>}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+                <button className="btn" onClick={close}>Cancel</button>
+                <button
+                  style={{ ...DANGER_BTN, padding: "9px 16px", opacity: canDelete ? 1 : 0.5, cursor: canDelete ? "pointer" : "not-allowed" }}
+                  disabled={!canDelete}
+                  onClick={() => handleCompanyDelete(d.id, label)}
+                >
+                  Delete forever
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
