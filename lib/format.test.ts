@@ -9,7 +9,24 @@ import {
   fmtDateShort,
   fmtDuration,
   parseDuration,
+  fmtLongDate,
 } from "./format";
+
+describe("fmtLongDate", () => {
+  it("formats an ISO date as zero-padded day, full month, year", () => {
+    expect(fmtLongDate("2026-07-06")).toBe("06 July 2026");
+    expect(fmtLongDate("2026-12-25")).toBe("25 December 2026");
+  });
+  it("zero-pads single-digit days", () => {
+    expect(fmtLongDate("2026-01-01")).toBe("01 January 2026");
+  });
+  it("accepts a Date instance (local midnight avoids TZ rollover)", () => {
+    expect(fmtLongDate(new Date(2026, 6, 6))).toBe("06 July 2026");
+  });
+  it("returns empty string for an invalid date", () => {
+    expect(fmtLongDate("not-a-date")).toBe("");
+  });
+});
 
 describe("inrShort", () => {
   // All money is stored as integer paise. 1 rupee = 100 paise.

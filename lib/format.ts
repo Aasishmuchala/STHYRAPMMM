@@ -78,6 +78,15 @@ export const DATETIME_FMT = new Intl.DateTimeFormat("en-IN", {
 export const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("en-IN", { month: "short" });
 export const FULL_MONTH_FORMATTER = new Intl.DateTimeFormat("en-IN", { month: "long" });
 
+// Long, zero-padded day + full month + year — e.g. "06 July 2026". Used for the
+// WhatsApp attendance template body variable. en-GB orders it day-month-year and
+// pads the day to two digits, matching the approved template's example.
+export const LONG_DATE_FMT = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "long",
+  year: "numeric",
+});
+
 /** Format an ISO date string ("2026-06-27") or Date as "27 Jun 2026" in en-IN. */
 export function fmtDate(value: string | Date | null | undefined): string {
   if (!value) return "—";
@@ -92,6 +101,13 @@ export function fmtDateShort(value: string | Date | null | undefined): string {
   const d = typeof value === "string" ? new Date(value.length === 10 ? value + "T00:00:00" : value) : value;
   if (Number.isNaN(d.getTime())) return "—";
   return DATE_FMT_SHORT.format(d);
+}
+
+/** Long, zero-padded date "06 July 2026" (WhatsApp attendance template body). */
+export function fmtLongDate(value: string | Date): string {
+  const d = typeof value === "string" ? new Date(value.length === 10 ? value + "T00:00:00" : value) : value;
+  if (Number.isNaN(d.getTime())) return "";
+  return LONG_DATE_FMT.format(d);
 }
 
 /** Format an ISO date string as a month label "Jun". */
