@@ -1,24 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
-  companyEmailDomain,
   companyEmailMessage,
   isCompanyEmail,
   normalizeEmail,
 } from "@/lib/auth/companyEmail";
 import { AuthLayout } from "@/components/auth/AuthLayout";
+import { FiArrowLeft } from "react-icons/fi";
+
+const OTP_LENGTH = 6;
+const RESEND_SECONDS = 41;
 
 export default function SignupPage() {
   const router = useRouter();
+  const [step, setStep] = useState<"form" | "otp">("form");
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // OTP screen state
+  const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+
+  const normalizedEmail = normalizeEmail(email);
+
+  useEffect(() => {
+    if (step !== "otp") return;
+    inputsRef.current[0]?.focus();
+  }, [step]);
+
+  useEffect(() => {
+    if (step !== "otp" || secondsLeft <= 0) return;
+    const id = setInterval(() => setSecondsLeft((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [step, secondsLeft]);
 
   async function signInWithRetry(emailValue: string, passwordValue: string) {
     const supabase = createClient();
@@ -36,19 +61,34 @@ export default function SignupPage() {
       if (!/invalid login credentials/i.test(signInError.message) || attempt === 4) {
         return signInError.message;
       }
-
       await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
     }
-
     return lastMessage;
   }
 
-  async function createAccount(e: React.FormEvent) {
+  async function sendCode(): Promise<boolean> {
+    const res = await fetch("/api/signup/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normalizedEmail, password: pw, fullName: name.trim() }),
+    });
+    const type = res.headers.get("content-type") ?? "";
+    const body = type.includes("application/json")
+      ? ((await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null)
+      : null;
+
+    if (!res.ok || !body?.ok) {
+      setErr(body?.error || "Couldn't send the verification code right now.");
+      return false;
+    }
+    return true;
+  }
+
+  async function startSignup(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
 
-    const emailValue = normalizeEmail(email);
-    if (!isCompanyEmail(emailValue)) {
+    if (!isCompanyEmail(normalizedEmail)) {
       setErr(companyEmailMessage());
       return;
     }
@@ -62,31 +102,80 @@ export default function SignupPage() {
     }
 
     setBusy(true);
-    const createRes = await fetch("/api/signup/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: emailValue,
-        password: pw,
-        fullName: name.trim(),
-      }),
-    });
-    const createType = createRes.headers.get("content-type") ?? "";
-    const createBody = createType.includes("application/json")
-      ? (await createRes.json().catch(() => null)) as { ok?: boolean; error?: string } | null
-      : null;
+    const ok = await sendCode();
+    setBusy(false);
+    if (!ok) return;
 
-    if (!createRes.ok || !createBody?.ok) {
-      setBusy(false);
-      setErr(createBody?.error || "Couldn't create the account right now.");
+    setDigits(Array(OTP_LENGTH).fill(""));
+    setSecondsLeft(RESEND_SECONDS);
+    setStep("otp");
+  }
+
+  function setDigit(index: number, value: string) {
+    const clean = value.replace(/\D/g, "");
+    if (!clean) {
+      setDigits((prev) => {
+        const next = [...prev];
+        next[index] = "";
+        return next;
+      });
+      return;
+    }
+    // Handles both single keystroke and pasted multi-digit strings.
+    setDigits((prev) => {
+      const next = [...prev];
+      let cursor = index;
+      for (const ch of clean.split("")) {
+        if (cursor >= OTP_LENGTH) break;
+        next[cursor] = ch;
+        cursor += 1;
+      }
+      const focusAt = Math.min(cursor, OTP_LENGTH - 1);
+      inputsRef.current[focusAt]?.focus();
+      return next;
+    });
+  }
+
+  function onDigitKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace" && !digits[index] && index > 0) {
+      inputsRef.current[index - 1]?.focus();
+    }
+    if (e.key === "ArrowLeft" && index > 0) inputsRef.current[index - 1]?.focus();
+    if (e.key === "ArrowRight" && index < OTP_LENGTH - 1) inputsRef.current[index + 1]?.focus();
+  }
+
+  async function confirmCode(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const code = digits.join("");
+    if (code.length !== OTP_LENGTH) {
+      setErr("Enter all 6 digits.");
       return;
     }
 
-    const signInMessage = await signInWithRetry(emailValue, pw);
+    setVerifying(true);
+    const res = await fetch("/api/signup/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normalizedEmail, code }),
+    });
+    const type = res.headers.get("content-type") ?? "";
+    const body = type.includes("application/json")
+      ? ((await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null)
+      : null;
 
-    setBusy(false);
+    if (!res.ok || !body?.ok) {
+      setVerifying(false);
+      setErr(body?.error || "Couldn't verify that code.");
+      setDigits(Array(OTP_LENGTH).fill(""));
+      inputsRef.current[0]?.focus();
+      return;
+    }
+
+    const signInMessage = await signInWithRetry(normalizedEmail, pw);
+    setVerifying(false);
     if (signInMessage) {
-      setErr(`Account created, but sign-in failed: ${signInMessage}`);
+      setErr(`Verified, but sign-in failed: ${signInMessage}`);
       return;
     }
 
@@ -94,14 +183,95 @@ export default function SignupPage() {
     router.refresh();
   }
 
+  async function resend() {
+    if (secondsLeft > 0 || resending) return;
+    setErr(null);
+    setResending(true);
+    const ok = await sendCode();
+    setResending(false);
+    if (ok) {
+      setDigits(Array(OTP_LENGTH).fill(""));
+      setSecondsLeft(RESEND_SECONDS);
+      inputsRef.current[0]?.focus();
+    }
+  }
+
+  function backToForm() {
+    setErr(null);
+    setStep("form");
+  }
+
+  const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
+  const ss = String(secondsLeft % 60).padStart(2, "0");
+
+  if (step === "otp") {
+    return (
+      <AuthLayout>
+        <h1 className="auth-title">Check your email</h1>
+        <p className="auth-subtitle">
+          Please enter the 6-digit verification code we sent to{" "}
+          <strong>{normalizedEmail}</strong>
+        </p>
+
+        <form onSubmit={confirmCode} className="auth-form">
+          <div className="otp-row" role="group" aria-label="Verification code">
+            {digits.map((digit, i) => (
+              <input
+                key={i}
+                ref={(el) => {
+                  inputsRef.current[i] = el;
+                }}
+                className={`otp-box ${digit ? "filled" : ""}`}
+                type="text"
+                inputMode="numeric"
+                autoComplete={i === 0 ? "one-time-code" : "off"}
+                maxLength={OTP_LENGTH}
+                value={digit}
+                onChange={(e) => setDigit(i, e.target.value)}
+                onKeyDown={(e) => onDigitKeyDown(i, e)}
+                aria-label={`Digit ${i + 1}`}
+              />
+            ))}
+          </div>
+
+          {err && <div role="alert" className="auth-note err">{err}</div>}
+
+          <button type="submit" className="auth-btn" disabled={verifying}>
+            {verifying ? "Verifying…" : "Confirm"}
+          </button>
+        </form>
+
+        <p className="auth-switch">
+          {secondsLeft > 0 ? (
+            <>Didn&apos;t get the email? Resend in {mm}:{ss}</>
+          ) : (
+            <>
+              Didn&apos;t get the email?{" "}
+              <button type="button" className="auth-link auth-linkbtn" onClick={resend} disabled={resending}>
+                {resending ? "Resending…" : "Resend code"}
+              </button>
+            </>
+          )}
+        </p>
+
+        <p className="auth-switch">
+          <button type="button" className="auth-link auth-linkbtn with-icon" onClick={backToForm}>
+            <FiArrowLeft aria-hidden /> back
+          </button>
+        </p>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout>
       <h1 className="auth-title">Create your account</h1>
       <p className="auth-subtitle">
-        Only <strong>@{companyEmailDomain()}</strong> addresses can access the workspace.
+        Sign up with your company email — <strong>@sthyra.com</strong>,{" "}
+        <strong>@sthyradigital.com</strong> or <strong>@abhignaconstructions.com</strong>.
       </p>
 
-      <form onSubmit={createAccount} className="auth-form">
+      <form onSubmit={startSignup} className="auth-form">
         <div className="auth-field">
           <label htmlFor="name" className="auth-label">Full name</label>
           <input
@@ -123,7 +293,7 @@ export default function SignupPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="auth-input"
-            placeholder={`you@${companyEmailDomain()}`}
+            placeholder="you@sthyra.com"
           />
         </div>
 
@@ -158,7 +328,7 @@ export default function SignupPage() {
         {err && <div role="alert" className="auth-note err">{err}</div>}
 
         <button type="submit" className="auth-btn" disabled={busy}>
-          {busy ? "Creating account…" : "Create account"}
+          {busy ? "Sending code…" : "Create account"}
         </button>
       </form>
 

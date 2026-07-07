@@ -35,6 +35,8 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasCompanyEmail = !!user && isCompanyEmail(user.email);
   const isPublicSignupApi =
+    pathname.startsWith("/api/signup/start") ||
+    pathname.startsWith("/api/signup/verify") ||
     pathname.startsWith("/api/signup/create") ||
     pathname.startsWith("/api/signup/finalize");
   // The attendance check-in page authenticates via a signed token (from the 6am

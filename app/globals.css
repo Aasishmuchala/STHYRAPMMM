@@ -4608,6 +4608,35 @@ html[data-workspace-surface="plane"] .skel {
 .auth-switch { margin-top: 22px; font-size: 13px; color: var(--text-dim, #93a1b8); text-align: center; }
 .auth-link { color: var(--accent, #5d8cff); font-weight: 600; text-decoration: none; }
 .auth-link:hover { text-decoration: underline; }
+
+/* One-time-code (signup email verification) input boxes. */
+.otp-row { display: flex; gap: 10px; justify-content: center; margin: 2px 0 4px; }
+.otp-box {
+  width: 100%;
+  max-width: 54px;
+  aspect-ratio: 1 / 1;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text, #101322);
+  background: transparent;
+  border: 1.5px solid var(--border, #253147);
+  border-radius: 14px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  -moz-appearance: textfield;
+}
+.otp-box::-webkit-outer-spin-button,
+.otp-box::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.otp-box:focus {
+  border-color: var(--accent, #5d8cff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #5d8cff) 22%, transparent);
+}
+.otp-box.filled { border-color: var(--accent, #5d8cff); background: color-mix(in srgb, var(--accent, #5d8cff) 8%, transparent); }
+.auth-linkbtn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+.auth-linkbtn.with-icon { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.auth-linkbtn.with-icon svg { width: 15px; height: 15px; }
+.auth-linkbtn:disabled { opacity: 0.6; cursor: default; }
 @media (max-width: 900px) {
   .auth-root { grid-template-columns: 1fr; }
   .auth-brand { display: none; }

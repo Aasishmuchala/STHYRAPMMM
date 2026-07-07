@@ -3,7 +3,12 @@
 // Domain-based fast-path: any address at one of the company domains is
 // pre-approved. To bootstrap a new super-admin, add their email to the
 // invite_allowlist table via the service role from `docs/super-admin-bootstrap.md`.
-const ALLOWED_EMAIL_DOMAINS = ["sthyra.com", "sthyra.in"] as const;
+const ALLOWED_EMAIL_DOMAINS = [
+  "sthyra.com",
+  "sthyra.in",
+  "sthyradigital.com",
+  "abhignaconstructions.com",
+] as const;
 
 // Extra individual addresses allowed beyond the company domains. Sourced from
 // the NEXT_PUBLIC_ALLOWED_EMAILS env var (comma-separated) so NO personal email
@@ -16,6 +21,17 @@ const ALLOWED_EMAILS: readonly string[] = (process.env.NEXT_PUBLIC_ALLOWED_EMAIL
   .map((entry) => entry.trim().toLowerCase())
   .filter(Boolean);
 
+// On signup, a new member is auto-added to the company (division) that matches
+// their email domain. Slugs map to rows in the `divisions` table:
+//   sthyra.com               -> studios      (Sthyra Studios)
+//   sthyradigital.com        -> digital      (Sthyra Digital)
+//   abhignaconstructions.com -> abhigna_constructions (Abhigna Constructions)
+const DOMAIN_TO_DIVISION_SLUG: Record<string, string> = {
+  "sthyra.com": "studios",
+  "sthyradigital.com": "digital",
+  "abhignaconstructions.com": "abhigna_constructions",
+};
+
 export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -27,8 +43,17 @@ export function isCompanyEmail(email: string | null | undefined) {
   return ALLOWED_EMAIL_DOMAINS.some((domain) => normalized.endsWith(`@${domain}`));
 }
 
+/** Division slug a newly-signed-up email should join, or null if none maps. */
+export function divisionSlugForEmail(email: string | null | undefined): string | null {
+  const normalized = normalizeEmail(email ?? "");
+  const at = normalized.lastIndexOf("@");
+  if (at < 0) return null;
+  const domain = normalized.slice(at + 1);
+  return DOMAIN_TO_DIVISION_SLUG[domain] ?? null;
+}
+
 export function companyEmailMessage() {
-  return "Use your approved Sthyra email to access Sthyra.";
+  return "Use your approved company email (@sthyra.com, @sthyradigital.com or @abhignaconstructions.com) to access Sthyra.";
 }
 
 export function companyEmailDomain() {
