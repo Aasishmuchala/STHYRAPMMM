@@ -1,36 +1,49 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { getDashboard } from "@/lib/queries";
-import { inrShort, pct, dueLabel, initials } from "@/lib/format";
+import { inrShort, pct, initials } from "@/lib/format";
 import { isCompanyEmail } from "@/lib/auth/companyEmail";
 import { AppShell } from "@/components/shell/AppShell";
+import { StatCard, sparkSeries } from "@/components/ui";
 import { GettingStarted } from "@/components/home/GettingStarted";
+import { HomeAiCard } from "@/components/home/HomeAiCard";
 import { QuickNew } from "@/components/home/QuickNew";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
 import {
-  IconArrowUpRight, IconArrowDownRight, IconClock,
-  IconAlertCircle, IconDoc, IconTasks,
+  IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconLayers,
 } from "@/components/icons";
 
 import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
-// Theme-token priority colors. The previous hex literals ignored user-chosen
-// accents and looked broken on oxblood / harbor themes (audit F1.1).
-const prioColor: Record<string, string> = {
-  highest: "var(--danger)",
-  high: "var(--danger)",
-  medium: "var(--warning)",
-  low: "var(--accent)",
-  lowest: "var(--text-faint)",
+// Division icon + accent by slug (falls back for unknown slugs).
+const DIV_ICON: Record<string, (p: { size?: number }) => React.ReactElement> = {
+  studios: IconStudios,
+  digital: IconDigital,
+  construction: IconConstruction,
+  construction_management: IconConstruction,
+  living_twin: IconLivingTwin,
 };
+const DIV_COLORS = ["#2563eb", "#f97316", "#8b5cf6", "#14b8a6", "#ec4899", "#22c55e", "#6366f1", "#0ea5e9"];
+
+// KPI glyphs (ref image 1) — inline so they match the reference exactly.
+function IconMoneyIn({ size = 18 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v10m0 0l-4-4m4 4l4-4" /><path d="M4 15v4a1 1 0 001 1h14a1 1 0 001-1v-4" /></svg>;
+}
+function IconMoneyOut({ size = 18 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M12 13V3m0 0l-4 4m4-4l4 4" /><path d="M4 15v4a1 1 0 001 1h14a1 1 0 001-1v-4" /></svg>;
+}
+function IconOwed({ size = 18 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h9l4 4v14H6z" /><path d="M15 3v4h4M9 12h6M9 16h6" /></svg>;
+}
+function IconMargin({ size = 18 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round"><path d="M19 5L5 19" /><circle cx="7.5" cy="7.5" r="2.5" /><circle cx="16.5" cy="16.5" r="2.5" /></svg>;
+}
 
 export default async function HomePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  // Re-check company-email gate here too. Previously a non-company account
-  // with a valid session rendered an empty dashboard (audit medium — section 3).
   if (!isCompanyEmail(user.email)) redirect("/login?error=company-email-only");
 
   const today = new Date();
@@ -48,18 +61,20 @@ export default async function HomePage() {
       sb.from("profiles").select("id", { count: "exact", head: true }).eq("is_active", true),
       sb.from("division_briefs").select("division_id", { count: "exact", head: true }),
     ]);
-    setup = {
-      ai: aiData.configured,
-      clients: (cc ?? 0) > 0,
-      team: (mc ?? 0) > 1,
-      briefs: (bc ?? 0) > 0,
-    };
+    setup = { ai: aiData.configured, clients: (cc ?? 0) > 0, team: (mc ?? 0) > 1, briefs: (bc ?? 0) > 0 };
   }
 
   const dateLabel = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const firstName = (d.profile?.full_name ?? "there").split(" ")[0];
   const hour = today.getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  const kpis = [
+    { label: "Money in · MTD", value: inrShort(d.finance.moneyIn), color: "var(--positive)", icon: <IconMoneyIn />, delta: `${d.navDivisions.length} divisions`, trend: "up" as const, seed: 3 },
+    { label: "Money out · MTD", value: inrShort(d.finance.moneyOut), color: "var(--cta)", icon: <IconMoneyOut />, delta: "costs + BOM", trend: "flat" as const, seed: 7 },
+    { label: "Owed to us", value: inrShort(d.finance.owed), color: "var(--accent)", icon: <IconOwed />, delta: `${d.finance.overdueCount} invoices overdue`, trend: d.finance.overdueCount ? ("down" as const) : ("flat" as const), seed: 5 },
+    { label: "Blended margin", value: pct(d.finance.margin), color: "#8b5cf6", icon: <IconMargin />, delta: "services + band", trend: "flat" as const, seed: 9 },
+  ];
 
   return (
     <AppShell
@@ -79,135 +94,106 @@ export default async function HomePage() {
       }}
     >
       <main id="main">
-          <header className="page-head">
-            <div>
-              <div className="label" style={{ marginBottom: 9 }}>{dateLabel}</div>
-              <h1>{greeting}, {firstName}</h1>
-              <p className="head-sub">Your whole business at a glance — money, work, and what needs you today.</p>
+        <header className="home-head">
+          <div>
+            <div className="home-date">{dateLabel}</div>
+            <h1>{greeting}, {firstName} <span aria-hidden="true">👋</span></h1>
+            <p className="head-sub">Your whole business at a glance — money, work, and what needs you today.</p>
+          </div>
+          <QuickNew canSeeFinances={d.canSeeFinances} />
+        </header>
+
+        {/* KPI cards with sparklines */}
+        {d.canSeeFinances && (
+          <section className="stat-grid" aria-label="Finances across your divisions">
+            {kpis.map((k) => (
+              <StatCard
+                key={k.label}
+                label={k.label}
+                value={k.value}
+                accent={k.color}
+                sparkColor={k.color}
+                icon={k.icon}
+                delta={k.delta}
+                trend={k.trend}
+                spark={sparkSeries(k.seed, 14, k.trend === "down" ? 0.4 : 0.6)}
+              />
+            ))}
+          </section>
+        )}
+
+        {/* Onboarding + AI assistant */}
+        <div className="home-mid">
+          {setup && (
+            <GettingStarted
+              aiConnected={setup.ai}
+              hasClients={setup.clients}
+              hasTeam={setup.team}
+              hasBriefs={setup.briefs}
+              canSeeFinances={d.canSeeFinances}
+              firstName={firstName}
+            />
+          )}
+          <HomeAiCard />
+        </div>
+
+        {/* Division health + Paper canvas */}
+        <div className="home-bottom">
+          <div>
+            <div className="section-title-row">
+              <span className="section-title">Division health</span>
+              {d.canSeeFinances && <Link className="link" href="/finances">View all divisions →</Link>}
             </div>
-            <QuickNew canSeeFinances={d.canSeeFinances} />
-          </header>
-
-          {setup && <GettingStarted aiConnected={setup.ai} hasClients={setup.clients} hasTeam={setup.team} hasBriefs={setup.briefs} canSeeFinances={d.canSeeFinances} />}
-
-          {/* Plain-language finances (owner / leads only) */}
-          {d.canSeeFinances ? (
-            <section className="fin" aria-label="Finances across your divisions">
-              <div className="cell">
-                <div className="label">Money in · MTD</div>
-                <div className="v mono">{inrShort(d.finance.moneyIn)}</div>
-                <div className="d up"><IconArrowUpRight size={12} />{d.navDivisions.length} divisions</div>
-              </div>
-              <div className="cell">
-                <div className="label">Money out · MTD</div>
-                <div className="v mono">{inrShort(d.finance.moneyOut)}</div>
-                <div className="d warn"><IconArrowDownRight size={12} />costs + BOM</div>
-              </div>
-              <div className="cell">
-                <div className="label">Owed to us</div>
-                <div className="v mono">{inrShort(d.finance.owed)}</div>
-                <div className={`d ${d.finance.overdueCount ? "down" : "dim"}`}>
-                  <IconClock size={12} />{d.finance.overdueCount} invoice{d.finance.overdueCount === 1 ? "" : "s"} overdue
-                </div>
-              </div>
-              <div className="cell">
-                <div className="label">Blended margin</div>
-                <div className="v mono">{pct(d.finance.margin)}</div>
-                <div className="d dim">services-band</div>
-              </div>
-            </section>
-          ) : null}
-
-          <div className="cols">
-            {/* LEFT */}
-            <div>
-              <div className="section-h">
-                <span className="label">Division health</span>
-                {d.canSeeFinances && <a className="link" href="/finances">Open finances →</a>}
-              </div>
-              <div className="divs">
-                {d.divisionHealth.map((dv) => (
-                  <div className="dcard glass" key={dv.slug}>
-                    <div className="row1">
-                      <span className="dn">{dv.name}</span>
-                      <span className="tag">{dv.activeProjects} active</span>
-                    </div>
-                    <div className="big mono">{dv.canSeeFinances ? inrShort(dv.revenuePaise) : `${dv.openTasks} open`}</div>
-                    <div className="barwrap"><div className="bar" style={{ width: `${dv.canSeeFinances ? dv.bar : Math.min(100, dv.openTasks * 20)}%` }} /></div>
-                    <div className="foot">
-                      <span>{dv.activeProjects} projects · {dv.openTasks} open tasks</span>
-                      {dv.canSeeFinances && <span className="mono up">rev MTD</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="section-h">
-                <span className="label">My tasks · across divisions</span>
-                <a className="link" href="/tasks">Board →</a>
-              </div>
-              {d.myTasks.length > 0 ? (
-                <div className="tasks glass">
-                  {d.myTasks.map((t) => (
-                    <div className="task" key={t.id}>
-                      <span className="prio" style={{ background: prioColor[t.priority] }} />
-                      <span className="check" role="checkbox" aria-checked="false" aria-label={`Complete: ${t.title}`} />
-                      <span className="t">{t.title}</span>
-                      <span className="divtag">{t.division}</span>
-                      <span className="due">{dueLabel(t.due, today)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState icon={<IconTasks size={20} />} text="No open tasks. You're all clear." />
-              )}
-            </div>
-
-            {/* RIGHT */}
-            <div>
-              {d.canSeeFinances && d.attention.length > 0 && (
-                <>
-                  <div className="section-h"><span className="label">Needs attention</span></div>
-                  <div className="tasks glass" style={{ marginBottom: 22 }}>
-                    {d.attention.map((a, i) => (
-                      <div className="task" key={i}>
-                        <IconAlertCircle size={16} style={{ color: "var(--danger)" }} />
-                        <span className="t">{a.title}</span>
-                        <span className="due mono" style={{ color: "var(--danger)" }}>{inrShort(a.value)}</span>
+            <div className="divh-grid">
+              {d.divisionHealth.map((dv, i) => {
+                const Icon = DIV_ICON[dv.slug] ?? IconLayers;
+                const color = DIV_COLORS[i % DIV_COLORS.length] ?? "var(--accent)";
+                return (
+                  <div className="divh-card" key={dv.slug}>
+                    <div className="divh-row">
+                      <span className="divh-icon" style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color }}>
+                        <Icon size={18} />
+                      </span>
+                      <div className="divh-main">
+                        <div className="divh-name">{dv.name}</div>
+                        <div className="divh-value mono">{dv.canSeeFinances ? inrShort(dv.revenuePaise) : `${dv.openTasks} open`}</div>
                       </div>
-                    ))}
+                      <span className="divh-active">{dv.activeProjects} active</span>
+                    </div>
+                    <div className="divh-foot">
+                      <span>{dv.activeProjects} projects · {dv.openTasks} open tasks</span>
+                      {dv.canSeeFinances && <span className="divh-rev mono">rev MTD</span>}
+                    </div>
                   </div>
-                </>
-              )}
-
-              <div className="canvas-head">
-                <IconDoc size={15} style={{ color: "var(--bronze)" }} />
-                <span className="label">Document · paper canvas</span>
-              </div>
-              {d.doc ? (
-                <article className="paper">
-                  <div className="doctag">{d.doc.division} {d.doc.docType ? `/ ${d.doc.docType}` : ""}</div>
-                  <h2>{d.doc.title}</h2>
-                  <hr />
-                  {d.doc.body.split("\n\n").map((para, i) => (
-                    <p key={i} className={i === 0 ? "lead" : ""}>{para}</p>
-                  ))}
-                </article>
-              ) : (
-                <EmptyState icon={<IconDoc size={20} />} text="No active documents yet." />
-              )}
+                );
+              })}
             </div>
           </div>
+
+          <div>
+            <div className="section-title-row">
+              <span className="section-title">Paper canvas</span>
+              <Link className="link" href="/documents">View all documents →</Link>
+            </div>
+            {d.doc ? (
+              <Link href="/documents" className="doc-mini panel">
+                <div className="doc-mini-tag">{d.doc.division}{d.doc.docType ? ` · ${d.doc.docType}` : ""}</div>
+                <div className="doc-mini-title">{d.doc.title}</div>
+                <p className="doc-mini-body">{(d.doc.body.split("\n\n")[0] ?? "").slice(0, 220)}</p>
+                <span className="doc-mini-open">Open document →</span>
+              </Link>
+            ) : (
+              <div className="canvas-empty panel">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/empty-folder.png" alt="" className="canvas-empty-art" />
+                <div className="canvas-empty-title">No active documents yet</div>
+                <div className="canvas-empty-sub">Create or open documents to get started.</div>
+                <Link href="/documents" className="btn canvas-empty-btn">Open Paper Canvas</Link>
+              </div>
+            )}
+          </div>
+        </div>
       </main>
     </AppShell>
-  );
-}
-
-function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return (
-    <div className="glass" style={{ borderRadius: 13, padding: "30px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "var(--text-dim)" }}>
-      <span style={{ opacity: 0.6 }}>{icon}</span>
-      <span style={{ fontSize: 13 }}>{text}</span>
-    </div>
   );
 }

@@ -725,15 +725,20 @@ export function TaskBoard({
     const typeMeta = ITEM_TYPE_META[task.item_type];
     const TypeIcon = typeMeta.Icon;
     const priority = PRIORITY_ICON_META[task.priority];
-    const PriorityIcon = priority.Icon;
     const displayKey = getTaskDisplayKey(task);
     const contextLabel = getTaskContextLabel(task);
     const draggable = !isCrossProjectBoard && canMoveTask(task);
+    const dueText = task.due_date ? dueLabel(task.due_date, today) : "No due date";
     return (
       <article
         className={`task-card ${draggingId === task.id ? "dragging" : ""}`}
         data-testid="task-card"
         data-task-id={task.id}
+        style={{
+          ["--card-glow-a" as string]: `${typeMeta.color}24`,
+          ["--card-glow-b" as string]: `${priority.color}20`,
+          ["--card-accent" as string]: typeMeta.color,
+        }}
         draggable={draggable}
         onDragStart={(event) => {
           if (!draggable) {
@@ -773,34 +778,40 @@ export function TaskBoard({
         aria-label={`Open ${task.title}`}
       >
         <div className="task-card-topline">
-          <span className="task-card-keymeta">
-            <span className="task-card-typebox" style={{ background: `${typeMeta.color}14`, color: typeMeta.color }}>
-              <TypeIcon size={14} />
-            </span>
-            <span className="task-card-key">{displayKey}</span>
+          <span className="task-card-date">
+            <FiCalendar size={12} />
+            {dueText}
           </span>
+          <span className="task-card-priority-pill" style={{ background: `${priority.color}12`, color: priority.color }}>
+            {priority.label}
+          </span>
+        </div>
+        <div className="task-card-keymeta">
+          <span className="task-card-typebox" style={{ background: `${typeMeta.color}14`, color: typeMeta.color }}>
+            <TypeIcon size={14} />
+          </span>
+          <span className="task-card-key">{displayKey}</span>
         </div>
         <div className="task-card-title">{task.title}</div>
         <div className="task-card-bottomline">
-          <div className="task-card-meta-inline">
+          <div className="task-card-persona">
             {task.assignee_name ? (
-              <span className="task-avatar" style={{ background: avatarBg(task.assignee_name) }} title={task.assignee_name}>
-                {initials(task.assignee_name, null)}
-              </span>
+              <>
+                <span className="task-avatar" style={{ background: avatarBg(task.assignee_name) }} title={task.assignee_name}>
+                  {initials(task.assignee_name, null)}
+                </span>
+                <span className="task-card-assignee-name">{task.assignee_name}</span>
+              </>
             ) : (
               <span className="task-card-assignee-empty">Unassigned</span>
             )}
-            {contextLabel && <span className="task-card-context">{contextLabel}</span>}
-            {task.due_date && (
-              <span className="task-card-date">
-                <FiCalendar size={12} />
-                {dueLabel(task.due_date, today)}
-              </span>
-            )}
           </div>
-            <span className="task-priority-icon" title={priority.label} aria-label={priority.label} style={{ ["--priority-color" as string]: priority.color }}>
-            <PriorityIcon size={16} />
-          </span>
+          <div className="task-card-meta-inline">
+            <span className="task-card-typepill" style={{ background: `${typeMeta.color}10`, color: typeMeta.color }}>
+              #{typeMeta.label}
+            </span>
+            {contextLabel && <span className="task-card-context">#{contextLabel}</span>}
+          </div>
         </div>
       </article>
     );
@@ -1184,6 +1195,9 @@ export function TaskBoard({
             canAdd={canCreateTasks}
             workflowOpen={workflowOpen}
             onToggleWorkflow={() => setWorkflowOpen((value) => !value)}
+            filteredCount={activeTab === "epics" ? filteredEpics.length : filteredBoardItems.length}
+            stageCount={displayStageList.length}
+            overdueCount={summary.overdue}
             onAdd={() => {
               if (!canCreateTasks) return;
               setDrawer({ mode: "create", presetStatus: defaultCreateStage });
@@ -1430,6 +1444,7 @@ export function TaskBoard({
                     <section
                       className={`kanban-column ${dragOverCol === stage.id ? "dragover" : ""} ${draggingStageId === stage.id ? "dragging-stage" : ""} ${isDraggingTask ? "drag-card-active" : ""}`}
                       key={stage.id}
+                      style={{ ["--stage-accent" as string]: stage.color }}
                       aria-label={stage.label}
                       onDragOver={(event) => {
                         if (isCrossProjectBoard) return;

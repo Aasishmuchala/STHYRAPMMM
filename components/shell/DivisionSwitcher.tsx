@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconLayers, IconChevronDown } from "@/components/icons";
+import { IconChevronDown } from "@/components/icons";
+import { FiBriefcase } from "react-icons/fi";
 
 type Nav = { slug: string; name: string };
 
@@ -51,7 +52,7 @@ export function DivisionSwitcher({ divisions, canPickAll = false }: { divisions:
     <div className="dsw">
       <button className="pill dsw-trigger" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
         <span className="dsw-trigger-icon" aria-hidden="true">
-          <IconLayers size={14} />
+          <FiBriefcase size={15} />
         </span>
         <span className="dsw-label">{label}</span>
         <span className="dsw-trigger-caret" aria-hidden="true">

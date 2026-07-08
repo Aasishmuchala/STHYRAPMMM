@@ -41,6 +41,9 @@ export function TaskToolbar({
   workflowOpen,
   onToggleWorkflow,
   onAdd,
+  filteredCount,
+  stageCount,
+  overdueCount,
 }: {
   view: ViewMode;
   onViewChange: (v: ViewMode) => void;
@@ -67,23 +70,43 @@ export function TaskToolbar({
   workflowOpen: boolean;
   onToggleWorkflow: () => void;
   onAdd: () => void;
+  filteredCount: number;
+  stageCount: number;
+  overdueCount: number;
 }) {
   return (
     <section className="tasks-toolbar-shell" aria-label="Work items toolbar">
       <div className="tasks-toolbar-main">
         <div className="tasks-toolbar-copy">
-          <div className="workspace-tag">Work items</div>
+          <div className="tasks-toolbar-summary">
+            <div className="workspace-tag">Work items</div>
+            <div className="tasks-toolbar-stats" aria-label="Board summary">
+              <span><strong>{filteredCount}</strong> visible</span>
+              <span><strong>{stageCount}</strong> stages</span>
+              <span><strong>{overdueCount}</strong> overdue</span>
+            </div>
+          </div>
         </div>
 
         <div className="tasks-toolbar-actions">
           <div className="tasks-view-toggle" role="group" aria-label="View mode">
-            <button type="button" className={view === "board" ? "on" : ""} onClick={() => onViewChange("board")}>
+            <button
+              type="button"
+              className={view === "board" ? "on" : ""}
+              onClick={() => onViewChange("board")}
+              aria-label="Board view"
+              title="Board view"
+            >
               <FiGrid size={14} />
-              Board
             </button>
-            <button type="button" className={view === "list" ? "on" : ""} onClick={() => onViewChange("list")}>
+            <button
+              type="button"
+              className={view === "list" ? "on" : ""}
+              onClick={() => onViewChange("list")}
+              aria-label="List view"
+              title="List view"
+            >
               <FiList size={14} />
-              List
             </button>
           </div>
 
@@ -107,45 +130,61 @@ export function TaskToolbar({
       </div>
 
       <div className="tasks-filters-row">
-        <div className="tasks-filter-label">
+        <div className="tasks-filter-label" aria-hidden="true">
           <FiFilter size={14} />
-          Filters
+          <span>Refine board</span>
         </div>
+        <div className="tasks-filter-grid">
+          <label className="tasks-filter-field">
+            <span>Division</span>
+            <select aria-label="Division scope" className="select" value={divFilter} onChange={(event) => onDivFilterChange(event.target.value)}>
+              <option value="all">All divisions</option>
+              {divisions.map((division) => (
+                <option key={division.slug} value={division.slug}>{division.name.replace(/^Sthyra\s+/, "")}</option>
+              ))}
+            </select>
+          </label>
 
-        <select aria-label="Division scope" className="select" value={divFilter} onChange={(event) => onDivFilterChange(event.target.value)}>
-          <option value="all">All divisions</option>
-          {divisions.map((division) => (
-            <option key={division.slug} value={division.slug}>{division.name.replace(/^Sthyra\s+/, "")}</option>
-          ))}
-        </select>
+          <label className="tasks-filter-field">
+            <span>Assignee</span>
+            <select aria-label="Assignee" className="select" value={asgFilter} onChange={(event) => onAsgFilterChange(event.target.value)}>
+              <option value="all">All assignees</option>
+              <option value="unassigned">Unassigned</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>{member.name}</option>
+              ))}
+            </select>
+          </label>
 
-        <select aria-label="Assignee" className="select" value={asgFilter} onChange={(event) => onAsgFilterChange(event.target.value)}>
-          <option value="all">All assignees</option>
-          <option value="unassigned">Unassigned</option>
-          {members.map((member) => (
-            <option key={member.id} value={member.id}>{member.name}</option>
-          ))}
-        </select>
+          <label className="tasks-filter-field">
+            <span>Cycle</span>
+            <select aria-label="Cycle" className="select" value={cycleFilter} onChange={(event) => onCycleFilterChange(event.target.value)}>
+              <option value="all">All cycles</option>
+              {cycles.map((cycle) => (
+                <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
+              ))}
+            </select>
+          </label>
 
-        <select aria-label="Cycle" className="select" value={cycleFilter} onChange={(event) => onCycleFilterChange(event.target.value)}>
-          <option value="all">All cycles</option>
-          {cycles.map((cycle) => (
-            <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
-          ))}
-        </select>
+          <label className="tasks-filter-field">
+            <span>Module</span>
+            <select aria-label="Module" className="select" value={moduleFilter} onChange={(event) => onModuleFilterChange(event.target.value)}>
+              <option value="all">All modules</option>
+              {modules.map((module) => (
+                <option key={module.id} value={module.id}>{module.name}</option>
+              ))}
+            </select>
+          </label>
 
-        <select aria-label="Module" className="select" value={moduleFilter} onChange={(event) => onModuleFilterChange(event.target.value)}>
-          <option value="all">All modules</option>
-          {modules.map((module) => (
-            <option key={module.id} value={module.id}>{module.name}</option>
-          ))}
-        </select>
-
-        <select aria-label="Group by" className="select" value={groupBy} onChange={(event) => onGroupByChange(event.target.value as GroupBy)}>
-          {GROUP_OPTIONS.map((group) => (
-            <option key={group.value} value={group.value}>{group.label}</option>
-          ))}
-        </select>
+          <label className="tasks-filter-field">
+            <span>Grouping</span>
+            <select aria-label="Group by" className="select" value={groupBy} onChange={(event) => onGroupByChange(event.target.value as GroupBy)}>
+              {GROUP_OPTIONS.map((group) => (
+                <option key={group.value} value={group.value}>{group.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="tasks-type-strip" aria-label="Work item types">

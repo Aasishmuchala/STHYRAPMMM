@@ -31,7 +31,14 @@ export function AppShell({
   return (
     <div className={`app${navOpen ? " nav-open" : ""}`}>
       <a href="#main" className="skip-link">Skip to main content</a>
-      <Sidebar divisions={divisions} canSeeFinances={canSeeFinances} canSeePeople={canSeePeople} isOwner={isOwner} onNavigate={() => setNavOpen(false)} />
+      <Sidebar
+        divisions={divisions}
+        canSeeFinances={canSeeFinances}
+        canSeePeople={canSeePeople}
+        isOwner={isOwner}
+        initials={initials}
+        onNavigate={() => setNavOpen(false)}
+      />
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
       <div>
         <TopBar initials={initials} canSeeFinances={canSeeFinances} onMenu={() => setNavOpen((v) => !v)} />
