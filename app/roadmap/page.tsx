@@ -4,6 +4,7 @@ import { buildWorkspaceAccess } from "@/lib/access";
 import { AppShell } from "@/components/shell/AppShell";
 import { initials } from "@/lib/format";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
+import { loadShellUserSummary } from "@/lib/shellUser";
 
 import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
@@ -45,6 +46,12 @@ export default async function RoadmapPage() {
 
   const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
   const releases = (releasesRes.data ?? []) as { id: string; name: string; target_date: string | null; status: string; project_id: string; projects: { name: string; division_id: string } | { name: string; division_id: string }[] | null }[];
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: memberships ?? [],
+    accessibleDivisions: divisions,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -53,6 +60,8 @@ export default async function RoadmapPage() {
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
       aiInitialData={{
         configured: aiData.configured,
         isOwner: access.isSuperAdmin,

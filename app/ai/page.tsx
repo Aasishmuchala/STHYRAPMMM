@@ -5,6 +5,7 @@ import { AiConsole } from "@/components/ai/AiConsole";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
 import { deriveAiPolicy } from "@/lib/ai/policy";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 
 import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
@@ -35,6 +36,12 @@ export default async function AiPage() {
     loadAiConsoleData(supabase),
   ]);
   const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: memberships ?? [],
+    accessibleDivisions: divisions,
+    canPickAll: isOwner,
+  });
 
   return (
     <AppShell
@@ -43,6 +50,8 @@ export default async function AiPage() {
       canSeePeople={policy.canSeePeople}
       isOwner={isOwner}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
       aiInitialData={{
         configured: aiData.configured,
         isOwner,

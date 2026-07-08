@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { buildWorkspaceAccess } from "@/lib/access";
+import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { AppShell } from "@/components/shell/AppShell";
 import { initials } from "@/lib/format";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import { BurndownChart, type BurndownPoint } from "@/components/reports/BurndownChart";
 import { ActivityLog, type ActivityEntry } from "@/components/reports/ActivityLog";
 
@@ -40,7 +42,20 @@ export default async function ReportsPage() {
 
   const { data: divisionsRes } = await supabase.from("divisions").select("id,slug,name").order("slug");
   const divisions = (divisionsRes ?? []) as { id: string; slug: string; name: string }[];
+  const accessibleDivisions = divisions.filter(
+    (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
+  );
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), accessibleDivisions, access.isSuperAdmin);
+  const canViewReports = access.isSuperAdmin || (
+    activeCompany.activeDivisionId != null && access.companyOwnerDivisionIds.has(activeCompany.activeDivisionId)
+  );
   const aiData = await loadAiConsoleData(supabase);
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: memberships ?? [],
+    accessibleDivisions: divisions,
+    canPickAll: access.isSuperAdmin,
+  });
 
   const shellProps = {
     divisions: divisions.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") })),
@@ -48,6 +63,8 @@ export default async function ReportsPage() {
     canSeePeople: access.canSeePeople,
     isOwner: access.isSuperAdmin,
     initials: initials(profile?.full_name ?? null, profile?.email ?? null),
+    userName: shellUser.userName,
+    userRoleLabel: shellUser.userRoleLabel,
     aiInitialData: {
       configured: aiData.configured,
       isOwner: access.isSuperAdmin,
@@ -60,8 +77,9 @@ export default async function ReportsPage() {
     },
   };
 
-  // Reports + audit trail are owner-only.
-  if (!access.isSuperAdmin) {
+  // Reports + audit trail are available to the active company's owner, or any
+  // workspace super admin.
+  if (!canViewReports) {
     return (
       <AppShell {...shellProps}>
         <main id="main" data-testid="main">
@@ -72,7 +90,7 @@ export default async function ReportsPage() {
             </div>
           </header>
           <section className="glass" style={{ padding: 22 }}>
-            <p className="sub">The audit log and reports are available to owners only.</p>
+            <p className="sub">The audit log and reports are available to the active company&apos;s owner, or a workspace super admin.</p>
           </section>
         </main>
       </AppShell>

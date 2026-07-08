@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { AppShell } from "@/components/shell/AppShell";
 import { AutomationsView } from "@/components/automations/AutomationsView";
 import { initials } from "@/lib/format";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
+import { loadShellUserSummary } from "@/lib/shellUser";
 
 import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
@@ -50,6 +50,12 @@ export default async function AutomationsPage() {
   ]);
 
   const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: memberships ?? [],
+    accessibleDivisions: divisions,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -58,6 +64,8 @@ export default async function AutomationsPage() {
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
       aiInitialData={{
         configured: aiData.configured,
         isOwner: access.isSuperAdmin,

@@ -114,6 +114,8 @@ export function Sidebar({
   canSeePeople = canSeeFinances,
   isOwner = false,
   initials,
+  userName = "Workspace User",
+  userRoleLabel = isOwner ? "Super Admin" : canSeeFinances ? "Admin" : "Member",
   onNavigate,
 }: {
   divisions: Nav[];
@@ -121,6 +123,8 @@ export function Sidebar({
   canSeePeople?: boolean;
   isOwner?: boolean;
   initials: string;
+  userName?: string;
+  userRoleLabel?: string;
   onNavigate?: () => void;
 }) {
   const path = usePathname();
@@ -212,7 +216,7 @@ export function Sidebar({
                 </button>
               </div>
               <nav className="teams-list">
-                {divisions.map((division, index) => {
+                {divisions.map((division) => {
                   const meta = getDivisionMeta(division.slug, division.name);
                   const href = `/divisions/${division.slug}`;
                   const Icon = meta.Icon;
@@ -275,8 +279,8 @@ export function Sidebar({
         <div className="side-card profile-card" aria-label="Current user">
           <div className="profile-avatar">{initials.slice(0, 1)}</div>
           <div className="profile-copy">
-            <div className="profile-name">Workspace User</div>
-            <div className="profile-role">{isOwner ? "Super Admin" : canSeeFinances ? "Admin" : "Member"}</div>
+            <div className="profile-name">{userName}</div>
+            <div className="profile-role">{userRoleLabel}</div>
           </div>
           <span className="nav-card-arrow">
             <IconChevronDown size={15} style={{ transform: "rotate(-90deg)" }} />

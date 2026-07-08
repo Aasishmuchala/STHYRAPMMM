@@ -5,6 +5,7 @@ import { AppShell } from "@/components/shell/AppShell";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import { SalesView, type Deal, type SalesTarget, type Activity } from "@/components/sales/SalesView";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
@@ -61,6 +62,12 @@ export default async function SalesPage() {
     myActivity = myActRes.data ?? null;
     teamCallsToday = (teamActRes.data ?? []).reduce((s, r) => s + (r.calls ?? 0), 0);
   }
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -69,6 +76,8 @@ export default async function SalesPage() {
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
     >
       <main id="main" data-testid="main">
         <header className="subhead">

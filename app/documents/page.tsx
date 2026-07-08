@@ -5,6 +5,7 @@ import { AppShell } from "@/components/shell/AppShell";
 import { DocumentsView } from "@/components/documents/DocumentsView";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Doc } from "@/lib/doc-types";
 
@@ -36,9 +37,15 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const divs: DivisionOpt[] = (divisions ?? [])
     .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
     .filter((division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id));
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)} userName={shellUser.userName} userRoleLabel={shellUser.userRoleLabel}>
       <main>
           <header className="subhead">
             <div>

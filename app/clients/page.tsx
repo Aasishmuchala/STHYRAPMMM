@@ -5,6 +5,7 @@ import { AppShell } from "@/components/shell/AppShell";
 import { ClientsView } from "@/components/clients/ClientsView";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Client } from "@/lib/clients-types";
 
@@ -35,6 +36,12 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
   const divs: DivisionOpt[] = (divisions ?? [])
     .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
     .filter((division) => access.isSuperAdmin || access.financeDivisionIds.has(division.id));
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -43,6 +50,8 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
     >
       <main>
         <header className="subhead">

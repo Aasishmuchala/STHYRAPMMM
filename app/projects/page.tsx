@@ -6,6 +6,7 @@ import { ProjectsView } from "@/components/projects/ProjectsView";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 type ProjectRow = {
@@ -128,9 +129,15 @@ export default async function ProjectsPage() {
       openTasks: (viewerManages ? taskCounts : myTaskCounts).get(project.id) ?? 0,
     };
     });
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)} userName={shellUser.userName} userRoleLabel={shellUser.userRoleLabel}>
       <main>
         <header className="projects-page-head">
           <div>

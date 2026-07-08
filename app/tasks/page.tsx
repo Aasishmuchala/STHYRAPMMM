@@ -7,6 +7,7 @@ import { buildWorkspaceAccess } from "@/lib/access";
 import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { PageHeader, Button } from "@/components/ui";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import { DEFAULT_TASK_STAGES } from "@/lib/tasks-types";
 import type {
   BoardTask,
@@ -294,9 +295,15 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const modulesHref = buildTaskHref(sp, { tab: "modules", cycle: null });
   const epicCount = tasks.filter((task) => task.item_type === "epic").length;
   const boardCount = tasks.filter((task) => task.item_type !== "epic").length;
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)} userName={shellUser.userName} userRoleLabel={shellUser.userRoleLabel}>
       <main id="main" data-testid="main" className="tasks-main">
         <PageHeader
           eyebrow="Tasks"

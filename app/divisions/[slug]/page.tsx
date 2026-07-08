@@ -8,6 +8,7 @@ import { buildWorkspaceAccess } from "@/lib/access";
 import { avatarBg } from "@/lib/avatar";
 import { IconDoc } from "@/components/icons";
 import { DivisionBriefCard } from "@/components/divisions/DivisionBriefCard";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 const prioColor: Record<string, string> = {
@@ -93,9 +94,15 @@ export default async function DivisionPage({ params }: { params: Promise<{ slug:
     .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id));
   const canEditBrief = access.isSuperAdmin || access.manageableDivisionIds.has(division.id);
   const brief = (briefRow ?? null) as { goals: string | null; targets: string | null; notes: string | null } | null;
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: short(d.name) }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: short(d.name) }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)} userName={shellUser.userName} userRoleLabel={shellUser.userRoleLabel}>
       <main>
         <header className="subhead">
           <div>

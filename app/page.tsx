@@ -10,6 +10,7 @@ import { GettingStarted } from "@/components/home/GettingStarted";
 import { HomeAiCard } from "@/components/home/HomeAiCard";
 import { QuickNew } from "@/components/home/QuickNew";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import {
   IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconLayers,
 } from "@/components/icons";
@@ -48,10 +49,17 @@ export default async function HomePage() {
 
   const today = new Date();
   const sb = supabase as unknown as DB;
-  const [d, aiData] = await Promise.all([
+  const [{ data: memberships }, d, aiData] = await Promise.all([
+    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
     getDashboard(supabase, today, user.id),
     loadAiConsoleData(sb),
   ]);
+  const shellUser = await loadShellUserSummary({
+    profile: d.profile,
+    memberships: (memberships ?? []) as { role: string; division_id: string }[],
+    accessibleDivisions: d.navDivisions,
+    canPickAll: d.isOwner,
+  });
 
   // Onboarding signals (owner only) for the "Get set up" guide.
   let setup: { ai: boolean; clients: boolean; team: boolean; briefs: boolean } | null = null;
@@ -82,6 +90,8 @@ export default async function HomePage() {
       canSeeFinances={d.canSeeFinances}
       isOwner={d.isOwner}
       initials={initials(d.profile?.full_name ?? null, d.profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
       aiInitialData={{
         configured: aiData.configured,
         isOwner: d.isOwner,

@@ -6,6 +6,7 @@ import { FinancesView } from "@/components/finances/FinancesView";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt, ProjectOpt } from "@/lib/tasks-types";
 import type { Txn, Inv, Bom, Ra, EmployeeOption, RecurringPayment, FinanceImportBatch } from "@/lib/finances-types";
 
@@ -88,9 +89,15 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
       profile_email: employee?.email ?? null,
     };
   }).filter((row) => inScope(row.division_id));
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
-    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)}>
+    <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)} userName={shellUser.userName} userRoleLabel={shellUser.userRoleLabel}>
       <main id="main" data-testid="main">
           <header className="subhead">
             <div>

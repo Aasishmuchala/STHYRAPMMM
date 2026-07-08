@@ -18,6 +18,7 @@ import { AvatarStack, DonutChart, StatCard } from "@/components/ui";
 import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import { createClient } from "@/lib/supabase/server";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
@@ -248,6 +249,12 @@ export default async function AttendancePage() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: divs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -256,6 +263,8 @@ export default async function AttendancePage() {
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
     >
       <main id="main" data-testid="main" className="att-main">
         <header className="att-head">

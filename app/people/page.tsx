@@ -6,6 +6,7 @@ import { PeopleView } from "@/components/people/PeopleView";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Person, PersonMembership, PersonDaily, PersonTask } from "@/components/people/types";
 
@@ -146,6 +147,12 @@ export default async function PeoplePage({
         due_date: r.due_date,
       }));
   }
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: membershipRows,
+    accessibleDivisions: accessibleDivs,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -154,6 +161,8 @@ export default async function PeoplePage({
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
     >
       <main>
         <header className="subhead">

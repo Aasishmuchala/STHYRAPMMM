@@ -9,13 +9,15 @@ import { AiDrawerHost, type AiDrawerData } from "./AiDrawerHost";
 type Nav = { slug: string; name: string };
 
 export function AppShell({
-  divisions, canSeeFinances, canSeePeople = canSeeFinances, isOwner = false, initials, children, aiInitialData,
+  divisions, canSeeFinances, canSeePeople = canSeeFinances, isOwner = false, initials, userName, userRoleLabel, children, aiInitialData,
 }: {
   divisions: Nav[];
   canSeeFinances: boolean;
   canSeePeople?: boolean;
   isOwner?: boolean;
   initials: string;
+  userName?: string;
+  userRoleLabel?: string;
   children: React.ReactNode;
   aiInitialData?: AiDrawerData;
 }) {
@@ -37,6 +39,8 @@ export function AppShell({
         canSeePeople={canSeePeople}
         isOwner={isOwner}
         initials={initials}
+        userName={userName}
+        userRoleLabel={userRoleLabel}
         onNavigate={() => setNavOpen(false)}
       />
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}

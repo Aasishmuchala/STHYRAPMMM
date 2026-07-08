@@ -157,7 +157,7 @@ export const getDashboard = cache(async function getDashboard(supabase: DB, toda
     canSeeFinances,
     navDivisions: (divisions ?? [])
       .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id))
-      .map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") })),
+      .map((d) => ({ id: d.id, slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") })),
     finance: { moneyIn, moneyOut, owed, margin, overdueCount: overdue.length },
     divisionHealth,
     myTasks,

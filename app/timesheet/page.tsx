@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { buildWorkspaceAccess, hasDivisionRole } from "@/lib/access";
-import { loadUserWorkspaceAccess } from "@/lib/server-access";
+import { buildWorkspaceAccess } from "@/lib/access";
 import { AppShell } from "@/components/shell/AppShell";
 import { TimesheetGrid } from "@/components/timesheet/TimesheetGrid";
 import { initials } from "@/lib/format";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
+import { loadShellUserSummary } from "@/lib/shellUser";
 
 import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
@@ -57,9 +56,15 @@ export default async function TimesheetPage() {
   ]);
 
   const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
-  const people = (peopleRes.data ?? []).filter((p) =>
+  const people = (peopleRes.data ?? []).filter(() =>
     access.isSuperAdmin || memberships?.some((m) => m.division_id) // everyone with at least one membership
   );
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: memberships ?? [],
+    accessibleDivisions: divisions,
+    canPickAll: access.isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -68,6 +73,8 @@ export default async function TimesheetPage() {
       canSeePeople={access.canSeePeople}
       isOwner={access.isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
       aiInitialData={{
         configured: aiData.configured,
         isOwner: access.isSuperAdmin,

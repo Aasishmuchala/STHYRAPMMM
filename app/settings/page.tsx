@@ -6,6 +6,7 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { isAllowedTheme } from "@/lib/appearance";
 import { initials } from "@/lib/format";
+import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
 
@@ -82,6 +83,12 @@ export default async function SettingsPage() {
   }
 
   const normalizedTheme = isAllowedTheme(profile?.theme) ? profile.theme : "slate";
+  const shellUser = await loadShellUserSummary({
+    profile,
+    memberships: myMem,
+    accessibleDivisions: divs,
+    canPickAll: isSuperAdmin,
+  });
 
   return (
     <AppShell
@@ -89,6 +96,8 @@ export default async function SettingsPage() {
       canSeeFinances={canSeeFinances}
       isOwner={isSuperAdmin}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
+      userName={shellUser.userName}
+      userRoleLabel={shellUser.userRoleLabel}
       aiInitialData={{
         configured: aiData.configured,
         isOwner: isSuperAdmin,
