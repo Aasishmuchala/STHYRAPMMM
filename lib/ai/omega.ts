@@ -32,6 +32,24 @@ function asString(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
+class OmegaHttpError extends Error {
+  status: number;
+  body: string;
+
+  constructor(status: number, body: string) {
+    super(`Omega ${status}: ${body.slice(0, 400)}`);
+    this.name = "OmegaHttpError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+function isInvalidParamsError(error: unknown): boolean {
+  if (!(error instanceof OmegaHttpError)) return false;
+  if (error.status !== 400) return false;
+  return /invalid[_\s-]?params|invalid_request_error|invalid params/i.test(error.body);
+}
+
 function parseJsonishText(text: string): Json {
   const raw = text.trim();
   if (!raw) return {};
@@ -214,54 +232,74 @@ export async function omegaChat(opts: {
 }): Promise<OmegaResult> {
   if (!opts.apiKey) throw new Error("No Omega API key — add it in Settings → AI Assistant.");
 
-  const body: Record<string, unknown> = {
+  const baseBody: Record<string, unknown> = {
     model: opts.model,
     messages: opts.messages,
     temperature: opts.temperature ?? 0.3,
     max_tokens: opts.maxTokens ?? 1500,
     stream: false,
   };
+
+  const bodies: Record<string, unknown>[] = [];
   if (opts.tools?.length) {
+    const body = { ...baseBody };
     body.tools = opts.tools;
     body.tool_choice = "auto";
+    bodies.push(body);
+
+    // Some OpenAI-compatible gateways accept tools but reject explicit
+    // tool_choice. Retry once with the leaner tools payload before falling
+    // back to plain chat.
+    bodies.push({ ...baseBody, tools: opts.tools });
+  }
+  bodies.push(baseBody);
+
+  let lastInvalidParams: OmegaHttpError | null = null;
+  for (const body of bodies) {
+    const res = await fetchWithBackoff(`${BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${opts.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      const err = new OmegaHttpError(res.status, t);
+      if (isInvalidParamsError(err) && body !== bodies[bodies.length - 1]) {
+        lastInvalidParams = err;
+        continue;
+      }
+      throw err;
+    }
+    const data: unknown = await readJsonishResponse(res);
+    const root = isObject(data) ? data : {};
+    const choice0 = Array.isArray(root.choices) ? root.choices[0] : undefined;
+    const msg = isObject(choice0) && isObject(choice0.message) ? choice0.message : {};
+    const text = typeof msg.content === "string" ? msg.content : "";
+    const toolCalls: OmegaToolCall[] = asArray(msg.tool_calls).map((tc) => {
+      const obj = isObject(tc) ? tc : {};
+      const fn = isObject(obj.function) ? obj.function : {};
+      return {
+        id: asString(obj.id),
+        name: asString(fn.name),
+        args: (safeJson(fn.arguments) as Record<string, unknown>) ?? {},
+      };
+    });
+    const u = isObject(root.usage) ? root.usage : {};
+    const usage: OmegaUsage = {
+      input_tokens: typeof u.prompt_tokens === "number"
+        ? u.prompt_tokens
+        : typeof u.input_tokens === "number" ? u.input_tokens : 0,
+      output_tokens: typeof u.completion_tokens === "number"
+        ? u.completion_tokens
+        : typeof u.output_tokens === "number" ? u.output_tokens : 0,
+    };
+    return { text, toolCalls, usage, raw: data };
   }
 
-  const res = await fetchWithBackoff(`${BASE}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${opts.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`Omega ${res.status}: ${t.slice(0, 400)}`);
-  }
-  const data: unknown = await readJsonishResponse(res);
-  const root = isObject(data) ? data : {};
-  const choice0 = Array.isArray(root.choices) ? root.choices[0] : undefined;
-  const msg = isObject(choice0) && isObject(choice0.message) ? choice0.message : {};
-  const text = typeof msg.content === "string" ? msg.content : "";
-  const toolCalls: OmegaToolCall[] = asArray(msg.tool_calls).map((tc) => {
-    const obj = isObject(tc) ? tc : {};
-    const fn = isObject(obj.function) ? obj.function : {};
-    return {
-      id: asString(obj.id),
-      name: asString(fn.name),
-      args: (safeJson(fn.arguments) as Record<string, unknown>) ?? {},
-    };
-  });
-  const u = isObject(root.usage) ? root.usage : {};
-  const usage: OmegaUsage = {
-    input_tokens: typeof u.prompt_tokens === "number"
-      ? u.prompt_tokens
-      : typeof u.input_tokens === "number" ? u.input_tokens : 0,
-    output_tokens: typeof u.completion_tokens === "number"
-      ? u.completion_tokens
-      : typeof u.output_tokens === "number" ? u.output_tokens : 0,
-  };
-  return { text, toolCalls, usage, raw: data };
+  throw lastInvalidParams ?? new Error("Omega call failed");
 }
 
 // Lightweight auth/connectivity check used by the Settings "Test" button.

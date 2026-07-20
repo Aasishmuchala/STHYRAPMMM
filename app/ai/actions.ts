@@ -562,6 +562,13 @@ export async function testOmegaKey(): Promise<{ ok: true; count: number; hasDefa
   await writeSharedOmegaKey(apiKey, user?.id ?? null);
   try {
     const models = await omegaListModels(apiKey);
+    await omegaChat({
+      apiKey,
+      model: AI_MODEL,
+      messages: [{ role: "user", content: "Reply with only: ok" }],
+      temperature: 0,
+      maxTokens: 8,
+    });
     return { ok: true, count: models.length, hasDefault: models.includes(AI_MODEL), sample: models.slice(0, 8) };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Connection failed" };

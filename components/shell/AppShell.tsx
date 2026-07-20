@@ -44,7 +44,7 @@ export function AppShell({
         onNavigate={() => setNavOpen(false)}
       />
       {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
-      <div>
+      <div className="app-content">
         <TopBar initials={initials} canSeeFinances={canSeeFinances} onMenu={() => setNavOpen((v) => !v)} />
         {children}
       </div>
