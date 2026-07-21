@@ -166,11 +166,11 @@ export default async function AttendancePage() {
     });
   }
 
-  const rosterMap = new Map<string, { name: string; present: number; last: string | null }>();
+  const rosterMap = new Map<string, { userId: string; name: string; present: number; last: string | null }>();
   if (isManager) {
     for (const row of records) {
       const name = row.person?.full_name || row.person?.email || "Unknown";
-      const entry = rosterMap.get(row.user_id) ?? { name, present: 0, last: null };
+      const entry = rosterMap.get(row.user_id) ?? { userId: row.user_id, name, present: 0, last: null };
       if (monthKey(row.work_date) === thisMonth && isLoggedStatus(row.status)) entry.present += 1;
       if (isLoggedStatus(row.status) && (!entry.last || row.checked_in_at > entry.last)) entry.last = row.checked_in_at;
       rosterMap.set(row.user_id, entry);
@@ -181,20 +181,28 @@ export default async function AttendancePage() {
   const maxPresent = Math.max(1, ...roster.map((person) => person.present));
 
   const heatmapCutoff = ymdLocal(addDays(currentWeekStart, -(HEATMAP_WEEKS - 1) * 7));
-  const heatMap = new Map<string, { name: string; counts: number[]; total: number }>();
+  const heatMap = new Map<string, { userId: string; name: string; counts: number[]; total: number }>();
   for (const row of loggedScopeRecords) {
     if (row.work_date < heatmapCutoff) continue;
     const name = row.person?.full_name || row.person?.email || "You";
-    const entry = heatMap.get(row.user_id) ?? { name, counts: [0, 0, 0, 0, 0, 0, 0], total: 0 };
+    const entry = heatMap.get(row.user_id) ?? { userId: row.user_id, name, counts: [0, 0, 0, 0, 0, 0, 0], total: 0 };
     const wd = weekdayMon(row.work_date);
     entry.counts[wd] = (entry.counts[wd] ?? 0) + 1;
     entry.total += 1;
     heatMap.set(row.user_id, entry);
   }
 
-  const heatRows = [...heatMap.values()]
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
-    .slice(0, isManager ? 8 : 1);
+  if (isManager) {
+    for (const person of roster) {
+      if (!heatMap.has(person.userId)) {
+        heatMap.set(person.userId, { userId: person.userId, name: person.name, counts: [0, 0, 0, 0, 0, 0, 0], total: 0 });
+      }
+    }
+  }
+
+  const heatRows = isManager
+    ? roster.map((person) => heatMap.get(person.userId) ?? { userId: person.userId, name: person.name, counts: [0, 0, 0, 0, 0, 0, 0], total: 0 })
+    : [...heatMap.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name)).slice(0, 1);
   const heatMax = Math.max(1, ...heatRows.flatMap((row) => row.counts));
   const heatBucket = (count: number) => (count <= 0 ? 0 : count / heatMax >= 0.66 ? 3 : count / heatMax >= 0.33 ? 2 : 1);
 
@@ -212,12 +220,13 @@ export default async function AttendancePage() {
   const onTrack = total > 0 && summary.late === 0 && summary.absent === 0;
 
   const statCfg = [
-    { label: "Present", value: summary.present, color: "#16a34a", Icon: FiCheckCircle },
-    { label: "Late", value: summary.late, color: "#f59e0b", Icon: FiClock },
-    { label: "Undertime", value: summary.undertime, color: "#3b82f6", Icon: FiActivity },
-    { label: "Absent", value: summary.absent, color: "#ef4444", Icon: FiUserX },
+    { label: "Present", value: summary.present, color: "#f3f4f6", Icon: FiCheckCircle },
+    { label: "Late", value: summary.late, color: "#a1a1aa", Icon: FiClock },
+    { label: "Undertime", value: summary.undertime, color: "#71717a", Icon: FiActivity },
+    { label: "Absent", value: summary.absent, color: "#52525b", Icon: FiUserX },
   ];
   const donutSegments = statCfg.map((item) => ({ label: item.label, value: item.value, color: item.color }));
+  const topPerformer = roster[0] ?? null;
 
   const insights = [
     onTrack
@@ -295,178 +304,188 @@ export default async function AttendancePage() {
           ))}
         </section>
 
-        <section className="att-row2">
-          <div className="panel">
-            <CheckinsChart data={weeklySeries} />
-          </div>
+        <section className="att-dashboard">
+          <div className="att-primary">
+            <div className="panel">
+              <CheckinsChart data={weeklySeries} />
+            </div>
 
-          <div className="panel statusmix-panel">
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">Status mix</h3>
-                <p className="panel-sub">{now.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p>
+            <div className="panel heatmap-panel">
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">Weekly attendance heatmap</h3>
+                  <p className="panel-sub">
+                    Last {HEATMAP_WEEKS} weeks of {isManager ? "team" : "your"} activity, by weekday.
+                  </p>
+                </div>
+                {isManager && heatRows.length > 0 ? <div className="heatmap-meta">{heatRows.length} team members</div> : null}
               </div>
-            </div>
-            <div className="statusmix">
-              <div className="status-ring">
-                <DonutChart segments={donutSegments} size={150} thickness={18} trackColor="var(--track)">
-                  <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>{total}</div>
-                  <div className="sub" style={{ fontSize: 11 }}>
-                    Days logged
-                  </div>
-                </DonutChart>
-              </div>
-              <div className="legend">
-                {donutSegments.map((segment) => (
-                  <div className="legend-row" key={segment.label}>
-                    <span className="legend-dot" style={{ background: segment.color }} />
-                    <span className="lg-label">{segment.label}</span>
-                    <span className="lg-value">
-                      {segment.value} <span className="lg-pct">({pctOf(segment.value)}%)</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {total > 0 && (
-              <div className={`att-banner ${onTrack ? "ok" : "warn"}`}>
-                <FiCheckCircle size={15} />
-                <span>
-                  {onTrack
-                    ? isManager
-                      ? "Great! Everyone is on track this month."
-                      : "You are on track this month."
-                    : `${summary.late} late, ${summary.absent} absent this month.`}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="panel">
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">{isManager ? "Team attendance" : "Recent check-ins"}</h3>
-                <p className="panel-sub">{isManager ? "Logged days this month, per person." : "Your latest activity."}</p>
-              </div>
-            </div>
-            {isManager ? (
-              roster.length === 0 ? (
-                <p className="sub">No check-ins yet.</p>
+              {heatRows.length === 0 ? (
+                <p className="sub">No activity to chart yet.</p>
               ) : (
-                <div className="tm-table">
-                  <div className="tm-head">
-                    <span>Team member</span>
-                    <span>Last check-in</span>
-                    <span className="tm-days-h">Days</span>
-                  </div>
-                  {roster.map((person, index) => (
-                    <div className="tm-row" key={index}>
-                      <div className="tm-person">
-                        <AvatarStack names={[person.name]} size={34} />
-                        <span className="tm-name">{person.name}</span>
+                <div className="heatmap">
+                  <div className="heatmap-scroll">
+                    <div className="hm-grid">
+                      <div className="hm-cols">
+                        <span />
+                        {DOW.map((day) => (
+                          <span key={day} className="hm-col-label">
+                            {day}
+                          </span>
+                        ))}
                       </div>
-                      <div className="tm-last">{person.last ? fmtTime(person.last) : "-"}</div>
-                      <div className="tm-days">
-                        <div className="tm-bar">
-                          <span style={{ width: `${Math.round((person.present / maxPresent) * 100)}%` }} />
+                      {heatRows.map((row, index) => (
+                        <div className="hm-row" key={index}>
+                          <span className="hm-name">{row.name}</span>
+                          {row.counts.map((count, cellIndex) => (
+                            <span
+                              key={cellIndex}
+                              className={`hm-cell hm-${heatBucket(count)}`}
+                              title={`${row.name} - ${DOW[cellIndex]}: ${count}`}
+                            />
+                          ))}
                         </div>
-                        <b>{person.present}</b>
-                      </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="hm-legend">
+                    <span className="hm-cell hm-3" /> Strong
+                    <span className="hm-cell hm-2" /> Moderate
+                    <span className="hm-cell hm-1" /> Light
+                    <span className="hm-cell hm-0" /> No activity
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <aside className="att-rail">
+            <div className="panel statusmix-panel">
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">Status mix</h3>
+                  <p className="panel-sub">{now.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p>
+                </div>
+                {topPerformer ? <div className="status-pill">Top: {topPerformer.name}</div> : null}
+              </div>
+              <div className="statusmix">
+                <div className="status-ring">
+                  <DonutChart segments={donutSegments} size={150} thickness={18} trackColor="var(--track)">
+                    <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em" }}>{total}</div>
+                    <div className="sub" style={{ fontSize: 11 }}>
+                      Days logged
+                    </div>
+                  </DonutChart>
+                </div>
+                <div className="legend">
+                  {donutSegments.map((segment) => (
+                    <div className="legend-row" key={segment.label}>
+                      <span className="legend-dot" style={{ background: segment.color }} />
+                      <span className="lg-label">{segment.label}</span>
+                      <span className="lg-value">
+                        {segment.value} <span className="lg-pct">({pctOf(segment.value)}%)</span>
+                      </span>
                     </div>
                   ))}
                 </div>
-              )
-            ) : myRecords.length === 0 ? (
-              <p className="sub">No check-ins yet.</p>
-            ) : (
-              <div className="tm-table">
-                {myRecords.slice(0, 6).map((row) => (
-                  <div className="tm-row simple" key={row.id}>
-                    <div className="tm-person">
-                      <span className={`tm-status-dot s-${row.status}`} />
-                      <span className="tm-name" style={{ textTransform: "capitalize" }}>
-                        {row.status}
-                      </span>
-                    </div>
-                    <div className="tm-last">{fmtTime(row.checked_in_at)}</div>
-                    <div className="tm-days">{row.location?.name ?? ""}</div>
-                  </div>
-                ))}
               </div>
-            )}
-          </div>
-        </section>
-
-        <section className="att-row3">
-          <div className="panel heatmap-panel">
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">Weekly attendance heatmap</h3>
-                <p className="panel-sub">Last {HEATMAP_WEEKS} weeks of {isManager ? "team" : "your"} activity, by weekday.</p>
-              </div>
+              {total > 0 && (
+                <div className={`att-banner ${onTrack ? "ok" : "warn"}`}>
+                  <FiCheckCircle size={15} />
+                  <span>
+                    {onTrack
+                      ? isManager
+                        ? "Great! Everyone is on track this month."
+                        : "You are on track this month."
+                      : `${summary.late} late, ${summary.absent} absent this month.`}
+                  </span>
+                </div>
+              )}
             </div>
-            {heatRows.length === 0 ? (
-              <p className="sub">No activity to chart yet.</p>
-            ) : (
-              <div className="heatmap">
-                <div className="heatmap-scroll">
-                  <div className="hm-grid">
-                    <div className="hm-cols">
-                      <span />
-                      {DOW.map((day) => (
-                        <span key={day} className="hm-col-label">
-                          {day}
-                        </span>
+
+            <div className="panel roster-panel">
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{isManager ? "Team attendance" : "Recent check-ins"}</h3>
+                  <p className="panel-sub">{isManager ? "Logged days this month, per person." : "Your latest activity."}</p>
+                </div>
+              </div>
+              {isManager ? (
+                roster.length === 0 ? (
+                  <p className="sub">No check-ins yet.</p>
+                ) : (
+                  <div className="tm-table">
+                    <div className="tm-head">
+                      <span>Team member</span>
+                      <span>Last check-in</span>
+                      <span className="tm-days-h">Days</span>
+                    </div>
+                    <div className="tm-body">
+                      {roster.map((person, index) => (
+                        <div className="tm-row" key={index}>
+                          <div className="tm-person">
+                            <AvatarStack names={[person.name]} size={34} />
+                            <span className="tm-name">{person.name}</span>
+                          </div>
+                          <div className="tm-last">{person.last ? fmtTime(person.last) : "-"}</div>
+                          <div className="tm-days">
+                            <div className="tm-bar">
+                              <span style={{ width: `${Math.round((person.present / maxPresent) * 100)}%` }} />
+                            </div>
+                            <b>{person.present}</b>
+                          </div>
+                        </div>
                       ))}
                     </div>
-                    {heatRows.map((row, index) => (
-                      <div className="hm-row" key={index}>
-                        <span className="hm-name">{row.name}</span>
-                        {row.counts.map((count, cellIndex) => (
-                          <span
-                            key={cellIndex}
-                            className={`hm-cell hm-${heatBucket(count)}`}
-                            title={`${row.name} - ${DOW[cellIndex]}: ${count}`}
-                          />
-                        ))}
+                  </div>
+                )
+              ) : myRecords.length === 0 ? (
+                <p className="sub">No check-ins yet.</p>
+              ) : (
+                <div className="tm-table">
+                  <div className="tm-body">
+                    {myRecords.slice(0, 6).map((row) => (
+                      <div className="tm-row simple" key={row.id}>
+                        <div className="tm-person">
+                          <span className={`tm-status-dot s-${row.status}`} />
+                          <span className="tm-name" style={{ textTransform: "capitalize" }}>
+                            {row.status}
+                          </span>
+                        </div>
+                        <div className="tm-last">{fmtTime(row.checked_in_at)}</div>
+                        <div className="tm-days">{row.location?.name ?? ""}</div>
                       </div>
                     ))}
                   </div>
                 </div>
-                <div className="hm-legend">
-                  <span className="hm-cell hm-3" /> Strong
-                  <span className="hm-cell hm-2" /> Moderate
-                  <span className="hm-cell hm-1" /> Light
-                  <span className="hm-cell hm-0" /> No activity
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          <div className="panel">
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">Insights</h3>
+            <div className="panel">
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">Insights</h3>
+                </div>
+              </div>
+              <div className="insights">
+                {insights.map((item, index) => (
+                  <div className="insight" key={index}>
+                    <span
+                      className="insight-ic"
+                      style={{ background: `color-mix(in srgb, ${item.tint} 15%, transparent)`, color: item.tint }}
+                    >
+                      <item.Icon size={17} />
+                    </span>
+                    <div className="insight-text">
+                      <div className="insight-title">{item.title}</div>
+                      <div className="insight-sub">{item.sub}</div>
+                    </div>
+                    <FiChevronRight size={16} className="insight-chev" />
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="insights">
-              {insights.map((item, index) => (
-                <div className="insight" key={index}>
-                  <span
-                    className="insight-ic"
-                    style={{ background: `color-mix(in srgb, ${item.tint} 15%, transparent)`, color: item.tint }}
-                  >
-                    <item.Icon size={17} />
-                  </span>
-                  <div className="insight-text">
-                    <div className="insight-title">{item.title}</div>
-                    <div className="insight-sub">{item.sub}</div>
-                  </div>
-                  <FiChevronRight size={16} className="insight-chev" />
-                </div>
-              ))}
-            </div>
-          </div>
+          </aside>
         </section>
       </main>
     </AppShell>

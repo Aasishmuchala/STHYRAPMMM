@@ -12,7 +12,7 @@ type Point = {
 export function CheckinsChart({ data }: { data: Point[] }) {
   const [weeks, setWeeks] = useState(6);
   const shown = data.slice(-weeks);
-  const teal = "#0d9488";
+  const stroke = "#e5e7eb";
   const maxCount = Math.max(4, ...shown.map((point) => point.count));
 
   return (
@@ -32,8 +32,8 @@ export function CheckinsChart({ data }: { data: Point[] }) {
           <AreaChart data={shown} margin={{ top: 10, right: 6, left: -10, bottom: 10 }}>
             <defs>
               <linearGradient id="ci-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={teal} stopOpacity={0.26} />
-                <stop offset="100%" stopColor={teal} stopOpacity={0} />
+                <stop offset="0%" stopColor={stroke} stopOpacity={0.18} />
+                <stop offset="100%" stopColor={stroke} stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="0" />
@@ -55,7 +55,7 @@ export function CheckinsChart({ data }: { data: Point[] }) {
               tick={{ fontSize: 12, fill: "var(--text-dim)" }}
             />
             <Tooltip
-              cursor={{ stroke: teal, strokeWidth: 1, strokeDasharray: "4 4" }}
+              cursor={{ stroke: stroke, strokeWidth: 1, strokeDasharray: "4 4" }}
               content={({ active, payload }) =>
                 active && payload && payload.length ? (
                   <div className="chart-tip">
@@ -70,11 +70,11 @@ export function CheckinsChart({ data }: { data: Point[] }) {
             <Area
               type="monotone"
               dataKey="count"
-              stroke={teal}
+              stroke={stroke}
               strokeWidth={2.5}
               fill="url(#ci-fill)"
-              dot={{ r: 4, fill: teal, strokeWidth: 2, stroke: "var(--bg-elev)" }}
-              activeDot={{ r: 6, fill: teal, strokeWidth: 2, stroke: "var(--bg-elev)" }}
+              dot={{ r: 4, fill: stroke, strokeWidth: 2, stroke: "var(--bg-elev)" }}
+              activeDot={{ r: 6, fill: stroke, strokeWidth: 2, stroke: "var(--bg-elev)" }}
             />
           </AreaChart>
         </ResponsiveContainer>
