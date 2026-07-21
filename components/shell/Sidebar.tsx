@@ -26,7 +26,6 @@ type Item = { href: string; label: string; Icon: React.ComponentType<{ size?: nu
 type Group = {
   title: string;
   items: Item[];
-  CardIcon: React.ComponentType<{ size?: number }>;
   defaultOpen?: boolean;
 };
 
@@ -51,7 +50,6 @@ function getDivisionMeta(slug: string, name: string) {
 function NavGroup({
   title,
   items,
-  CardIcon,
   activeHref,
   defaultOpen = false,
   onNavigate,
@@ -75,7 +73,7 @@ function NavGroup({
         </span>
       </button>
 
-      {isOpen ? (
+      {isOpen && (
         <nav className="side-card nav-card-list" aria-label={title}>
           {visible.map((item, index) => {
             const isActive = activeHref(item.href);
@@ -93,16 +91,6 @@ function NavGroup({
             );
           })}
         </nav>
-      ) : (
-        <button type="button" className="side-card side-card-compact nav-card-toggle" onClick={() => setOpen(true)} aria-label={`Open ${title}`}>
-          <span className="card-icon card-icon-soft">
-            <CardIcon size={16} />
-          </span>
-          <span className="nav-card-title">{title}</span>
-          <span className="nav-card-arrow">
-            <IconChevronDown size={15} style={{ transform: "rotate(-90deg)" }} />
-          </span>
-        </button>
       )}
     </section>
   );
@@ -133,7 +121,6 @@ export function Sidebar({
   const groups: Group[] = [
     {
       title: "Work",
-      CardIcon: IconTasks,
       defaultOpen: true,
       items: [
         { href: "/tasks", label: "Tasks", Icon: IconTasks, show: true },
@@ -144,7 +131,6 @@ export function Sidebar({
     },
     {
       title: "Sales & CRM",
-      CardIcon: IconClients,
       items: [
         { href: "/sales", label: "Sales", Icon: FiTrendingUp, show: true },
         { href: "/clients", label: "Clients", Icon: IconClients, show: canSeeFinances },
@@ -152,7 +138,6 @@ export function Sidebar({
     },
     {
       title: "Team",
-      CardIcon: IconPeople,
       items: [
         { href: "/people", label: "People", Icon: IconPeople, show: canSeePeople },
         { href: "/attendance", label: "Attendance", Icon: FiUserCheck, show: true },
@@ -160,12 +145,10 @@ export function Sidebar({
     },
     {
       title: "Finance",
-      CardIcon: IconFinance,
       items: [{ href: "/finances", label: "Finances", Icon: IconFinance, show: canSeeFinances }],
     },
     {
       title: "Library",
-      CardIcon: IconDoc,
       items: [
         { href: "/documents", label: "Documents", Icon: IconDoc, show: true },
         { href: "/reports", label: "Reports", Icon: FiZap, show: true },

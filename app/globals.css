@@ -6017,11 +6017,6 @@ html[data-workspace-surface="plane"] main.tasks-main {
   gap: 5px;
 }
 
-.task-card-priority-pill::before {
-  content: "⚑";
-  font-size: 12px;
-}
-
 .task-card-title {
   color: #0b1020;
   font-size: 16px;
@@ -8373,6 +8368,26 @@ html[data-workspace-surface="plane"] .tasks-main .page-header,
   box-shadow: 0 22px 50px -34px rgba(255, 255, 255, 0.34);
 }
 
+.task-assignee-search-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-bottom: 6px;
+  background: linear-gradient(180deg, rgba(17, 17, 17, 0.98), rgba(17, 17, 17, 0.9));
+}
+
+.task-assignee-search {
+  min-height: 40px;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.task-assignee-search::placeholder {
+  color: rgba(255, 255, 255, 0.36) !important;
+}
+
 .task-assignee-menu button {
   min-width: 0;
   min-height: 38px;
@@ -8408,6 +8423,12 @@ html[data-workspace-surface="plane"] .tasks-main .page-header,
   border-color: #ffffff;
 }
 
+.task-assignee-empty-state {
+  padding: 10px 8px 4px;
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 12px;
+}
+
 .task-assignee-summary {
   min-height: 0 !important;
   margin-top: 10px !important;
@@ -8421,6 +8442,51 @@ html[data-workspace-surface="plane"] .tasks-main .page-header,
   padding: 0 !important;
   background: transparent !important;
   border: 0 !important;
+}
+
+html[data-workspace-surface="plane"] .task-card {
+  border-radius: 18px;
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(120% 120% at 100% 100%, rgba(255, 184, 77, 0.08), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02)),
+    #121212;
+  box-shadow: 0 22px 40px -34px rgba(0, 0, 0, 0.95);
+}
+
+html[data-workspace-surface="plane"] .task-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 28px 46px -34px rgba(0, 0, 0, 0.98);
+}
+
+html[data-workspace-surface="plane"] .task-card-date,
+html[data-workspace-surface="plane"] .task-card-typepill,
+html[data-workspace-surface="plane"] .task-card-context,
+html[data-workspace-surface="plane"] .task-card-assignee-empty,
+html[data-workspace-surface="plane"] .task-card-priority-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html[data-workspace-surface="plane"] .task-card-priority-pill {
+  gap: 7px;
+  padding-inline: 10px;
+  font-weight: 600;
+}
+
+html[data-workspace-surface="plane"] .task-card-date,
+html[data-workspace-surface="plane"] .task-card-context,
+html[data-workspace-surface="plane"] .task-card-assignee-empty {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+html[data-workspace-surface="plane"] .task-card-title,
+html[data-workspace-surface="plane"] .task-card-key {
+  color: #f8f8f8;
+}
+
+html[data-workspace-surface="plane"] .task-card-typebox {
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .task-drawer .task-avatar {

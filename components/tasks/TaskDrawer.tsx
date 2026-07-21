@@ -100,6 +100,7 @@ export function TaskDrawer({
   const [status, setStatusLocal] = useState<TaskStatus>(task?.status ?? presetStatus ?? stages[0]?.id ?? "todo");
   const [confirmDel, setConfirmDel] = useState(false);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const [assigneeQuery, setAssigneeQuery] = useState("");
   const drawerRef = useRef<HTMLElement>(null);
   useDismiss(drawerRef, onClose);
   const today = new Date();
@@ -130,6 +131,8 @@ export function TaskDrawer({
   const selectedAssignees = members
     .filter((member) => form.assignee_ids.includes(member.id))
     .map((member) => ({ id: member.id, name: member.name }));
+  const assigneeQueryNormalized = assigneeQuery.trim().toLowerCase();
+  const filteredMembers = members.filter((member) => member.name.toLowerCase().includes(assigneeQueryNormalized));
   const draftStorageKey = mode === "view"
     ? null
     : `${TASK_DRAFT_STORAGE_PREFIX}:${mode}:${task?.id ?? lockedProjectId ?? "new"}`;
@@ -473,6 +476,16 @@ export function TaskDrawer({
                         <span className="task-assignee-count">{selectedAssignees.length ? `${selectedAssignees.length} selected` : "Choose people"}</span>
                       </summary>
                       <div className="task-assignee-menu">
+                        <div className="task-assignee-search-wrap">
+                          <input
+                            type="text"
+                            className="input task-assignee-search"
+                            value={assigneeQuery}
+                            onChange={(e) => setAssigneeQuery(e.target.value)}
+                            placeholder="Search people..."
+                            aria-label="Search people"
+                          />
+                        </div>
                         <button
                           type="button"
                           className={!form.assignee_ids.length ? "on" : ""}
@@ -481,7 +494,7 @@ export function TaskDrawer({
                           <span className="task-assignee-check" />
                           <span>Unassigned</span>
                         </button>
-                        {members.map((member) => {
+                        {filteredMembers.map((member) => {
                           const active = form.assignee_ids.includes(member.id);
                           return (
                             <button
@@ -496,6 +509,9 @@ export function TaskDrawer({
                             </button>
                           );
                         })}
+                        {!filteredMembers.length && (
+                          <div className="task-assignee-empty-state">No people match &quot;{assigneeQuery}&quot;.</div>
+                        )}
                       </div>
                     </details>
                   </div>
