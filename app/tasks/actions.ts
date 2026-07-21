@@ -159,6 +159,37 @@ async function requireParentTask(
   return { ok: true, data } as const;
 }
 
+function normalizeAssigneeIds(input: Pick<TaskInput, "assignee_id" | "assignee_ids">): string[] {
+  return [...new Set([...(Array.isArray(input.assignee_ids) ? input.assignee_ids : []), input.assignee_id].filter((id): id is string => Boolean(id)))];
+}
+
+async function syncTaskAssignees(
+  supabase: SupabaseClient<any, any, any>,
+  taskId: string,
+  assigneeIds: string[],
+  assignedBy: string
+): Promise<Result> {
+  const normalized = [...new Set(assigneeIds.filter(Boolean))];
+  const { error: deleteError } = await supabase.from("task_assignees").delete().eq("task_id", taskId);
+  if (deleteError) return { error: deleteError.message };
+  if (normalized.length === 0) return { ok: true };
+  const { error } = await supabase.from("task_assignees").insert(
+    normalized.map((userId) => ({ task_id: taskId, user_id: userId, assigned_by: assignedBy }))
+  );
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+async function userIsTaskAssignee(supabase: SupabaseClient<any, any, any>, taskId: string, userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("task_assignees")
+    .select("task_id")
+    .eq("task_id", taskId)
+    .eq("user_id", userId)
+    .maybeSingle<{ task_id: string }>();
+  return Boolean(data);
+}
+
 async function listWorkflowStages(supabase: SupabaseClient<any, any, any>, workflowId: string): Promise<StageListResult> {
   const { data, error } = await supabase
     .from("workflow_stages")
@@ -340,11 +371,13 @@ export async function createTask(input: TaskInput): Promise<Result> {
     : await requireParentTask(supabase, input.project_id, input.parent_task_id);
   if ("error" in parentTask) return parentTask;
 
-  const { error } = await supabase.from("tasks").insert({
+  const assigneeIds = normalizeAssigneeIds(input);
+  const primaryAssigneeId = assigneeIds[0] ?? null;
+  const { data: createdTask, error } = await supabase.from("tasks").insert({
     title: input.title.trim(),
     division_id: input.division_id,
     project_id: input.project_id,
-    assignee_id: input.assignee_id,
+    assignee_id: primaryAssigneeId,
     cycle_id: cycle.data?.id ?? null,
     module_id: moduleEntry.data?.id ?? null,
     parent_task_id: parentTask.data?.id ?? null,
@@ -355,8 +388,12 @@ export async function createTask(input: TaskInput): Promise<Result> {
     due_date: input.due_date,
     description: input.description,
     created_by: user.id,
-  });
+  }).select("id").single<{ id: string }>();
   if (error) return { error: error.message };
+  if (createdTask?.id) {
+    const synced = await syncTaskAssignees(supabase, createdTask.id, assigneeIds, user.id);
+    if ("error" in synced) return synced;
+  }
 
   touchTaskPaths(input.project_id);
   return { ok: true };
@@ -404,11 +441,18 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
     : await requireParentTask(supabase, nextProjectId, input.parent_task_id);
   if ("error" in parentTask) return parentTask;
 
+  const hasAssigneePatch = input.assignee_ids !== undefined || input.assignee_id !== undefined;
+  const assigneeIds = hasAssigneePatch
+    ? normalizeAssigneeIds({
+        assignee_id: input.assignee_id ?? null,
+        assignee_ids: input.assignee_ids ?? [],
+      } as TaskInput)
+    : [];
   const patch = clean({
     title: input.title?.trim(),
     division_id: input.division_id,
     project_id: input.project_id,
-    assignee_id: input.assignee_id,
+    assignee_id: hasAssigneePatch ? assigneeIds[0] ?? null : undefined,
     cycle_id: input.cycle_id !== undefined ? cycle.data?.id ?? null : undefined,
     module_id: input.module_id !== undefined ? moduleEntry.data?.id ?? null : undefined,
     parent_task_id: input.parent_task_id !== undefined || nextItemType === "epic" ? parentTask.data?.id ?? null : undefined,
@@ -422,6 +466,10 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
 
   const { error } = await supabase.from("tasks").update(patch).eq("id", id);
   if (error) return { error: error.message };
+  if (hasAssigneePatch) {
+    const synced = await syncTaskAssignees(supabase, id, assigneeIds, user.id);
+    if ("error" in synced) return synced;
+  }
 
   touchTaskPaths(nextProjectId);
   return { ok: true };
@@ -440,7 +488,8 @@ export async function setTaskStatus(id: string, status: TaskStatus): Promise<Res
   if (taskError) return { error: taskError.message };
   if (!task) return { error: "Task not found." };
   const canManage = canManageDivision(access, task.division_id);
-  if (!canManage && task.assignee_id !== user.id) {
+  const isAssignee = task.assignee_id === user.id || await userIsTaskAssignee(supabase, id, user.id);
+  if (!canManage && !isAssignee) {
     return { error: "You can only move work items assigned to you." };
   }
 

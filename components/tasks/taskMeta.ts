@@ -1,13 +1,9 @@
 import type { IconType } from "react-icons";
 import {
   FiCheckCircle,
-  FiChevronDown,
-  FiChevronUp,
-  FiChevronsDown,
-  FiChevronsUp,
   FiCircle,
   FiClock,
-  FiMinus,
+  FiFlag,
   FiPlay,
   FiTarget,
 } from "react-icons/fi";
@@ -27,11 +23,11 @@ export const ITEM_TYPE_META: Record<WorkItemType, { label: string; color: string
 };
 
 export const PRIORITY_ICON_META: Record<TaskPriority, { label: string; color: string; Icon: IconType }> = {
-  highest: { label: "Highest", color: "#ef4444", Icon: FiChevronsUp },
-  high: { label: "High", color: "#f59e0b", Icon: FiChevronUp },
-  medium: { label: "Medium", color: "#f59e0b", Icon: FiMinus },
-  low: { label: "Low", color: "#3b82f6", Icon: FiChevronDown },
-  lowest: { label: "Lowest", color: "#64748b", Icon: FiChevronsDown },
+  highest: { label: "Highest", color: "#dc2626", Icon: FiFlag },
+  high: { label: "High", color: "#b91c1c", Icon: FiFlag },
+  medium: { label: "Medium", color: "#f59e0b", Icon: FiFlag },
+  low: { label: "Low", color: "#2563eb", Icon: FiFlag },
+  lowest: { label: "Lowest", color: "#64748b", Icon: FiFlag },
 };
 
 export function getTaskDisplayKey(task: BoardTask) {

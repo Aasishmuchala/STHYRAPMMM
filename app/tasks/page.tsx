@@ -59,6 +59,11 @@ type ModuleRow = {
   lead_id: string | null;
   lead: { full_name: string | null } | null;
 };
+type TaskAssigneeRow = {
+  task_id: string;
+  user_id: string;
+  profile: { full_name: string | null } | null;
+};
 
 function buildTaskHref(search: { div?: string; project?: string; view?: string; tab?: string; cycle?: string; module?: string; assignee?: string }, patch: Record<string, string | null | undefined>) {
   const params = new URLSearchParams();
@@ -83,6 +88,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     { data: projectRows },
     { data: memberRows },
     { data: myTaskProjectRows },
+    { data: myTaskAssigneeRows },
   ] = await Promise.all([
     supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
     supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
@@ -90,7 +96,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     supabase.from("projects").select("id,name,division_id,lead_id").is("deleted_at", null).eq("status", "active").order("name"),
     supabase.from("profiles").select("id,full_name").eq("is_active", true),
     supabase.from("tasks").select("project_id").eq("assignee_id", user.id).is("deleted_at", null),
+    supabase.from("task_assignees").select("task_id").eq("user_id", user.id),
   ]);
+
+  const myAssignedTaskIds = ((myTaskAssigneeRows ?? []) as { task_id: string }[]).map((row) => row.task_id);
+  const { data: myMultiTaskProjectRows } = myAssignedTaskIds.length > 0
+    ? await supabase.from("tasks").select("project_id").in("id", myAssignedTaskIds).is("deleted_at", null)
+    : { data: [] as { project_id: string | null }[] };
 
   const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
   const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
@@ -107,7 +119,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   // they lead or have a task assigned in. Managers (owner/lead of the division,
   // or super-admin) see every project in the active company.
   const myProjectIds = new Set(
-    ((myTaskProjectRows ?? []) as { project_id: string | null }[])
+    ([...((myTaskProjectRows ?? []) as { project_id: string | null }[]), ...((myMultiTaskProjectRows ?? []) as { project_id: string | null }[])])
       .map((r) => r.project_id)
       .filter((id): id is string => Boolean(id))
   );
@@ -138,7 +150,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   let assigneeTasksQuery = supabase
     .from("tasks")
     .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
-    .eq("assignee_id", user.id);
+    .or(myAssignedTaskIds.length ? `assignee_id.eq.${user.id},id.in.(${myAssignedTaskIds.join(",")})` : `assignee_id.eq.${user.id}`);
   if (!activeCompany.unscoped) {
     assigneeTasksQuery = assigneeTasksQuery.in("division_id", activeCompany.scopeDivisionIds);
   }
@@ -158,7 +170,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
     .eq("project_id", selectedProjectId ?? "");
   if (!viewerManagesTasks) {
-    projectTasksQuery = projectTasksQuery.eq("assignee_id", user.id);
+    projectTasksQuery = projectTasksQuery.or(myAssignedTaskIds.length ? `assignee_id.eq.${user.id},id.in.(${myAssignedTaskIds.join(",")})` : `assignee_id.eq.${user.id}`);
   }
   const projectTasks = projectTasksQuery
     .is("deleted_at", null)
@@ -224,6 +236,22 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     }
   }
 
+  const taskIds = (taskRes.data ?? []).map((task) => task.id);
+  const { data: taskAssigneeRows, error: taskAssigneesError } = taskIds.length > 0
+    ? await supabase
+        .from("task_assignees")
+        .select("task_id,user_id,profile:profiles!task_assignees_user_id_fkey(full_name)")
+        .in("task_id", taskIds)
+        .returns<TaskAssigneeRow[]>()
+    : { data: [] as TaskAssigneeRow[], error: null };
+  if (taskAssigneesError) throw new Error(taskAssigneesError.message);
+  const assigneesByTask = new Map<string, { id: string; name: string }[]>();
+  for (const row of taskAssigneeRows ?? []) {
+    const list = assigneesByTask.get(row.task_id) ?? [];
+    list.push({ id: row.user_id, name: row.profile?.full_name ?? "Unknown" });
+    assigneesByTask.set(row.task_id, list);
+  }
+
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const canManageWorkflow = access.isSuperAdmin || (
     selectedProject
@@ -247,6 +275,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     project_name: r.projects?.name ?? null,
     assignee_id: r.assignee_id,
     assignee_name: r.assignee?.full_name ?? null,
+    assignees: assigneesByTask.get(r.id) ?? (r.assignee_id ? [{ id: r.assignee_id, name: r.assignee?.full_name ?? "Unknown" }] : []),
     created_by: r.created_by,
     created_by_name: r.creator?.full_name ?? null,
     cycle_id: r.cycle_id,

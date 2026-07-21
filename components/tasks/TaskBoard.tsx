@@ -89,6 +89,22 @@ function moveItem<T>(items: T[], from: number, to: number) {
   return next;
 }
 
+function TaskAvatarStack({ assignees, max = 3 }: { assignees: { id: string; name: string }[]; max?: number }) {
+  if (assignees.length === 0) return <span className="task-card-assignee-empty">Unassigned</span>;
+  const shown = assignees.slice(0, max);
+  const extra = assignees.length - shown.length;
+  return (
+    <span className="task-avatar-stack" aria-label={assignees.map((assignee) => assignee.name).join(", ")}>
+      {shown.map((assignee) => (
+        <span key={assignee.id} className="task-avatar" style={{ background: avatarBg(assignee.name) }} title={assignee.name}>
+          {initials(assignee.name, null)}
+        </span>
+      ))}
+      {extra > 0 && <span className="task-avatar task-avatar-more">+{extra}</span>}
+    </span>
+  );
+}
+
 function buildTasksHref(searchParams: URLSearchParams, patch: Record<string, string | null | undefined>) {
   const next = new URLSearchParams(searchParams.toString());
   for (const [key, value] of Object.entries(patch)) {
@@ -284,11 +300,11 @@ export function TaskBoard({
     () => boardTasks.filter(
       (task) =>
         (divFilter === "all" || task.division_slug === divFilter) &&
-        (asgFilter === "all" || (asgFilter === "unassigned" ? !task.assignee_id : task.assignee_id === asgFilter)) &&
+        (asgFilter === "all" || (asgFilter === "unassigned" ? task.assignees.length === 0 : task.assignees.some((assignee) => assignee.id === asgFilter) || task.assignee_id === asgFilter)) &&
         (typeFilter === "all" || task.item_type === typeFilter) &&
         (cycleFilter === "all" || task.cycle_id === cycleFilter) &&
         (moduleFilter === "all" || task.module_id === moduleFilter) &&
-        (!mineOnly || task.assignee_id === currentUserId)
+        (!mineOnly || task.assignee_id === currentUserId || task.assignees.some((assignee) => assignee.id === currentUserId))
     ),
     [boardTasks, divFilter, asgFilter, typeFilter, cycleFilter, moduleFilter, mineOnly, currentUserId]
   );
@@ -397,7 +413,7 @@ export function TaskBoard({
   }
 
   function canMoveTask(task: BoardTask) {
-    return canManageWorkflow || task.assignee_id === currentUserId;
+    return canManageWorkflow || task.assignee_id === currentUserId || task.assignees.some((assignee) => assignee.id === currentUserId);
   }
 
   function groupItems(items: BoardTask[]) {
@@ -725,6 +741,7 @@ export function TaskBoard({
     const typeMeta = ITEM_TYPE_META[task.item_type];
     const TypeIcon = typeMeta.Icon;
     const priority = PRIORITY_ICON_META[task.priority];
+    const PriorityIcon = priority.Icon;
     const displayKey = getTaskDisplayKey(task);
     const contextLabel = getTaskContextLabel(task);
     const draggable = !isCrossProjectBoard && canMoveTask(task);
@@ -783,6 +800,7 @@ export function TaskBoard({
             {dueText}
           </span>
           <span className="task-card-priority-pill" style={{ background: `${priority.color}12`, color: priority.color }}>
+            <PriorityIcon size={13} />
             {priority.label}
           </span>
         </div>
@@ -795,16 +813,7 @@ export function TaskBoard({
         <div className="task-card-title">{task.title}</div>
         <div className="task-card-bottomline">
           <div className="task-card-persona">
-            {task.assignee_name ? (
-              <>
-                <span className="task-avatar" style={{ background: avatarBg(task.assignee_name) }} title={task.assignee_name}>
-                  {initials(task.assignee_name, null)}
-                </span>
-                <span className="task-card-assignee-name">{task.assignee_name}</span>
-              </>
-            ) : (
-              <span className="task-card-assignee-empty">Unassigned</span>
-            )}
+            <TaskAvatarStack assignees={task.assignees} />
           </div>
           <div className="task-card-meta-inline">
             <span className="task-card-typepill" style={{ background: `${typeMeta.color}10`, color: typeMeta.color }}>
@@ -1316,7 +1325,7 @@ export function TaskBoard({
                 <div className="epic-roadmap-head-stats" aria-label="Epic roadmap summary">
                   <span>{filteredEpics.length} epics</span>
                   <span>{filteredEpics.filter((epic) => epic.cycle_id).length} linked to cycles</span>
-                  <span>{filteredEpics.filter((epic) => epic.assignee_id).length} assigned</span>
+                  <span>{filteredEpics.filter((epic) => epic.assignees.length > 0 || epic.assignee_id).length} assigned</span>
                 </div>
               </div>
               {epicRoadmap.rows.length === 0 ? (
@@ -1435,7 +1444,7 @@ export function TaskBoard({
             <TaskListView tasks={filteredBoardItems} stages={displayStageList} onOpen={(task) => setDrawer({ mode: "view", task })} />
           ) : (
             <div className="board-scroll">
-              <div className="tasks-board-grid" style={{ gridTemplateColumns: `repeat(${displayStageList.length}, minmax(252px, 1fr))` }}>
+              <div className="tasks-board-grid" style={{ gridTemplateColumns: `repeat(${displayStageList.length}, 344px)` }}>
                 {displayStageList.map((stage) => {
                   const items = filteredBoardItems.filter((task) => displayStageId(task) === stage.id);
                   const groups = groupItems(items);

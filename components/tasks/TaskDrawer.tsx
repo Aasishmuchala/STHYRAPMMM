@@ -23,7 +23,7 @@ import type {
 import { TASK_PRIORITY_ORDER } from "@/lib/tasks-types";
 import { dueLabel, initials } from "@/lib/format";
 import { avatarBg } from "@/lib/avatar";
-import { FiCalendar, FiFlag, FiFolder, FiLayers, FiTarget, FiX } from "react-icons/fi";
+import { FiFlag, FiX } from "react-icons/fi";
 import { HiOutlineBugAnt } from "react-icons/hi2";
 import { LuCircleDotDashed } from "react-icons/lu";
 import { PiDiamondsFourDuotone, PiSparkleFill } from "react-icons/pi";
@@ -39,13 +39,27 @@ const typeMeta: Record<
 > = {
   epic: { label: "Epic", color: "#f97316", Icon: PiDiamondsFourDuotone },
   story: { label: "Story", color: "#2563eb", Icon: FiFlag },
-  task: { label: "Task", color: "#0f172a", Icon: LuCircleDotDashed },
+  task: { label: "Task", color: "#94a3b8", Icon: LuCircleDotDashed },
   bug: { label: "Bug", color: "#ef4444", Icon: HiOutlineBugAnt },
   improvement: { label: "Improvement", color: "#10b981", Icon: PiSparkleFill },
   subtask: { label: "Sub-task", color: "#8b5cf6", Icon: TbSubtask },
 };
 const typeOptions = Object.entries(typeMeta) as [WorkItemType, (typeof typeMeta)[WorkItemType]][];
 const priorityOptions = TASK_PRIORITY_ORDER.map((value) => [value, PRIORITY_ICON_META[value]] as const);
+
+function AssigneeStack({ assignees }: { assignees: { id: string; name: string }[] }) {
+  if (assignees.length === 0) return <>Unassigned</>;
+  return (
+    <span className="task-avatar-stack task-avatar-stack-inline">
+      {assignees.slice(0, 5).map((assignee) => (
+        <span key={assignee.id} className="task-avatar" style={{ background: avatarBg(assignee.name) }} title={assignee.name}>
+          {initials(assignee.name, null)}
+        </span>
+      ))}
+      <span className="task-assignee-names">{assignees.map((assignee) => assignee.name).join(", ")}</span>
+    </span>
+  );
+}
 
 export function TaskDrawer({
   initialMode,
@@ -85,6 +99,7 @@ export function TaskDrawer({
   const [err, setErr] = useState<string | null>(null);
   const [status, setStatusLocal] = useState<TaskStatus>(task?.status ?? presetStatus ?? stages[0]?.id ?? "todo");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   useDismiss(drawerRef, onClose);
   const today = new Date();
@@ -94,6 +109,7 @@ export function TaskDrawer({
     division_id: task?.division_id ?? lockedProject?.division_id ?? divisions[0]?.id ?? "",
     project_id: task?.project_id ?? lockedProjectId ?? null,
     assignee_id: task?.assignee_id ?? null,
+    assignee_ids: task?.assignees?.map((assignee) => assignee.id) ?? (task?.assignee_id ? [task.assignee_id] : []),
     cycle_id: task?.cycle_id ?? null,
     module_id: task?.module_id ?? null,
     parent_task_id: task?.parent_task_id ?? null,
@@ -111,9 +127,9 @@ export function TaskDrawer({
   const projectEpics = epics.filter((epic) => epic.project_id === (form.project_id ?? lockedProjectId ?? "") && epic.id !== task?.id);
   const workType = typeMeta[form.item_type];
   const WorkTypeIcon = workType.Icon;
-  const selectedProject = projects.find((project) => project.id === (form.project_id ?? lockedProjectId ?? "")) ?? lockedProject;
-  const selectedCycle = projectCycles.find((cycle) => cycle.id === form.cycle_id) ?? null;
-  const selectedModule = projectModules.find((module) => module.id === form.module_id) ?? null;
+  const selectedAssignees = members
+    .filter((member) => form.assignee_ids.includes(member.id))
+    .map((member) => ({ id: member.id, name: member.name }));
   const draftStorageKey = mode === "view"
     ? null
     : `${TASK_DRAFT_STORAGE_PREFIX}:${mode}:${task?.id ?? lockedProjectId ?? "new"}`;
@@ -144,9 +160,13 @@ export function TaskDrawer({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    const payload = {
+      ...form,
+      assignee_id: form.assignee_ids[0] ?? null,
+    };
     start(async () => {
       const toastId = beginToast(mode === "create" ? "Creating work item..." : "Saving work item...");
-      const res = mode === "create" ? await createTask(form) : await updateTask(task!.id, form);
+      const res = mode === "create" ? await createTask(payload) : await updateTask(task!.id, payload);
       if (!finishToast(res, { id: toastId, success: mode === "create" ? "Work item created." : "Work item updated." })) {
         setErr(res.error);
         return;
@@ -188,6 +208,16 @@ export function TaskDrawer({
       }
       router.refresh();
       onClose();
+    });
+  }
+
+  function toggleAssignee(memberId: string) {
+    setForm((current) => {
+      const exists = current.assignee_ids.includes(memberId);
+      const nextAssignees = exists
+        ? current.assignee_ids.filter((id) => id !== memberId)
+        : [...current.assignee_ids, memberId];
+      return { ...current, assignee_ids: nextAssignees, assignee_id: nextAssignees[0] ?? null };
     });
   }
 
@@ -274,12 +304,7 @@ export function TaskDrawer({
                 <span className="k">Project</span><span className="v">{task.project_name ?? "-"}</span>
                 <span className="k">Assignee</span>
                 <span className="v">
-                  {task.assignee_name ? (
-                    <>
-                      <span className="tasg" style={{ background: avatarBg(task.assignee_name) }}>{initials(task.assignee_name, null)}</span>
-                      {task.assignee_name}
-                    </>
-                  ) : "Unassigned"}
+                  <AssigneeStack assignees={task.assignees} />
                 </span>
                 <span className="k">Assigned by</span><span className="v">{task.created_by_name ?? "-"}</span>
                 <span className="k">Parent epic</span><span className="v">{task.parent_task_title ?? "-"}</span>
@@ -316,31 +341,43 @@ export function TaskDrawer({
                   <input id="d-title" data-testid="task-title" className="input" value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="What needs doing?" autoFocus required />
                 </div>
 
-                <div className="task-choice-block">
+                <div className="field">
                   <span className="label">Work item type</span>
-                  <div className="task-type-choice-grid" role="group" aria-label="Work item type">
-                    {typeOptions.map(([value, meta]) => {
-                      const Icon = meta.Icon;
-                      const active = form.item_type === value;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          className={`task-choice-card ${active ? "on" : ""}`}
-                          onClick={() => setForm((current) => ({
-                            ...current,
-                            item_type: value,
-                            parent_task_id: value === "epic" ? null : current.parent_task_id,
-                          }))}
-                          style={{ ["--choice-accent" as string]: meta.color }}
-                          aria-pressed={active}
-                        >
-                          <span className="task-choice-icon"><Icon size={15} /></span>
-                          <span>{meta.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <details className="task-type-dropdown" open={typePickerOpen} onToggle={(e) => setTypePickerOpen(e.currentTarget.open)}>
+                    <summary>
+                      <span className="task-type-current-icon" style={{ ["--choice-accent" as string]: workType.color }}>
+                        <WorkTypeIcon size={16} />
+                      </span>
+                      <span>{workType.label}</span>
+                    </summary>
+                    <div className="task-type-menu">
+                      {typeOptions.map(([value, meta]) => {
+                        const Icon = meta.Icon;
+                        const active = form.item_type === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            className={active ? "on" : ""}
+                            onClick={() => {
+                              setForm((current) => ({
+                                ...current,
+                                item_type: value,
+                                parent_task_id: value === "epic" ? null : current.parent_task_id,
+                              }));
+                              setTypePickerOpen(false);
+                            }}
+                            style={{ ["--choice-accent" as string]: meta.color }}
+                          >
+                            <span className="task-type-current-icon">
+                              <Icon size={16} />
+                            </span>
+                            <span>{meta.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </details>
                 </div>
 
                 <div className="task-choice-block">
@@ -367,26 +404,18 @@ export function TaskDrawer({
                   </div>
                 </div>
 
-                <div className="task-choice-block">
-                  <span className="label">Stage</span>
-                  <div className="task-stage-picker" role="group" aria-label="Stage">
-                    {stages.map((stage) => {
-                      const active = form.status === stage.id;
-                      return (
-                        <button
-                          key={stage.id}
-                          type="button"
-                          className={`task-stage-chip ${active ? "on" : ""}`}
-                          onClick={() => set("status", stage.id)}
-                          style={{ ["--choice-accent" as string]: stage.color }}
-                          aria-pressed={active}
-                        >
-                          <span className="task-stage-dot" style={{ background: stage.color }} />
-                          {stage.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div className="field">
+                  <label className="label" htmlFor="d-stage">Stage</label>
+                  <select
+                    id="d-stage"
+                    className="select task-dark-select"
+                    value={form.status}
+                    onChange={(e) => set("status", e.target.value)}
+                  >
+                    {stages.map((stage) => (
+                      <option key={stage.id} value={stage.id}>{stage.label}</option>
+                    ))}
+                  </select>
                 </div>
               </section>
 
@@ -425,12 +454,6 @@ export function TaskDrawer({
                     </select>
                   </div>
                 </div>
-
-                <div className="task-context-bar">
-                  <span><FiLayers size={12} />{selectedProject?.name ?? "No project selected"}</span>
-                  <span><FiTarget size={12} />{projectCycles.length} cycles</span>
-                  <span><FiFolder size={12} />{projectModules.length} modules</span>
-                </div>
               </section>
 
               <section className="task-form-section">
@@ -443,11 +466,38 @@ export function TaskDrawer({
 
                 <div className="field-row">
                   <div className="field">
-                    <label className="label" htmlFor="d-asg">Assignee</label>
-                    <select id="d-asg" className="select" value={form.assignee_id ?? ""} onChange={(e) => set("assignee_id", e.target.value || null)}>
-                      <option value="">- Unassigned -</option>
-                      {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-                    </select>
+                    <span className="label">Assignees</span>
+                    <details className="task-assignee-dropdown">
+                      <summary>
+                        <AssigneeStack assignees={selectedAssignees} />
+                        <span className="task-assignee-count">{selectedAssignees.length ? `${selectedAssignees.length} selected` : "Choose people"}</span>
+                      </summary>
+                      <div className="task-assignee-menu">
+                        <button
+                          type="button"
+                          className={!form.assignee_ids.length ? "on" : ""}
+                          onClick={() => setForm((current) => ({ ...current, assignee_ids: [], assignee_id: null }))}
+                        >
+                          <span className="task-assignee-check" />
+                          <span>Unassigned</span>
+                        </button>
+                        {members.map((member) => {
+                          const active = form.assignee_ids.includes(member.id);
+                          return (
+                            <button
+                              key={member.id}
+                              type="button"
+                              className={active ? "on" : ""}
+                              onClick={() => toggleAssignee(member.id)}
+                            >
+                              <span className="task-assignee-check" />
+                              <span className="task-avatar" style={{ background: avatarBg(member.name) }}>{initials(member.name, null)}</span>
+                              <span>{member.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </details>
                   </div>
                   <div className="field">
                     <label className="label" htmlFor="d-due">Due date</label>
@@ -481,21 +531,6 @@ export function TaskDrawer({
                     </select>
                   </div>
                 )}
-
-                <div className="task-help-pills task-help-pills-rich">
-                  <span>
-                    <FiCalendar size={12} />
-                    {form.due_date || "No due date"}
-                  </span>
-                  <span>
-                    <FiTarget size={12} />
-                    {selectedCycle?.name ?? "No cycle"}
-                  </span>
-                  <span>
-                    <FiFolder size={12} />
-                    {selectedModule?.name ?? "No module"}
-                  </span>
-                </div>
               </section>
 
               <section className="task-form-section">

@@ -98,7 +98,7 @@ export default async function FinancesPage({ searchParams }: { searchParams: Pro
 
   return (
     <AppShell divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))} canSeeFinances={access.canSeeFinances} canSeePeople={access.canSeePeople} isOwner={access.isSuperAdmin} initials={initials(profile?.full_name ?? null, profile?.email ?? null)} userName={shellUser.userName} userRoleLabel={shellUser.userRoleLabel}>
-      <main id="main" data-testid="main">
+      <main id="main" className="finance-page" data-testid="main">
           <header className="subhead">
             <div>
               <div className="label" style={{ marginBottom: 9 }}>Finances</div>

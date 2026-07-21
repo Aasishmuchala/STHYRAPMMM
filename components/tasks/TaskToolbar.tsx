@@ -1,7 +1,8 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import type { CycleOpt, DivisionOpt, MemberOpt, ModuleOpt, WorkItemType } from "@/lib/tasks-types";
-import { FiFilter, FiGrid, FiLayers, FiList, FiPlus, FiUser } from "react-icons/fi";
+import { FiCheck, FiGrid, FiLayers, FiList, FiPlus, FiSliders, FiUser, FiX } from "react-icons/fi";
 import { ITEM_TYPE_META } from "./taskMeta";
 
 type GroupBy = "none" | "project" | "division";
@@ -74,6 +75,29 @@ export function TaskToolbar({
   stageCount: number;
   overdueCount: number;
 }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (divFilter !== "all") count += 1;
+    if (asgFilter !== "all") count += 1;
+    if (cycleFilter !== "all") count += 1;
+    if (moduleFilter !== "all") count += 1;
+    if (groupBy !== "none") count += 1;
+    if (typeFilter !== "all") count += 1;
+    if (mineOnly) count += 1;
+    return count;
+  }, [asgFilter, cycleFilter, divFilter, groupBy, mineOnly, moduleFilter, typeFilter]);
+
+  function clearFilters() {
+    onDivFilterChange("all");
+    onAsgFilterChange("all");
+    onCycleFilterChange("all");
+    onModuleFilterChange("all");
+    onGroupByChange("none");
+    onTypeFilterChange("all");
+    if (mineOnly) onToggleMineOnly();
+  }
+
   return (
     <section className="tasks-toolbar-shell" aria-label="Work items toolbar">
       <div className="tasks-toolbar-main">
@@ -89,6 +113,20 @@ export function TaskToolbar({
         </div>
 
         <div className="tasks-toolbar-actions">
+          <div className="tasks-filter-menu">
+            <button
+              type="button"
+              className={`tasks-pill tasks-filter-trigger ${filtersOpen ? "on" : ""}`}
+              onClick={() => setFiltersOpen((value) => !value)}
+              aria-expanded={filtersOpen}
+            >
+              <FiSliders size={14} />
+              Filter
+              {activeFilterCount > 0 && <span className="tasks-filter-count">{activeFilterCount}</span>}
+            </button>
+
+          </div>
+
           <div className="tasks-view-toggle" role="group" aria-label="View mode">
             <button
               type="button"
@@ -128,84 +166,105 @@ export function TaskToolbar({
           </button>
         </div>
       </div>
+      {filtersOpen && (
+        <div className="tasks-filter-layer" role="presentation">
+          <button type="button" className="tasks-filter-scrim" aria-label="Close filters" onClick={() => setFiltersOpen(false)} />
+          <div className="tasks-filter-popover" role="dialog" aria-label="Filter work items">
+            <div className="tasks-filter-popover-head">
+              <div>
+                <span>Refine view</span>
+                <strong>{activeFilterCount ? `${activeFilterCount} active` : "No filters"}</strong>
+              </div>
+              <button type="button" className="iconbtn" onClick={() => setFiltersOpen(false)} aria-label="Close filters">
+                <FiX size={16} />
+              </button>
+            </div>
 
-      <div className="tasks-filters-row">
-        <div className="tasks-filter-label" aria-hidden="true">
-          <FiFilter size={14} />
-          <span>Refine board</span>
+            <div className="tasks-filter-grid">
+              <label className="tasks-filter-field">
+                <span>Division</span>
+                <select aria-label="Division scope" className="select" value={divFilter} onChange={(event) => onDivFilterChange(event.target.value)}>
+                  <option value="all">All divisions</option>
+                  {divisions.map((division) => (
+                    <option key={division.slug} value={division.slug}>{division.name.replace(/^Sthyra\s+/, "")}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="tasks-filter-field">
+                <span>Assignee</span>
+                <select aria-label="Assignee" className="select" value={asgFilter} onChange={(event) => onAsgFilterChange(event.target.value)}>
+                  <option value="all">All assignees</option>
+                  <option value="unassigned">Unassigned</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>{member.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="tasks-filter-field">
+                <span>Cycle</span>
+                <select aria-label="Cycle" className="select" value={cycleFilter} onChange={(event) => onCycleFilterChange(event.target.value)}>
+                  <option value="all">All cycles</option>
+                  {cycles.map((cycle) => (
+                    <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="tasks-filter-field">
+                <span>Module</span>
+                <select aria-label="Module" className="select" value={moduleFilter} onChange={(event) => onModuleFilterChange(event.target.value)}>
+                  <option value="all">All modules</option>
+                  {modules.map((module) => (
+                    <option key={module.id} value={module.id}>{module.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="tasks-filter-field tasks-filter-field-wide">
+                <span>Grouping</span>
+                <select aria-label="Group by" className="select" value={groupBy} onChange={(event) => onGroupByChange(event.target.value as GroupBy)}>
+                  {GROUP_OPTIONS.map((group) => (
+                    <option key={group.value} value={group.value}>{group.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="tasks-type-strip" aria-label="Work item types">
+              {TYPE_OPTIONS.map((value) => {
+                const type = ITEM_TYPE_META[value];
+                const Icon = type.Icon;
+                const active = typeFilter === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`tasks-type-pill ${active ? "on" : ""}`}
+                    onClick={() => onTypeFilterChange(active ? "all" : value)}
+                    style={{ ["--pill-color" as string]: type.color }}
+                  >
+                    <Icon size={14} />
+                    {type.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="tasks-filter-popover-actions">
+              <button type="button" className="btn-ghost" onClick={clearFilters}>
+                <FiX size={14} />
+                Clear
+              </button>
+              <button type="button" className="btn" onClick={() => setFiltersOpen(false)}>
+                <FiCheck size={14} />
+                Apply
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="tasks-filter-grid">
-          <label className="tasks-filter-field">
-            <span>Division</span>
-            <select aria-label="Division scope" className="select" value={divFilter} onChange={(event) => onDivFilterChange(event.target.value)}>
-              <option value="all">All divisions</option>
-              {divisions.map((division) => (
-                <option key={division.slug} value={division.slug}>{division.name.replace(/^Sthyra\s+/, "")}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="tasks-filter-field">
-            <span>Assignee</span>
-            <select aria-label="Assignee" className="select" value={asgFilter} onChange={(event) => onAsgFilterChange(event.target.value)}>
-              <option value="all">All assignees</option>
-              <option value="unassigned">Unassigned</option>
-              {members.map((member) => (
-                <option key={member.id} value={member.id}>{member.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="tasks-filter-field">
-            <span>Cycle</span>
-            <select aria-label="Cycle" className="select" value={cycleFilter} onChange={(event) => onCycleFilterChange(event.target.value)}>
-              <option value="all">All cycles</option>
-              {cycles.map((cycle) => (
-                <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="tasks-filter-field">
-            <span>Module</span>
-            <select aria-label="Module" className="select" value={moduleFilter} onChange={(event) => onModuleFilterChange(event.target.value)}>
-              <option value="all">All modules</option>
-              {modules.map((module) => (
-                <option key={module.id} value={module.id}>{module.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="tasks-filter-field">
-            <span>Grouping</span>
-            <select aria-label="Group by" className="select" value={groupBy} onChange={(event) => onGroupByChange(event.target.value as GroupBy)}>
-              {GROUP_OPTIONS.map((group) => (
-                <option key={group.value} value={group.value}>{group.label}</option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <div className="tasks-type-strip" aria-label="Work item types">
-        {TYPE_OPTIONS.map((value) => {
-          const type = ITEM_TYPE_META[value];
-          const Icon = type.Icon;
-          const active = typeFilter === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              className={`tasks-type-pill ${active ? "on" : ""}`}
-              onClick={() => onTypeFilterChange(active ? "all" : value)}
-              style={{ ["--pill-color" as string]: type.color }}
-            >
-              <Icon size={14} />
-              {type.label}
-            </button>
-          );
-        })}
-      </div>
+      )}
     </section>
   );
 }
