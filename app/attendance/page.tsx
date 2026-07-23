@@ -107,11 +107,25 @@ export default async function AttendancePage() {
   const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
     (d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id),
   );
-  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
+  // Owners of a company/team must be able to see attendance of that team's
+  // members — that's the whole point of being an owner. canPickAll is normally
+  // reserved for super-admins (who get the "All companies" picker by default),
+  // but a division owner should also see "all my owned companies" by default
+  // when they have more than one, instead of being pinned to one. Detect this
+  // case explicitly: if the user owns ≥ 1 division, treat them like an owner
+  // for company-picking purposes.
+  const canPickAll = access.isSuperAdmin || access.isCompanyOwnerAnywhere;
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, canPickAll);
+  // isManager: true for super-admins, division owners, and division leads. A
+  // division owner ("owner" role in division_members) is the canonical
+  // "team owner" — they should see every member's check-in in the divisions
+  // they own, mirroring what leads and super-admins already see.
   const isManager =
     access.isSuperAdmin ||
-    (activeCompany.activeDivisionId != null && access.manageableDivisionIds.has(activeCompany.activeDivisionId)) ||
-    [...activeCompany.scope].some((id) => access.manageableDivisionIds.has(id));
+    access.manageableDivisionIds.size > 0 && (
+      (activeCompany.activeDivisionId != null && access.manageableDivisionIds.has(activeCompany.activeDivisionId)) ||
+      [...activeCompany.scope].some((id) => access.manageableDivisionIds.has(id))
+    );
 
   const since = new Date();
   since.setMonth(since.getMonth() - 5);
@@ -262,7 +276,7 @@ export default async function AttendancePage() {
     profile,
     memberships: membershipRows,
     accessibleDivisions: divs,
-    canPickAll: access.isSuperAdmin,
+    canPickAll,
   });
 
   return (
@@ -270,7 +284,7 @@ export default async function AttendancePage() {
       divisions={divs.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") }))}
       canSeeFinances={access.canSeeFinances}
       canSeePeople={access.canSeePeople}
-      isOwner={access.isSuperAdmin}
+      isOwner={canPickAll}
       initials={initials(profile?.full_name ?? null, profile?.email ?? null)}
       userName={shellUser.userName}
       userRoleLabel={shellUser.userRoleLabel}
