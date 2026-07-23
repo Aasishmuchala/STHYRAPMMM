@@ -2,10 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   canAccessWorkspaceDivision,
-  canManageDivision,
   loadUserWorkspaceAccess,
 } from "@/lib/server-access";
 
@@ -24,12 +22,21 @@ export async function addComment(taskId: string, bodyMd: string): Promise<Result
   if (!body) return { error: "Comment cannot be empty." };
   if (body.length > 20000) return { error: "Comment is too long (20k chars max)." };
 
+  // Load task + reviewer + assignee + stage in one round trip so we can route
+  // notifications correctly when the reviewer is the one commenting.
   const { data: task } = await supabase
     .from("tasks")
-    .select("division_id,assignee_id,deleted_at")
+    .select("division_id,assignee_id,reviewer_id,deleted_at,title,workflow_stage_id")
     .eq("id", taskId)
     .is("deleted_at", null)
-    .maybeSingle<{ division_id: string; assignee_id: string | null }>();
+    .maybeSingle<{
+      division_id: string;
+      assignee_id: string | null;
+      reviewer_id: string | null;
+      deleted_at: string | null;
+      title: string;
+      workflow_stage_id: string | null;
+    }>();
   if (!task) return { error: "Task not found." };
 
   const { access } = await loadUserWorkspaceAccess(supabase, user.id);
@@ -44,8 +51,30 @@ export async function addComment(taskId: string, bodyMd: string): Promise<Result
   });
   if (error) return { error: error.message };
 
-  // Notify watchers + assignee (best-effort, non-blocking)
-  await notifyWatchers(supabase, taskId, user.id, task.assignee_id, "comment");
+  // Fire the right kind of notification. If the comment author IS the reviewer,
+  // we treat it as a "review action": notify the assignee that their task was
+  // reviewed by the reviewer. Otherwise treat as a normal comment and notify
+  // watchers + assignee + reviewer.
+  const isReviewerCommenting = task.reviewer_id && task.reviewer_id === user.id;
+  const authorName = user.email?.split("@")[0] ?? "Someone";
+
+  if (isReviewerCommenting && task.assignee_id) {
+    const { data: reviewer } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", task.reviewer_id)
+      .maybeSingle<{ full_name: string | null }>();
+    const reviewerLabel = reviewer?.full_name ?? "Reviewer";
+    await supabase.rpc("notify_user", {
+      target: task.assignee_id,
+      p_kind: "review_comment",
+      p_title: `Your task was reviewed by ${reviewerLabel}`,
+      p_body: body.slice(0, 240),
+      p_link: `/tasks?focus=${taskId}`,
+    });
+  } else {
+    await notifyWatchers(supabase, taskId, user.id, task.assignee_id, task.reviewer_id, "comment", `${authorName} commented on "${task.title}"`);
+  }
   revalidatePath("/tasks");
   return { ok: true };
 }
@@ -96,7 +125,9 @@ async function notifyWatchers(
   taskId: string,
   actorId: string,
   assigneeId: string | null,
+  reviewerId: string | null,
   kind: "comment" | "time" | "watcher" | "link",
+  title: string,
 ): Promise<void> {
   try {
     const { data: watchers } = await supabase
@@ -106,22 +137,16 @@ async function notifyWatchers(
     const ids = new Set<string>();
     for (const w of watchers ?? []) ids.add((w as { user_id: string }).user_id);
     if (assigneeId) ids.add(assigneeId);
+    if (reviewerId) ids.add(reviewerId);
     ids.delete(actorId);
     if (ids.size === 0) return;
-    const { data: task } = await supabase
-      .from("tasks")
-      .select("title")
-      .eq("id", taskId)
-      .maybeSingle<{ title: string }>();
-    const title = task?.title ?? "a task";
-    const rows = Array.from(ids).map((userId) => ({
-      user_id: userId,
-      kind: "task",
-      title: `New ${kind} on ${title}`,
-      body: null,
-      href: `/tasks?focus=${taskId}`,
-    }));
-    await supabase.from("notifications").insert(rows);
+    await supabase.rpc("notify_users", {
+      targets: Array.from(ids),
+      p_kind: kind,
+      p_title: title,
+      p_body: null,
+      p_link: `/tasks?focus=${taskId}`,
+    });
   } catch {
     // notifications are best-effort
   }

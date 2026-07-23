@@ -416,6 +416,12 @@ export function TaskBoard({
     return canManageWorkflow || task.assignee_id === currentUserId || task.assignees.some((assignee) => assignee.id === currentUserId);
   }
 
+  // Members can EDIT (open the drawer in edit mode + save changes) only on
+  // tasks assigned to them. canMoveTask only covers status changes.
+  function canEditTask(task: BoardTask) {
+    return canManageWorkflow || task.assignee_id === currentUserId || task.assignees.some((assignee) => assignee.id === currentUserId);
+  }
+
   function groupItems(items: BoardTask[]) {
     if (groupBy === "none") return [{ name: "", items }];
     const map = new Map<string, BoardTask[]>();
@@ -1545,6 +1551,7 @@ export function TaskBoard({
           onClose={() => setDrawer(null)}
           lockedProjectId={activeProjectId}
           canManageTask={canManageWorkflow}
+          canEditTask={drawer.mode === "view" ? canEditTask(drawer.task) : canCreateTasks}
           canMoveTask={drawer.mode === "view" ? (!isCrossProjectBoard && canMoveTask(drawer.task)) : canCreateTasks}
         />
       )}

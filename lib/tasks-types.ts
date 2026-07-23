@@ -44,8 +44,13 @@ export type BoardTask = {
   assignee_id: string | null;
   assignee_name: string | null;
   assignees: { id: string; name: string }[];
+  reviewer_id: string | null;
+  reviewer_name: string | null;
   created_by: string | null;
   created_by_name: string | null;
+  // User ids pulled in by @-mentions inside the description; surfaced so the
+  // drawer can pre-populate them when reopening a draft.
+  tagged_user_ids?: string[];
   cycle_id: string | null;
   cycle_name: string | null;
   module_id: string | null;
@@ -89,6 +94,7 @@ export type TaskInput = {
   project_id: string | null;
   assignee_id: string | null;
   assignee_ids: string[];
+  reviewer_id: string | null;
   cycle_id: string | null;
   module_id: string | null;
   parent_task_id: string | null;
@@ -97,11 +103,12 @@ export type TaskInput = {
   status: TaskStatus;
   due_date: string | null;
   description: string | null;
+  tagged_user_ids?: string[];
 };
 
 export const DEFAULT_TASK_STAGES: TaskStage[] = [
   { id: "todo", workflow_id: "default", key: "todo", label: "To do", color: "var(--text-faint)", position: 0, is_done: false },
-  { id: "doing", workflow_id: "default", key: "doing", label: "Doing", color: "var(--accent)", position: 1, is_done: false },
+  { id: "in_progress", workflow_id: "default", key: "in_progress", label: "In progress", color: "var(--accent)", position: 1, is_done: false },
   { id: "review", workflow_id: "default", key: "review", label: "Review", color: "var(--warning)", position: 2, is_done: false },
   { id: "done", workflow_id: "default", key: "done", label: "Done", color: "var(--positive)", position: 3, is_done: true },
 ];

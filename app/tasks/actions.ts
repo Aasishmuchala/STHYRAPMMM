@@ -373,11 +373,15 @@ export async function createTask(input: TaskInput): Promise<Result> {
 
   const assigneeIds = normalizeAssigneeIds(input);
   const primaryAssigneeId = assigneeIds[0] ?? null;
+  // Epics can't have assignees — force clear so a stale value from a draft
+  // can't leak into the saved row.
+  const reviewerId = input.item_type === "epic" ? null : input.reviewer_id ?? null;
   const { data: createdTask, error } = await supabase.from("tasks").insert({
     title: input.title.trim(),
     division_id: input.division_id,
     project_id: input.project_id,
     assignee_id: primaryAssigneeId,
+    reviewer_id: reviewerId,
     cycle_id: cycle.data?.id ?? null,
     module_id: moduleEntry.data?.id ?? null,
     parent_task_id: parentTask.data?.id ?? null,
@@ -393,6 +397,38 @@ export async function createTask(input: TaskInput): Promise<Result> {
   if (createdTask?.id) {
     const synced = await syncTaskAssignees(supabase, createdTask.id, assigneeIds, user.id);
     if ("error" in synced) return synced;
+
+    // Fire notifications: tagged people, assignee, reviewer. Best-effort.
+    const link = `/tasks?focus=${createdTask.id}`;
+    const taskTitle = input.title.trim();
+    const taggedIds = (input.tagged_user_ids ?? []).filter(Boolean);
+    if (taggedIds.length > 0) {
+      await supabase.rpc("notify_users", {
+        targets: taggedIds,
+        p_kind: "mention",
+        p_title: `${user.email?.split("@")[0] ?? "Someone"} tagged you in "${taskTitle}"`,
+        p_body: null,
+        p_link: link,
+      });
+    }
+    if (primaryAssigneeId && primaryAssigneeId !== user.id) {
+      await supabase.rpc("notify_user", {
+        target: primaryAssigneeId,
+        p_kind: "assignment",
+        p_title: `You were assigned "${taskTitle}"`,
+        p_body: null,
+        p_link: link,
+      });
+    }
+    if (reviewerId && reviewerId !== user.id) {
+      await supabase.rpc("notify_user", {
+        target: reviewerId,
+        p_kind: "review_request",
+        p_title: `You were added as reviewer on "${taskTitle}"`,
+        p_body: null,
+        p_link: link,
+      });
+    }
   }
 
   touchTaskPaths(input.project_id);
@@ -405,13 +441,58 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
   const { access } = await loadUserWorkspaceAccess(supabase, user.id);
   const { data: existing, error: existingError } = await supabase
     .from("tasks")
-    .select("division_id,project_id,workflow_stage_id,item_type")
+    .select("division_id,project_id,workflow_stage_id,item_type,assignee_id")
     .eq("id", id)
-    .maybeSingle<{ division_id: string; project_id: string | null; workflow_stage_id: string | null; item_type: string | null }>();
+    .maybeSingle<{
+      division_id: string;
+      project_id: string | null;
+      workflow_stage_id: string | null;
+      item_type: string | null;
+      assignee_id: string | null;
+    }>();
   if (existingError) return { error: existingError.message };
   if (!existing) return { error: "Task not found." };
-  if (!canManageDivision(access, existing.division_id)) {
-    return { error: "Only the super admin, company owner, or lead can edit this work item." };
+
+  // Authorization: managers (owner/lead/super-admin of the division) can edit
+  // anything in that division. A regular member can ONLY edit a task they are
+  // currently assigned to (either as the primary assignee or as a multi-
+  // assignee). Members are restricted to editing descriptive fields — they
+  // can't move the task to another project/division or change structural
+  // ownership fields (those are blocked below).
+  const isManager = canManageDivision(access, existing.division_id);
+  const isAssignee =
+    existing.assignee_id === user.id || (await userIsTaskAssignee(supabase, id, user.id));
+  if (!isManager && !isAssignee) {
+    return { error: "Only the super admin, company owner, lead, or the assignee can edit this work item." };
+  }
+
+  // Members aren't allowed to change structural fields. Reject any attempt to
+  // touch division, project, parent epic, item type, assignees, cycle, module,
+  // or reviewer.
+  const memberBlockedFields: (keyof TaskInput)[] = [
+    "division_id",
+    "project_id",
+    "parent_task_id",
+    "item_type",
+    "assignee_id",
+    "assignee_ids",
+    "cycle_id",
+    "module_id",
+    "reviewer_id",
+  ];
+  if (!isManager) {
+    const blocked = memberBlockedFields.find(
+      (field) => input[field] !== undefined && field !== "reviewer_id" /* reviewer is allowed for member comments? no — block too */,
+    );
+    if (blocked !== undefined && input[blocked] !== undefined) {
+      // Special-case reviewer_id: allow members to *clear* their reviewer
+      // (set to null) but not change it to someone else.
+      if (blocked === "reviewer_id" && input.reviewer_id === null) {
+        // permitted: clearing reviewer
+      } else {
+        return { error: "Only managers can change this field." };
+      }
+    }
   }
 
   const nextProjectId = input.project_id !== undefined ? input.project_id : existing.project_id;
@@ -442,17 +523,22 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
   if ("error" in parentTask) return parentTask;
 
   const hasAssigneePatch = input.assignee_ids !== undefined || input.assignee_id !== undefined;
-  const assigneeIds = hasAssigneePatch
+  // Members can't change assignees; if the patch arrives it would have been
+  // rejected above, but defend again here to keep the patch clean.
+  const memberCanPatchAssignees = isManager && hasAssigneePatch;
+  const assigneeIds = memberCanPatchAssignees
     ? normalizeAssigneeIds({
         assignee_id: input.assignee_id ?? null,
         assignee_ids: input.assignee_ids ?? [],
       } as TaskInput)
     : [];
+  const nextReviewerId = nextItemType === "epic" ? null : input.reviewer_id ?? undefined;
   const patch = clean({
     title: input.title?.trim(),
     division_id: input.division_id,
     project_id: input.project_id,
-    assignee_id: hasAssigneePatch ? assigneeIds[0] ?? null : undefined,
+    assignee_id: memberCanPatchAssignees ? assigneeIds[0] ?? null : undefined,
+    reviewer_id: input.reviewer_id !== undefined ? nextReviewerId : undefined,
     cycle_id: input.cycle_id !== undefined ? cycle.data?.id ?? null : undefined,
     module_id: input.module_id !== undefined ? moduleEntry.data?.id ?? null : undefined,
     parent_task_id: input.parent_task_id !== undefined || nextItemType === "epic" ? parentTask.data?.id ?? null : undefined,
@@ -466,9 +552,22 @@ export async function updateTask(id: string, input: Partial<TaskInput>): Promise
 
   const { error } = await supabase.from("tasks").update(patch).eq("id", id);
   if (error) return { error: error.message };
-  if (hasAssigneePatch) {
+  if (memberCanPatchAssignees) {
     const synced = await syncTaskAssignees(supabase, id, assigneeIds, user.id);
     if ("error" in synced) return synced;
+  }
+
+  // Notify the newly-set reviewer (best-effort).
+  if (input.reviewer_id && input.reviewer_id !== user.id) {
+    const { data: titleRow } = await supabase.from("tasks").select("title").eq("id", id).maybeSingle<{ title: string }>();
+    const taskTitle = titleRow?.title ?? "a task";
+    await supabase.rpc("notify_user", {
+      target: input.reviewer_id,
+      p_kind: "review_request",
+      p_title: `You were added as reviewer on "${taskTitle}"`,
+      p_body: null,
+      p_link: `/tasks?focus=${id}`,
+    });
   }
 
   touchTaskPaths(nextProjectId);

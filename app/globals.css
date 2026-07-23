@@ -982,8 +982,22 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 .notif { position: relative; display: flex; }
 .notif .pill { position: relative; }
 .notif-badge { position: absolute; top: -5px; right: -5px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; line-height: 1; }
-.notif-backdrop { position: fixed; inset: 0; z-index: 60; }
-.notif-pop { position: absolute; top: calc(100% + 8px); right: 0; width: 340px; max-height: 60vh; overflow: hidden; border-radius: 14px; z-index: 61; display: flex; flex-direction: column; }
+.notif-backdrop { position: fixed; inset: 0; z-index: 199; background: transparent; }
+.notif-pop {
+  position: fixed;
+  width: 340px;
+  max-height: 60vh;
+  overflow: hidden;
+  border-radius: 14px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--surface, #1a1a1a) 92%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.75);
+}
 .notif-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; border-bottom: 1px solid var(--line); }
 .notif-empty { padding: 26px 16px; text-align: center; color: var(--text-faint); font-size: 12.5px; line-height: 1.5; }
 .notif-list { overflow-y: auto; }
@@ -9064,4 +9078,136 @@ html[data-workspace-surface="plane"] main:not(.tasks-main) .ftable-empty {
   html[data-workspace-surface="plane"] main:not(.tasks-main) .fin {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+}
+
+/* =============================================================================
+ * @-mention popup inside the task description textarea
+ * ============================================================================= */
+
+.task-mention-wrap {
+  position: relative;
+}
+
+.task-mention-popup {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  background: var(--surface-2, #1a1a1a);
+  box-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.55);
+}
+
+.task-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.task-mention-item:hover,
+.task-mention-item:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.task-mention-empty {
+  padding: 8px;
+  color: var(--text-faint, rgba(255, 255, 255, 0.55));
+  font-size: 13px;
+}
+
+.task-mention-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.task-mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: inherit;
+  font-size: 12px;
+}
+
+.task-mention-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.65;
+}
+
+.task-mention-chip button:hover {
+  opacity: 1;
+}
+
+.task-field-optional {
+  color: var(--text-faint, rgba(255, 255, 255, 0.55));
+  font-weight: 400;
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.task-field-disabled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border, rgba(255, 255, 255, 0.12));
+  color: var(--text-faint, rgba(255, 255, 255, 0.55));
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.task-field-readonly {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+}
+
+.task-field-readonly-note {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-faint, rgba(255, 255, 255, 0.55));
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
 }

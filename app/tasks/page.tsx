@@ -33,6 +33,7 @@ type TaskJoinRow = {
   division_id: string;
   project_id: string | null;
   assignee_id: string | null;
+  reviewer_id: string | null;
   created_by: string | null;
   cycle_id: string | null;
   module_id: string | null;
@@ -40,6 +41,7 @@ type TaskJoinRow = {
   divisions: { name: string; slug: string } | null;
   projects: { name: string } | null;
   assignee: { full_name: string | null } | null;
+  reviewer: { full_name: string | null } | null;
   creator: { full_name: string | null } | null;
   cycle: { name: string | null } | null;
   module: { name: string | null } | null;
@@ -149,7 +151,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   // the division filter, so their own assigned work always shows.
   let assigneeTasksQuery = supabase
     .from("tasks")
-    .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
+    .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,reviewer_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),reviewer:profiles!tasks_reviewer_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
     .or(myAssignedTaskIds.length ? `assignee_id.eq.${user.id},id.in.(${myAssignedTaskIds.join(",")})` : `assignee_id.eq.${user.id}`);
   if (!activeCompany.unscoped) {
     assigneeTasksQuery = assigneeTasksQuery.in("division_id", activeCompany.scopeDivisionIds);
@@ -167,7 +169,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const viewerManagesTasks = access.isSuperAdmin || (selectedProjectDivisionId != null && access.manageableDivisionIds.has(selectedProjectDivisionId));
   let projectTasksQuery = supabase
     .from("tasks")
-    .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
+    .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,reviewer_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),reviewer:profiles!tasks_reviewer_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
     .eq("project_id", selectedProjectId ?? "");
   if (!viewerManagesTasks) {
     projectTasksQuery = projectTasksQuery.or(myAssignedTaskIds.length ? `assignee_id.eq.${user.id},id.in.(${myAssignedTaskIds.join(",")})` : `assignee_id.eq.${user.id}`);
@@ -276,6 +278,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     assignee_id: r.assignee_id,
     assignee_name: r.assignee?.full_name ?? null,
     assignees: assigneesByTask.get(r.id) ?? (r.assignee_id ? [{ id: r.assignee_id, name: r.assignee?.full_name ?? "Unknown" }] : []),
+    reviewer_id: r.reviewer_id,
+    reviewer_name: r.reviewer?.full_name ?? null,
     created_by: r.created_by,
     created_by_name: r.creator?.full_name ?? null,
     cycle_id: r.cycle_id,

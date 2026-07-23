@@ -75,6 +75,7 @@ export function TaskDrawer({
   onClose,
   lockedProjectId,
   canManageTask,
+  canEditTask,
   canMoveTask,
 }: {
   initialMode: Mode;
@@ -90,6 +91,7 @@ export function TaskDrawer({
   onClose: () => void;
   lockedProjectId?: string | null;
   canManageTask: boolean;
+  canEditTask?: boolean;
   canMoveTask: boolean;
 }) {
   const router = useRouter();
@@ -101,6 +103,9 @@ export function TaskDrawer({
   const [confirmDel, setConfirmDel] = useState(false);
   const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [assigneeQuery, setAssigneeQuery] = useState("");
+  const [reviewerQuery, setReviewerQuery] = useState("");
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   useDismiss(drawerRef, onClose);
   const today = new Date();
@@ -111,6 +116,7 @@ export function TaskDrawer({
     project_id: task?.project_id ?? lockedProjectId ?? null,
     assignee_id: task?.assignee_id ?? null,
     assignee_ids: task?.assignees?.map((assignee) => assignee.id) ?? (task?.assignee_id ? [task.assignee_id] : []),
+    reviewer_id: task?.reviewer_id ?? null,
     cycle_id: task?.cycle_id ?? null,
     module_id: task?.module_id ?? null,
     parent_task_id: task?.parent_task_id ?? null,
@@ -119,6 +125,7 @@ export function TaskDrawer({
     status: task?.status ?? presetStatus ?? stages[0]?.id ?? "todo",
     due_date: task?.due_date ?? null,
     description: task?.description ?? null,
+    tagged_user_ids: [],
   });
 
   const set = <K extends keyof TaskInput>(key: K, value: TaskInput[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -224,6 +231,71 @@ export function TaskDrawer({
     });
   }
 
+  /**
+   * Detect an in-progress "@" mention while the user types in the description
+   * textarea. We find the last "@" that is preceded by whitespace or start of
+   * input and has no whitespace after it; if found, expose its position + the
+   * trailing query so we can render the suggestion popup.
+   */
+  function detectMention(text: string, caret: number): { start: number; query: string } | null {
+    if (caret <= 0) return null;
+    const before = text.slice(0, caret);
+    const at = before.lastIndexOf("@");
+    if (at < 0) return null;
+    const prevChar = at === 0 ? " " : before[at - 1] ?? " ";
+    if (!/\s/.test(prevChar)) return null;
+    const tail = before.slice(at + 1);
+    if (/\s/.test(tail)) return null;
+    return { start: at, query: tail };
+  }
+
+  function onDescriptionChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value;
+    set("description", value || null);
+    const caret = e.target.selectionStart ?? value.length;
+    setMention(detectMention(value, caret));
+  }
+
+  function pickMention(member: MemberOpt) {
+    const ta = descriptionRef.current;
+    const current = form.description ?? "";
+    if (!mention) return;
+    const before = current.slice(0, mention.start);
+    const caret = mention.start + 1 + mention.query.length;
+    const after = current.slice(caret);
+    const inserted = `@${member.name} `;
+    const next = `${before}${inserted}${after}`;
+    set("description", next || null);
+    const tagged = Array.from(new Set([...(form.tagged_user_ids ?? []), member.id]));
+    setForm((currentForm) => ({ ...currentForm, tagged_user_ids: tagged }));
+    setMention(null);
+    // Restore caret just after the inserted mention so typing continues smoothly.
+    requestAnimationFrame(() => {
+      if (ta) {
+        const pos = before.length + inserted.length;
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
+      }
+    });
+  }
+
+  const mentionCandidates = mention
+    ? members
+        .filter((member) => member.name.toLowerCase().includes(mention.query.toLowerCase()))
+        .slice(0, 8)
+    : [];
+  const selectedReviewer = form.reviewer_id ? members.find((m) => m.id === form.reviewer_id) ?? null : null;
+  const reviewerCandidates = reviewerQuery.trim()
+    ? members.filter((m) => m.name.toLowerCase().includes(reviewerQuery.trim().toLowerCase()))
+    : members;
+  // `memberEdit = true` means the current user is editing their own assigned
+  // task but isn't a division manager. We lock the structural fields (project,
+  // division, cycle, module, assignees, reviewer change, parent epic, item
+  // type) and only let them change title / description / priority / due date /
+  // stage.
+  const memberEdit = !canManageTask && mode === "edit";
+  const isEpic = form.item_type === "epic";
+
   return (
     <>
       <div className="drawer-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={mode === "create" ? "New work item" : task?.title}>
@@ -324,9 +396,9 @@ export function TaskDrawer({
               <div className="drawer-actions">
                 {canManageTask && <button className="btn-danger" onClick={() => setConfirmDel(true)} disabled={pending}>Delete</button>}
                 <div style={{ flex: 1 }} />
-                {canManageTask && <button className="btn" onClick={() => setMode("edit")}>Edit</button>}
+                {(canManageTask || canEditTask) && <button className="btn" onClick={() => setMode("edit")}>Edit</button>}
               </div>
-              {!canManageTask && !canMoveTask && <div className="form-err" role="status" style={{ marginTop: 12 }}>You can view this work item, but only its assignee or a manager can move it.</div>}
+              {!canManageTask && !canEditTask && !canMoveTask && <div className="form-err" role="status" style={{ marginTop: 12 }}>You can view this work item, but only its assignee or a manager can edit it.</div>}
               {err && <div className="form-err" role="alert" style={{ marginTop: 12 }}>{err}</div>}
             </>
           ) : (
@@ -346,41 +418,49 @@ export function TaskDrawer({
 
                 <div className="field">
                   <span className="label">Work item type</span>
-                  <details className="task-type-dropdown" open={typePickerOpen} onToggle={(e) => setTypePickerOpen(e.currentTarget.open)}>
-                    <summary>
-                      <span className="task-type-current-icon" style={{ ["--choice-accent" as string]: workType.color }}>
-                        <WorkTypeIcon size={16} />
-                      </span>
-                      <span>{workType.label}</span>
-                    </summary>
-                    <div className="task-type-menu">
-                      {typeOptions.map(([value, meta]) => {
-                        const Icon = meta.Icon;
-                        const active = form.item_type === value;
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            className={active ? "on" : ""}
-                            onClick={() => {
-                              setForm((current) => ({
-                                ...current,
-                                item_type: value,
-                                parent_task_id: value === "epic" ? null : current.parent_task_id,
-                              }));
-                              setTypePickerOpen(false);
-                            }}
-                            style={{ ["--choice-accent" as string]: meta.color }}
-                          >
-                            <span className="task-type-current-icon">
-                              <Icon size={16} />
-                            </span>
-                            <span>{meta.label}</span>
-                          </button>
-                        );
-                      })}
+                  {memberEdit ? (
+                    <div className="task-field-readonly" role="note">
+                      <WorkTypeIcon size={14} />
+                      {workType.label}
+                      <span className="task-field-readonly-note">Locked</span>
                     </div>
-                  </details>
+                  ) : (
+                    <details className="task-type-dropdown" open={typePickerOpen} onToggle={(e) => setTypePickerOpen(e.currentTarget.open)}>
+                      <summary>
+                        <span className="task-type-current-icon" style={{ ["--choice-accent" as string]: workType.color }}>
+                          <WorkTypeIcon size={16} />
+                        </span>
+                        <span>{workType.label}</span>
+                      </summary>
+                      <div className="task-type-menu">
+                        {typeOptions.map(([value, meta]) => {
+                          const Icon = meta.Icon;
+                          const active = form.item_type === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              className={active ? "on" : ""}
+                              onClick={() => {
+                                setForm((current) => ({
+                                  ...current,
+                                  item_type: value,
+                                  parent_task_id: value === "epic" ? null : current.parent_task_id,
+                                }));
+                                setTypePickerOpen(false);
+                              }}
+                              style={{ ["--choice-accent" as string]: meta.color }}
+                            >
+                              <span className="task-type-current-icon">
+                                <Icon size={16} />
+                              </span>
+                              <span>{meta.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
                 </div>
 
                 <div className="task-choice-block">
@@ -422,6 +502,7 @@ export function TaskDrawer({
                 </div>
               </section>
 
+              {!memberEdit && (
               <section className="task-form-section">
                 <div className="task-form-section-head">
                   <div>
@@ -458,6 +539,7 @@ export function TaskDrawer({
                   </div>
                 </div>
               </section>
+              )}
 
               <section className="task-form-section">
                 <div className="task-form-section-head">
@@ -470,50 +552,61 @@ export function TaskDrawer({
                 <div className="field-row">
                   <div className="field">
                     <span className="label">Assignees</span>
-                    <details className="task-assignee-dropdown">
-                      <summary>
-                        <AssigneeStack assignees={selectedAssignees} />
-                        <span className="task-assignee-count">{selectedAssignees.length ? `${selectedAssignees.length} selected` : "Choose people"}</span>
-                      </summary>
-                      <div className="task-assignee-menu">
-                        <div className="task-assignee-search-wrap">
-                          <input
-                            type="text"
-                            className="input task-assignee-search"
-                            value={assigneeQuery}
-                            onChange={(e) => setAssigneeQuery(e.target.value)}
-                            placeholder="Search people..."
-                            aria-label="Search people"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          className={!form.assignee_ids.length ? "on" : ""}
-                          onClick={() => setForm((current) => ({ ...current, assignee_ids: [], assignee_id: null }))}
-                        >
-                          <span className="task-assignee-check" />
-                          <span>Unassigned</span>
-                        </button>
-                        {filteredMembers.map((member) => {
-                          const active = form.assignee_ids.includes(member.id);
-                          return (
-                            <button
-                              key={member.id}
-                              type="button"
-                              className={active ? "on" : ""}
-                              onClick={() => toggleAssignee(member.id)}
-                            >
-                              <span className="task-assignee-check" />
-                              <span className="task-avatar" style={{ background: avatarBg(member.name) }}>{initials(member.name, null)}</span>
-                              <span>{member.name}</span>
-                            </button>
-                          );
-                        })}
-                        {!filteredMembers.length && (
-                          <div className="task-assignee-empty-state">No people match &quot;{assigneeQuery}&quot;.</div>
-                        )}
+                    {isEpic ? (
+                      <div className="task-field-disabled" role="note">
+                        Epics can&apos;t be assigned — only tasks can.
                       </div>
-                    </details>
+                    ) : memberEdit ? (
+                      <div className="task-field-readonly" role="note">
+                        <AssigneeStack assignees={selectedAssignees} />
+                        <span className="task-field-readonly-note">Locked</span>
+                      </div>
+                    ) : (
+                      <details className="task-assignee-dropdown">
+                        <summary>
+                          <AssigneeStack assignees={selectedAssignees} />
+                          <span className="task-assignee-count">{selectedAssignees.length ? `${selectedAssignees.length} selected` : "Choose people"}</span>
+                        </summary>
+                        <div className="task-assignee-menu">
+                          <div className="task-assignee-search-wrap">
+                            <input
+                              type="text"
+                              className="input task-assignee-search"
+                              value={assigneeQuery}
+                              onChange={(e) => setAssigneeQuery(e.target.value)}
+                              placeholder="Search people..."
+                              aria-label="Search people"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className={!form.assignee_ids.length ? "on" : ""}
+                            onClick={() => setForm((current) => ({ ...current, assignee_ids: [], assignee_id: null }))}
+                          >
+                            <span className="task-assignee-check" />
+                            <span>Unassigned</span>
+                          </button>
+                          {filteredMembers.map((member) => {
+                            const active = form.assignee_ids.includes(member.id);
+                            return (
+                              <button
+                                key={member.id}
+                                type="button"
+                                className={active ? "on" : ""}
+                                onClick={() => toggleAssignee(member.id)}
+                              >
+                                <span className="task-assignee-check" />
+                                <span className="task-avatar" style={{ background: avatarBg(member.name) }}>{initials(member.name, null)}</span>
+                                <span>{member.name}</span>
+                              </button>
+                            );
+                          })}
+                          {!filteredMembers.length && (
+                            <div className="task-assignee-empty-state">No people match &quot;{assigneeQuery}&quot;.</div>
+                          )}
+                        </div>
+                      </details>
+                    )}
                   </div>
                   <div className="field">
                     <label className="label" htmlFor="d-due">Due date</label>
@@ -521,6 +614,78 @@ export function TaskDrawer({
                   </div>
                 </div>
 
+                {!isEpic && (
+                  <div className="field">
+                    <span className="label">Reviewer <span className="task-field-optional">(optional)</span></span>
+                    {memberEdit ? (
+                      <div className="task-field-readonly" role="note">
+                        {selectedReviewer ? (
+                          <span className="task-avatar-stack task-avatar-stack-inline">
+                            <span className="task-avatar" style={{ background: avatarBg(selectedReviewer.name) }}>{initials(selectedReviewer.name, null)}</span>
+                            <span className="task-assignee-names">{selectedReviewer.name}</span>
+                          </span>
+                        ) : (
+                          <span className="task-avatar-stack task-avatar-stack-inline" style={{ color: "var(--text-faint)" }}>No reviewer yet</span>
+                        )}
+                        <span className="task-field-readonly-note">Locked</span>
+                      </div>
+                    ) : (
+                    <details className="task-assignee-dropdown">
+                      <summary>
+                        {selectedReviewer ? (
+                          <span className="task-avatar-stack task-avatar-stack-inline">
+                            <span className="task-avatar" style={{ background: avatarBg(selectedReviewer.name) }}>{initials(selectedReviewer.name, null)}</span>
+                            <span className="task-assignee-names">{selectedReviewer.name}</span>
+                          </span>
+                        ) : (
+                          <span className="task-avatar-stack task-avatar-stack-inline" style={{ color: "var(--text-faint)" }}>No reviewer yet</span>
+                        )}
+                        <span className="task-assignee-count">{selectedReviewer ? "Reviewer set" : "Pick a reviewer"}</span>
+                      </summary>
+                      <div className="task-assignee-menu">
+                        <div className="task-assignee-search-wrap">
+                          <input
+                            type="text"
+                            className="input task-assignee-search"
+                            value={reviewerQuery}
+                            onChange={(e) => setReviewerQuery(e.target.value)}
+                            placeholder="Search people..."
+                            aria-label="Search reviewer"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className={!form.reviewer_id ? "on" : ""}
+                          onClick={() => setForm((current) => ({ ...current, reviewer_id: null }))}
+                        >
+                          <span className="task-assignee-check" />
+                          <span>No reviewer</span>
+                        </button>
+                        {reviewerCandidates.map((member) => {
+                          const active = form.reviewer_id === member.id;
+                          return (
+                            <button
+                              key={member.id}
+                              type="button"
+                              className={active ? "on" : ""}
+                              onClick={() => setForm((current) => ({ ...current, reviewer_id: member.id }))}
+                            >
+                              <span className="task-assignee-check" />
+                              <span className="task-avatar" style={{ background: avatarBg(member.name) }}>{initials(member.name, null)}</span>
+                              <span>{member.name}</span>
+                            </button>
+                          );
+                        })}
+                        {!reviewerCandidates.length && (
+                          <div className="task-assignee-empty-state">No people match &quot;{reviewerQuery}&quot;.</div>
+                        )}
+                      </div>
+                    </details>
+                    )}
+                  </div>
+                )}
+
+                {!memberEdit && (
                 <div className="field-row">
                   <div className="field">
                     <label className="label" htmlFor="d-cycle">Cycle</label>
@@ -537,8 +702,9 @@ export function TaskDrawer({
                     </select>
                   </div>
                 </div>
+                )}
 
-                {form.item_type !== "epic" && (
+                {!memberEdit && form.item_type !== "epic" && (
                   <div className="field">
                     <label className="label" htmlFor="d-parent">Parent epic</label>
                     <select id="d-parent" className="select" value={form.parent_task_id ?? ""} onChange={(e) => set("parent_task_id", e.target.value || null)}>
@@ -559,7 +725,68 @@ export function TaskDrawer({
 
                 <div className="field">
                   <label className="label" htmlFor="d-desc">Notes</label>
-                  <textarea id="d-desc" className="textarea" value={form.description ?? ""} onChange={(e) => set("description", e.target.value || null)} placeholder="Optional details, acceptance notes, debugging context, links..." />
+                  <div className="task-mention-wrap">
+                    <textarea
+                      id="d-desc"
+                      ref={descriptionRef}
+                      className="textarea"
+                      value={form.description ?? ""}
+                      onChange={onDescriptionChange}
+                      onKeyDown={(e) => {
+                        // Enter on the popup should insert the highlighted mention.
+                        if (mention && mentionCandidates.length > 0 && mentionCandidates[0] && (e.key === "Enter" || e.key === "Tab")) {
+                          e.preventDefault();
+                          pickMention(mentionCandidates[0]);
+                        }
+                      }}
+                      placeholder="Optional details, acceptance notes, debugging context, links... Type @ to tag someone."
+                    />
+                    {mention && mentionCandidates.length > 0 && (
+                      <div className="task-mention-popup" role="listbox" aria-label="Mention a person">
+                        {mentionCandidates.map((member) => (
+                          <button
+                            key={member.id}
+                            type="button"
+                            className="task-mention-item"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              pickMention(member);
+                            }}
+                          >
+                            <span className="task-avatar" style={{ background: avatarBg(member.name) }}>{initials(member.name, null)}</span>
+                            <span>{member.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {mention && mentionCandidates.length === 0 && (
+                      <div className="task-mention-popup" role="status">
+                        <div className="task-mention-empty">No one matches &quot;{mention.query}&quot;.</div>
+                      </div>
+                    )}
+                  </div>
+                  {(form.tagged_user_ids?.length ?? 0) > 0 && (
+                    <div className="task-mention-chips" aria-label="Tagged people">
+                      {form.tagged_user_ids!.map((userId) => {
+                        const member = members.find((m) => m.id === userId);
+                        if (!member) return null;
+                        return (
+                          <span key={userId} className="task-mention-chip">
+                            <span className="task-avatar" style={{ background: avatarBg(member.name) }}>{initials(member.name, null)}</span>
+                            {member.name}
+                            <button
+                              type="button"
+                              aria-label={`Remove ${member.name}`}
+                              onClick={() => setForm((current) => ({
+                                ...current,
+                                tagged_user_ids: (current.tagged_user_ids ?? []).filter((id) => id !== userId),
+                              }))}
+                            >×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </section>
 
