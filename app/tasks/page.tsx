@@ -320,7 +320,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     : (inferredTaskStages.length ? inferredTaskStages : DEFAULT_TASK_STAGES)
   ).slice().sort((a, b) => a.position - b.position);
   const requestedTab = sp.tab === "overview" || sp.tab === "epics" || sp.tab === "cycles" || sp.tab === "modules" ? sp.tab : "work-items";
-  const tab = selectedProjectId || requestedTab === "work-items" || requestedTab === "epics" ? requestedTab : "work-items";
+  // Epics are a planning container used by managers/leads. Members don't see
+  // the Epics tab (and can't land on it via deep-link) because epic creation,
+  // the roadmap, and the parent-epic picker are all manager-only flows.
+  const canSeeEpicsTab = selectedProjectId ? canManageWorkflow : access.isSuperAdmin;
+  const tab = canSeeEpicsTab
+    ? requestedTab
+    : (requestedTab === "epics" ? "work-items" : requestedTab);
   const workItemsHref = buildTaskHref(sp, { tab: "work-items", cycle: null, module: null });
   const epicsHref = buildTaskHref(sp, { tab: "epics", cycle: null, module: null });
   const overviewHref = buildTaskHref(sp, { tab: "overview", cycle: null, module: null });
@@ -351,13 +357,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             ? [
                 { label: "Overview", href: overviewHref, active: tab === "overview" },
                 { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
-                { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
+                ...(canSeeEpicsTab ? [{ label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount }] : []),
                 { label: "Cycles", href: cyclesHref, active: tab === "cycles", count: cycles.length },
                 { label: "Modules", href: modulesHref, active: tab === "modules", count: modules.length },
               ]
             : [
                 { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
-                { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
+                ...(canSeeEpicsTab ? [{ label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount }] : []),
               ]}
           actions={
             <Button href="/projects" variant="ghost">Manage projects</Button>

@@ -4,6 +4,16 @@ import { useEffect, useRef } from "react";
 // `onClose` is captured in a ref so changes don't tear down + re-establish the
 // keydown listener on every parent render — this was the source of flaky Esc
 // handling in `DocReader` and the stage-delete modal.
+//
+// We do NOT auto-focus anything on mount: yanking focus to a button or
+// dropdown summary means a stray Backspace (or any non-editable key) would
+// either navigate back in browser history or do nothing — but in combination
+// with the global keydown listener we once had, it caused the entire drawer
+// to disappear while the user was typing in a description textarea. The
+// drawer explicitly focuses its own primary input via `autoFocus` already.
+//
+// Only Escape closes the modal; Tab keeps focus cycling inside the dialog;
+// every other key is left to the native element handler so typing works.
 export function useDismiss(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -19,7 +29,6 @@ export function useDismiss(ref: React.RefObject<HTMLElement | null>, onClose: ()
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
         )
       ).filter((n) => {
-        // visible? offsetParent is null for `position: fixed` so we accept those too
         if (n === document.activeElement) return true;
         const style = window.getComputedStyle(n);
         if (style.visibility === "hidden" || style.display === "none") return false;
@@ -27,12 +36,10 @@ export function useDismiss(ref: React.RefObject<HTMLElement | null>, onClose: ()
       });
     };
 
-    // Focus the dialog's heading (a11y best practice), then fall back to first
-    // focusable. If no heading, focus the first focusable so Tab can cycle.
-    const heading = el.querySelector<HTMLElement>("h1, h2, h3, [data-autofocus]");
-    (heading ?? focusables()[0] ?? el)?.focus?.();
-
     function onKey(e: KeyboardEvent) {
+      // Only Escape closes the dialog. Everything else (Tab, Backspace, Enter,
+      // printable keys) is left to the active element so text editing inside
+      // the drawer works normally.
       if (e.key === "Escape") {
         e.stopPropagation();
         onCloseRef.current();

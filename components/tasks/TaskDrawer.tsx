@@ -295,6 +295,11 @@ export function TaskDrawer({
   // stage.
   const memberEdit = !canManageTask && mode === "edit";
   const isEpic = form.item_type === "epic";
+  // Epics are a planning container — only managers can create them. Hide the
+  // option from members in the work-item-type picker. Server also rejects.
+  const memberEditableTypes: typeof typeOptions = canManageTask
+    ? typeOptions
+    : typeOptions.filter(([value]) => value !== "epic");
 
   return (
     <>
@@ -433,7 +438,7 @@ export function TaskDrawer({
                         <span>{workType.label}</span>
                       </summary>
                       <div className="task-type-menu">
-                        {typeOptions.map(([value, meta]) => {
+                        {memberEditableTypes.map(([value, meta]) => {
                           const Icon = meta.Icon;
                           const active = form.item_type === value;
                           return (
