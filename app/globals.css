@@ -6172,6 +6172,18 @@ html[data-workspace-surface="plane"] main.tasks-main {
   gap: 18px;
 }
 
+/* The task drawer uses a sticky header (`.task-drawer .drawer-head`). When a
+ * text input is `autoFocus`-ed (e.g. the title), the browser scrolls the
+ * element into view but doesn't account for the sticky header height — leaving
+ * the input visually covered. `scroll-margin-top` reserves headroom so the
+ * input lands below the sticky head, not under it. */
+.task-drawer-form input,
+.task-drawer-form textarea,
+.task-drawer-form select,
+.task-drawer-form [data-testid] {
+  scroll-margin-top: 96px;
+}
+
 .task-form-section {
   border: 1px solid #e7ebf0;
   border-radius: 20px;
