@@ -2,10 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { normalizeAccentHex } from "@/lib/appearance";
 import { loadUserWorkspaceAccess, canManageDivision } from "@/lib/server-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+// Phone numbers are digits only — no spaces, dashes, parens, or "+" prefix.
+// Empty string is allowed (treated as "clear the field"). When provided we
+// require at least 7 digits so we don't persist accidental stray characters
+// that would later fail the WhatsApp/SMS integration.
+const phoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\d*$/, "Phone number must contain only digits.")
+  .refine((value) => value.length === 0 || value.length >= 7, {
+    message: "Phone number must have at least 7 digits.",
+  });
 
 type Result = { ok: true } | { error: string };
 
@@ -67,12 +80,11 @@ export async function updateProfile(fullName: string, phone?: string | null): Pr
 
   const update: Record<string, unknown> = { full_name: fullName.trim() || null };
   if (phone !== undefined) {
-    // Keep it forgiving: allow "+", digits, spaces, dashes, parens; store a
-    // compact form or null when blank. (No OTP verification for now.)
-    const raw = (phone ?? "").trim();
-    const cleaned = raw.replace(/[^\d+]/g, "");
-    if (raw && cleaned.replace(/\D/g, "").length < 7) return { error: "Enter a valid phone number." };
-    update.phone = cleaned || null;
+    const parsed = phoneSchema.safeParse(phone ?? "");
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? "Enter a valid phone number." };
+    }
+    update.phone = parsed.data.length === 0 ? null : parsed.data;
   }
 
   const { error } = await supabase.from("profiles").update(update).eq("id", user.id);

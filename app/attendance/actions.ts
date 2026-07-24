@@ -119,6 +119,14 @@ export async function deleteAttendanceLocation(id: string): Promise<Result> {
 // Records the caller's own attendance IF their GPS is within the radius of one
 // of their company's registered locations. RLS ("insert own attendance") ensures
 // a user can only ever write their own record, in a company they belong to.
+//
+// Attendance is GLOBAL per @sthyra.com user: a single check-in event writes one
+// attendance_records row per division the user belongs to. So if nikhil is a
+// member of Construction Mgmt, Living Twin, and Sthyra Studios, one check-in
+// from any of those locations produces three rows — managers of each branch
+// see their own copy. The geofence check is still single-source (the nearest
+// registered location has to match), but the row is mirrored to every
+// membership. Members with no divisions are rejected.
 export async function checkIn(
   latitude: number,
   longitude: number,
@@ -130,30 +138,47 @@ export async function checkIn(
 
   const { ua, ip, isMobile } = await requestMeta();
 
-  // RLS returns only the locations of companies this user belongs to.
-  const { data: locRows, error: locError } = await supabase
-    .from("attendance_locations")
-    .select("id,division_id,name,latitude,longitude,radius_m")
-    .returns<LocationRow[]>();
+  // Fetch the user's memberships and the locations they can read in parallel.
+  // RLS restricts locations to companies the user belongs to, so we already
+  // know each location matches a membership.
+  const [{ data: memRows, error: memError }, { data: locRows, error: locError }] = await Promise.all([
+    supabase.from("division_members").select("division_id").eq("user_id", user.id),
+    supabase.from("attendance_locations").select("id,division_id,name,latitude,longitude,radius_m"),
+  ]);
+  if (memError) return { error: memError.message };
   if (locError) return { error: locError.message };
+
+  const memberDivIds = ((memRows ?? []) as { division_id: string }[]).map((m) => m.division_id);
+  if (memberDivIds.length === 0) return { error: "You're not assigned to a company yet." };
 
   const check = evaluatePresence(latitude, longitude, accuracyM, locRows ?? [], isMobile);
   if ("error" in check) return { error: check.error };
 
   const acc = Number.isFinite(accuracyM ?? NaN) ? Math.max(0, accuracyM as number) : null;
-  const { error: insertError } = await supabase.from("attendance_records").insert({
-    user_id: user.id,
-    division_id: check.location.division_id,
-    location_id: check.location.id,
-    latitude,
-    longitude,
-    accuracy_m: acc,
-    distance_m: check.distance,
-    status: "present",
-    ip,
-    user_agent: ua,
-    is_mobile: isMobile,
+  // Build one row per membership. The geofence match comes from the nearest
+  // location; for divisions that don't have a registered location we fall back
+  // to location_id = null (the column allows it — the row is still a real
+  // attendance record, just without a named geofence).
+  const locByDivision = new Map<string, LocationRow>();
+  for (const loc of (locRows ?? []) as LocationRow[]) locByDivision.set(loc.division_id, loc);
+  const rows = memberDivIds.map((divId) => {
+    const sourceLoc = check.location.division_id === divId ? check.location : locByDivision.get(divId) ?? null;
+    return {
+      user_id: user.id,
+      division_id: divId,
+      location_id: sourceLoc?.id ?? null,
+      latitude,
+      longitude,
+      accuracy_m: acc,
+      distance_m: sourceLoc ? check.distance : null,
+      status: "present" as const,
+      ip,
+      user_agent: ua,
+      is_mobile: isMobile,
+    };
   });
+
+  const { error: insertError } = await supabase.from("attendance_records").insert(rows);
   if (insertError) {
     if (/duplicate|unique/i.test(insertError.message)) return { error: "You've already checked in today." };
     if (/policy|permission/i.test(insertError.message)) return { error: "You're not a member of this company." };
@@ -194,19 +219,29 @@ export async function checkInWithToken(
   if ("error" in check) return { error: check.error };
 
   const acc = Number.isFinite(accuracyM ?? NaN) ? Math.max(0, accuracyM as number) : null;
-  const { error: insertError } = await admin.from("attendance_records").insert({
-    user_id: verified.userId,
-    division_id: check.location.division_id,
-    location_id: check.location.id,
-    latitude,
-    longitude,
-    accuracy_m: acc,
-    distance_m: check.distance,
-    status: "present",
-    ip,
-    user_agent: ua,
-    is_mobile: isMobile,
+  // Fan out one row per division the user belongs to (mirrors checkIn). The
+  // geofence match is single-source from the nearest location; divisions
+  // without a registered location fall back to location_id = null.
+  const locByDivision = new Map<string, LocationRow>();
+  for (const loc of (locRows ?? []) as LocationRow[]) locByDivision.set(loc.division_id, loc);
+  const rows = divIds.map((divId) => {
+    const sourceLoc = check.location.division_id === divId ? check.location : locByDivision.get(divId) ?? null;
+    return {
+      user_id: verified.userId,
+      division_id: divId,
+      location_id: sourceLoc?.id ?? null,
+      latitude,
+      longitude,
+      accuracy_m: acc,
+      distance_m: sourceLoc ? check.distance : null,
+      status: "present" as const,
+      ip,
+      user_agent: ua,
+      is_mobile: isMobile,
+    };
   });
+
+  const { error: insertError } = await admin.from("attendance_records").insert(rows);
   if (insertError) {
     if (/duplicate|unique/i.test(insertError.message)) return { error: "You've already checked in today." };
     return { error: insertError.message };

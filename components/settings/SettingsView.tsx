@@ -83,6 +83,15 @@ export function SettingsView({
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
 
+  // Phone is optional, but if anything is typed it must be digits only and
+  // at least 7 long. We surface this as a soft inline message so the user
+  // sees the issue before the server round-trip.
+  const phoneError =
+    phone.length > 0 && phone.length < 7
+      ? "Phone number must have at least 7 digits."
+      : null;
+  const profileSaveDisabled = phoneError !== null;
+
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
   const [pwBusy, setPwBusy] = useState(false);
@@ -244,21 +253,33 @@ export function SettingsView({
             id="s-phone"
             className="input"
             type="tel"
+            inputMode="numeric"
             autoComplete="tel"
             value={phone}
             onChange={(e) => {
-              setPhone(e.target.value);
+              // Phone numbers are digits only — strip anything that isn't a
+              // digit before the value ever reaches React state, so paste /
+              // type of letters is silently dropped instead of round-tripping
+              // back from the server as a validation error.
+              const digitsOnly = e.target.value.replace(/\D/g, "");
+              setPhone(digitsOnly);
               setProfileSaved(false);
             }}
-            placeholder="+91 98765 43210"
+            placeholder="9876543210"
+            maxLength={15}
           />
-          <p className="sub" style={{ marginTop: 6, marginBottom: 0 }}>Used for attendance reminders (WhatsApp/SMS) once messaging is enabled.</p>
+          {phoneError ? (
+            <p className="form-err" style={{ marginTop: 6, marginBottom: 0 }}>{phoneError}</p>
+          ) : (
+            <p className="sub" style={{ marginTop: 6, marginBottom: 0 }}>Digits only (no country code prefix). Used for attendance reminders (WhatsApp/SMS) once messaging is enabled.</p>
+          )}
         </div>
         {profileError && <div className="form-err">{profileError}</div>}
         <div className="modal-actions">
           {profileSaved && <span style={{ color: "var(--positive)", fontSize: 12, marginRight: "auto" }}>Saved</span>}
           <button
             className="btn"
+            disabled={profileSaveDisabled}
             onClick={() => {
               setProfileError(null);
               setProfileSaved(false);

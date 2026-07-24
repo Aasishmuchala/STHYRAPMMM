@@ -1430,7 +1430,6 @@ export function TaskBoard({
                     <div className="epic-roadmap-column-labels">
                       <span>Epic</span>
                       <span>Status</span>
-                      <span>Owner</span>
                       <span>Window</span>
                     </div>
                     <div
@@ -1464,8 +1463,11 @@ export function TaskBoard({
                               <span className="epic-roadmap-subcopy">
                                 {row.projectName}
                                 {row.moduleName ? ` · ${row.moduleName}` : ""}
-                                {row.childCount > 0 ? ` · ${row.childCount} child item${row.childCount === 1 ? "" : "s"}` : ""}
+                                {row.childCount > 0 ? ` · ${row.childCount} item${row.childCount === 1 ? "" : "s"}` : ""}
                               </span>
+                              {row.task.created_by_name ? (
+                                <span className="epic-roadmap-creator">Created by {row.task.created_by_name}</span>
+                              ) : null}
                             </div>
 
                             <div className="epic-roadmap-status">
@@ -1483,23 +1485,8 @@ export function TaskBoard({
                               </span>
                             </div>
 
-                            <div className="epic-roadmap-person">
-                              <span
-                                className="task-avatar"
-                                aria-hidden="true"
-                                style={{ background: avatarBg(row.assigneeName) }}
-                              >
-                                {initials(row.assigneeName, null)}
-                              </span>
-                              <div className="epic-roadmap-person-copy">
-                                <strong>{row.assigneeName}</strong>
-                                <span>{row.task.created_by_name ? `Assigned by ${row.task.created_by_name}` : "No assigner shown"}</span>
-                              </div>
-                            </div>
-
                             <div className="epic-roadmap-window">
                               <strong>{row.windowLabel}</strong>
-                              <span>{row.cycleName ?? (row.task.due_date ? "Due-date driven window" : "Auto planned window")}</span>
                             </div>
                           </div>
 
@@ -1522,7 +1509,7 @@ export function TaskBoard({
                               }}
                             >
                               <span>{row.cycleName ?? row.task.title}</span>
-                              <span>{row.childCount} item{row.childCount === 1 ? "" : "s"}</span>
+                              <span className="epic-roadmap-bar-range">{row.windowLabel}</span>
                             </div>
                           </div>
                         </button>

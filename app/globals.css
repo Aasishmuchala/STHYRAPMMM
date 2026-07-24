@@ -3912,16 +3912,34 @@ html[data-workspace-surface="plane"] .skel {
   gap: 14px;
 }
 
+/* The roadmap is laid out as two stable columns: a meta block on the left
+   that holds the issue/status/owner/window labels, and a track block on the
+   right that holds the month grid + colored bars. Using flex with explicit
+   flex-basis keeps both columns from collapsing into each other when the
+   viewport is narrow, and keeps the bars from bleeding over the labels. */
 .epic-roadmap-top,
 .epic-roadmap-row {
-  display: grid;
-  grid-template-columns: minmax(420px, 0.95fr) minmax(560px, 1.25fr);
+  display: flex;
+  align-items: stretch;
   gap: 20px;
+}
+
+.epic-roadmap-column-labels,
+.epic-roadmap-meta {
+  flex: 0 0 56%;
+  min-width: 0;
+}
+
+.epic-roadmap-months,
+.epic-roadmap-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
 }
 
 .epic-roadmap-column-labels {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) minmax(110px, 0.8fr) minmax(160px, 0.95fr) minmax(140px, 0.9fr);
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
   gap: 14px;
   color: #7f8a9a;
   font-size: 11px;
@@ -3973,16 +3991,16 @@ html[data-workspace-surface="plane"] .skel {
 
 .epic-roadmap-meta {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) minmax(110px, 0.8fr) minmax(160px, 0.95fr) minmax(140px, 0.9fr);
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
   gap: 14px;
   align-items: center;
 }
 
 .epic-roadmap-issue,
-.epic-roadmap-person,
 .epic-roadmap-window {
   display: grid;
   gap: 5px;
+  min-width: 0;
 }
 
 .epic-roadmap-issue-top {
@@ -4013,19 +4031,29 @@ html[data-workspace-surface="plane"] .skel {
 }
 
 .epic-roadmap-issue strong,
-.epic-roadmap-person strong,
 .epic-roadmap-window strong {
   color: #28313d;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .epic-roadmap-subcopy,
-.epic-roadmap-person span,
 .epic-roadmap-window span {
   color: #7c8798;
   font-size: 12px;
   line-height: 1.5;
+}
+
+/* Subtle "Created by X" line that sits under the project/module/child-count
+   subcopy. We don't promote the creator to a whole column — that turned the
+   row into a card with redundant fields. Instead we let the row be quiet and
+   surface who opened the epic only as fine print. */
+.epic-roadmap-creator {
+  color: #94a1b5;
+  font-size: 11.5px;
+  font-weight: 500;
+  margin-top: 2px;
 }
 
 .epic-roadmap-status {
@@ -4044,21 +4072,17 @@ html[data-workspace-surface="plane"] .skel {
   font-weight: 700;
 }
 
-.epic-roadmap-person {
-  grid-template-columns: auto 1fr;
-  align-items: center;
-}
-
-.epic-roadmap-person-copy {
-  display: grid;
-  gap: 3px;
-}
-
 .epic-roadmap-track {
   position: relative;
   min-height: 88px;
   display: grid;
   align-items: center;
+  /* Clip the bars so they can't bleed past the track edge into the meta
+     column when their computed left/width puts them outside the visible
+     month range. Without this, overflowed bars paint over the issue/owner
+     labels and look like floating squares. */
+  overflow: hidden;
+  border-radius: 18px;
 }
 
 .epic-roadmap-grid {
@@ -4082,7 +4106,6 @@ html[data-workspace-surface="plane"] .skel {
   margin-top: -21px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   padding: 0 14px;
   border-radius: 14px;
@@ -4094,35 +4117,49 @@ html[data-workspace-surface="plane"] .skel {
   overflow: hidden;
 }
 
-.epic-roadmap-bar.done {
-  opacity: 0.8;
-}
-
-.epic-roadmap-bar span {
+.epic-roadmap-bar > span:first-child {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.epic-roadmap-bar-range {
+  margin-left: auto;
+  flex: 0 0 auto;
+  opacity: 0.78;
+  font-weight: 600;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
+.epic-roadmap-bar.done {
+  opacity: 0.8;
+}
+
 @media (max-width: 1280px) {
-  .epic-roadmap-top,
-  .epic-roadmap-row {
-    grid-template-columns: minmax(360px, 1fr) minmax(520px, 1.1fr);
+  .epic-roadmap-column-labels,
+  .epic-roadmap-meta {
+    flex-basis: 50%;
   }
 }
 
 @media (max-width: 980px) {
   .epic-roadmap-top,
   .epic-roadmap-row {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .epic-roadmap-column-labels,
   .epic-roadmap-meta {
+    flex-basis: auto;
+    width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .epic-roadmap-track {
     min-height: 110px;
+    width: 100%;
   }
 }
 
