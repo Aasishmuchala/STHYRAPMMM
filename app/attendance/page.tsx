@@ -15,7 +15,7 @@ import {
 import { CheckinsChart } from "@/components/attendance/CheckinsChart";
 import { AppShell } from "@/components/shell/AppShell";
 import { AvatarStack, DonutChart, StatCard } from "@/components/ui";
-import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
+import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
 import { loadShellUserSummary } from "@/lib/shellUser";
@@ -115,17 +115,21 @@ export default async function AttendancePage() {
   // case explicitly: if the user owns ≥ 1 division, treat them like an owner
   // for company-picking purposes.
   const canPickAll = access.isSuperAdmin || access.isCompanyOwnerAnywhere;
+  // Attendance is GLOBAL, not company-scoped — picking a different company in
+  // the sidebar switcher must NOT change what attendance a user sees. We still
+  // resolve `activeCompany` so other UI bits (the company picker label, owner
+  // branches) keep working, but the attendance query ignores it.
   const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, canPickAll);
   // isManager: true for super-admins, division owners, and division leads. A
   // division owner ("owner" role in division_members) is the canonical
   // "team owner" — they should see every member's check-in in the divisions
-  // they own, mirroring what leads and super-admins already see.
-  const isManager =
-    access.isSuperAdmin ||
-    access.manageableDivisionIds.size > 0 && (
-      (activeCompany.activeDivisionId != null && access.manageableDivisionIds.has(activeCompany.activeDivisionId)) ||
-      [...activeCompany.scope].some((id) => access.manageableDivisionIds.has(id))
-    );
+  // they own, mirroring what leads and super-admins already see. For managers,
+  // we still gate the team view to divisions they actually manage (so a lead
+  // of one company doesn't see another company's members), but a regular
+  // member sees their OWN records across every company they belong to.
+  const manageableForManagerView = access.isSuperAdmin
+    ? new Set(divs.map((d) => d.id))
+    : access.manageableDivisionIds;
 
   const since = new Date();
   since.setMonth(since.getMonth() - 5);
@@ -141,9 +145,14 @@ export default async function AttendancePage() {
     .order("checked_in_at", { ascending: false })
     .returns<RecordRow[]>();
 
-  const records = (recRows ?? []).filter((r) => isInScope(activeCompany, r.division_id));
-  const myRecords = records.filter((r) => r.user_id === user.id);
-  const scopeRecords = isManager ? records : myRecords;
+  // GLOBAL attendance: a member's own check-ins come back regardless of which
+  // company they're filed under. The active-company switcher does not affect
+  // this view. Managers still scope the team roster to the divisions they
+  // manage.
+  const myRecords = (recRows ?? []).filter((r) => r.user_id === user.id);
+  const teamRecords = (recRows ?? []).filter((r) => manageableForManagerView.has(r.division_id));
+  const isManager = manageableForManagerView.size > 0;
+  const scopeRecords = isManager ? teamRecords : myRecords;
   const loggedScopeRecords = scopeRecords.filter((r) => isLoggedStatus(r.status));
 
   const now = new Date();
@@ -182,7 +191,7 @@ export default async function AttendancePage() {
 
   const rosterMap = new Map<string, { userId: string; name: string; present: number; last: string | null }>();
   if (isManager) {
-    for (const row of records) {
+    for (const row of teamRecords) {
       const name = row.person?.full_name || row.person?.email || "Unknown";
       const entry = rosterMap.get(row.user_id) ?? { userId: row.user_id, name, present: 0, last: null };
       if (monthKey(row.work_date) === thisMonth && isLoggedStatus(row.status)) entry.present += 1;
@@ -295,7 +304,7 @@ export default async function AttendancePage() {
             <div className="att-greet">{greeting}, {firstName}</div>
             <h1 className="att-title">Attendance Tracker</h1>
             <p className="head-sub">
-              {isManager ? "Everyone's check-ins for the active company. Members see only their own." : "Your geo-verified check-ins."}
+              {isManager ? "Check-ins for everyone you manage, across every company. Members see only their own — across every company they belong to." : "Your geo-verified check-ins across every company."}
             </p>
           </div>
           <Link href="/attendance/check-in" className="btn btn-teal">
