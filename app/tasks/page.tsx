@@ -163,8 +163,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     .returns<TaskJoinRow[]>();
 
   // Project board visibility: managers (super-admin / owner / lead of the
-  // project's division) see every task; a plain member sees only the tasks
-  // assigned to them — never the whole company's board.
+  // project's division) see every task; a plain member sees epics (planning
+  // container, visible to everyone in the project) plus the tasks assigned to
+  // them — never other members' individual work items.
   const selectedProjectDivisionId = projects.find((p) => p.id === selectedProjectId)?.division_id ?? null;
   const viewerManagesTasks = access.isSuperAdmin || (selectedProjectDivisionId != null && access.manageableDivisionIds.has(selectedProjectDivisionId));
   let projectTasksQuery = supabase
@@ -172,7 +173,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     .select("id,title,description,item_type,priority,status:workflow_stage_id,due_date,division_id,project_id,assignee_id,reviewer_id,created_by,cycle_id,module_id,parent_task_id,divisions(name,slug),projects(name),assignee:profiles!tasks_assignee_id_fkey(full_name),reviewer:profiles!tasks_reviewer_id_fkey(full_name),creator:profiles!tasks_created_by_fkey(full_name),cycle:project_cycles(name),module:project_modules(name),stage:workflow_stages!tasks_workflow_stage_id_fkey(id,workflow_id,key,label,color,position,is_done)")
     .eq("project_id", selectedProjectId ?? "");
   if (!viewerManagesTasks) {
-    projectTasksQuery = projectTasksQuery.or(myAssignedTaskIds.length ? `assignee_id.eq.${user.id},id.in.(${myAssignedTaskIds.join(",")})` : `assignee_id.eq.${user.id}`);
+    projectTasksQuery = projectTasksQuery.or(
+      `item_type.eq.epic,${
+        myAssignedTaskIds.length
+          ? `assignee_id.eq.${user.id},id.in.(${myAssignedTaskIds.join(",")})`
+          : `assignee_id.eq.${user.id}`
+      }`
+    );
   }
   const projectTasks = projectTasksQuery
     .is("deleted_at", null)
@@ -320,13 +327,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     : (inferredTaskStages.length ? inferredTaskStages : DEFAULT_TASK_STAGES)
   ).slice().sort((a, b) => a.position - b.position);
   const requestedTab = sp.tab === "overview" || sp.tab === "epics" || sp.tab === "cycles" || sp.tab === "modules" ? sp.tab : "work-items";
-  // Epics are a planning container used by managers/leads. Members don't see
-  // the Epics tab (and can't land on it via deep-link) because epic creation,
-  // the roadmap, and the parent-epic picker are all manager-only flows.
-  const canSeeEpicsTab = selectedProjectId ? canManageWorkflow : access.isSuperAdmin;
-  const tab = canSeeEpicsTab
-    ? requestedTab
-    : (requestedTab === "epics" ? "work-items" : requestedTab);
+  const tab = requestedTab;
   const workItemsHref = buildTaskHref(sp, { tab: "work-items", cycle: null, module: null });
   const epicsHref = buildTaskHref(sp, { tab: "epics", cycle: null, module: null });
   const overviewHref = buildTaskHref(sp, { tab: "overview", cycle: null, module: null });
@@ -357,13 +358,13 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
             ? [
                 { label: "Overview", href: overviewHref, active: tab === "overview" },
                 { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
-                ...(canSeeEpicsTab ? [{ label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount }] : []),
+                { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
                 { label: "Cycles", href: cyclesHref, active: tab === "cycles", count: cycles.length },
                 { label: "Modules", href: modulesHref, active: tab === "modules", count: modules.length },
               ]
             : [
                 { label: "Work items", href: workItemsHref, active: tab === "work-items", count: boardCount },
-                ...(canSeeEpicsTab ? [{ label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount }] : []),
+                { label: "Epics", href: epicsHref, active: tab === "epics", count: epicCount },
               ]}
           actions={
             <Button href="/projects" variant="ghost">Manage projects</Button>

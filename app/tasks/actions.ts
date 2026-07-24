@@ -351,13 +351,6 @@ export async function createTask(input: TaskInput): Promise<Result> {
     return { error: "You don't have access to create work in this company." };
   }
 
-  // Epics are a planning container. Only managers of the division (or super-
-  // admins) can create them. UI also hides the option for members, but we
-  // guard the server too in case a request is forged directly.
-  if (input.item_type === "epic" && !canManageDivision(access, input.division_id)) {
-    return { error: "Only the super admin, company owner, or lead can create epics." };
-  }
-
   const projectDivision = await loadProjectDivisionId(supabase, input.project_id);
   if (!projectDivision.ok) return { error: projectDivision.error };
   if (projectDivision.divisionId && projectDivision.divisionId !== input.division_id) {
