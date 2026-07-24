@@ -84,7 +84,24 @@ export function DivisionSwitcher({ divisions, canPickAll = false }: { divisions:
       <div
         className="dsw-pop glass"
         role="menu"
-        style={{ position: "fixed", top: popStyle.top, left: popStyle.left, width: popStyle.width }}
+        style={{
+          position: "fixed",
+          top: popStyle.top,
+          left: popStyle.left,
+          width: popStyle.width,
+          // Override the CSS rule "min-width: 100%": when the pop is portaled
+          // to body with position:fixed, that rule resolves against the
+          // viewport's containing block (so the pop stretches to full width
+          // instead of matching the trigger). Pinning min-width to 0 lets the
+          // explicit width above actually clip it to the trigger's width.
+          minWidth: 0,
+          // The .notif-backdrop sibling sits at z-index 199. Without lifting
+          // the pop above it, the backdrop intercepts clicks on every menu
+          // item (the visual is fine, but pointer events never reach the
+          // buttons — which is exactly the bug we portaled out of in the
+          // first place).
+          zIndex: 210,
+        }}
       >
         {canPickAll && (
           <button className={`dsw-item ${showingAll ? "on" : ""}`} onClick={() => pick(ALL)} role="menuitem">All companies</button>

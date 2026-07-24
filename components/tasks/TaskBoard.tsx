@@ -47,6 +47,7 @@ import { HiOutlineBugAnt } from "react-icons/hi2";
 const CARD_MIME = "application/x-sthyra-task-card";
 const STAGE_MIME = "application/x-sthyra-task-stage";
 const DELETE_APPROVAL_SESSION_KEY = "sthyra_task_stage_delete_approval";
+const DRAG_GHOST_HOST_ID = "sthyra-drag-ghost-host";
 const STAGE_COLORS = [
   { value: "#94a3b8", label: "Stone" },
   { value: "#2563eb", label: "Blue" },
@@ -208,7 +209,8 @@ export function TaskBoard({
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
-  const [drawer, setDrawer] = useState<DrawerState>(null);
+  const dragGhostHostRef = useRef<HTMLDivElement | null>(null);
+  const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const [boardError, setBoardError] = useState<string | null>(null);
   const [stageDrafts, setStageDrafts] = useState<Record<string, StageDraft>>(defaultStageDrafts(stages.length ? stages : DEFAULT_TASK_STAGES));
@@ -291,6 +293,35 @@ export function TaskBoard({
   useEffect(() => {
     setWorkflowOpen(false);
   }, [activeProjectId]);
+
+  // Pre-mount the offscreen drag-ghost host ONCE at component mount. This is
+  // the critical detail for first-drag-init success: dataTransfer.setDragImage()
+  // must be called SYNCHRONOUSLY inside dragstart. The browser snapshots the
+  // drag image at the moment dragstart fires and ignores any later setDragImage
+  // calls (even ones queued in requestAnimationFrame). So we always have a real
+  // DOM host ready to clone the source card into from the synchronous dragstart
+  // handler — no deferred measurement, no waiting on React to commit. The host
+  // sits at -10000px,-10000px so it's never visible.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let host = document.getElementById(DRAG_GHOST_HOST_ID) as HTMLDivElement | null;
+    if (!host) {
+      host = document.createElement("div");
+      host.id = DRAG_GHOST_HOST_ID;
+      host.style.position = "fixed";
+      host.style.top = "-10000px";
+      host.style.left = "-10000px";
+      host.style.width = "344px";
+      host.style.pointerEvents = "none";
+      host.style.zIndex = "-1";
+      document.body.appendChild(host);
+    }
+    dragGhostHostRef.current = host;
+    return () => {
+      // Leave the host in place across re-mounts within the same session. The
+      // browser tab tear-down will GC it.
+    };
+  }, []);
 
   const defaultCreateStage = useMemo(
     () => stageList.find((stage) => !stage.is_done)?.id ?? stageList[0]?.id ?? "todo",
@@ -775,11 +806,59 @@ export function TaskBoard({
           event.dataTransfer.effectAllowed = "move";
           event.dataTransfer.setData(CARD_MIME, task.id);
           event.dataTransfer.setData("text/plain", task.id);
+
+          // SYNCHRONOUS drag image assignment. Per the HTML5 drag-and-drop
+          // spec, setDragImage() must be called from the synchronous body of
+          // the dragstart handler — calling it from requestAnimationFrame or
+          // setTimeout runs AFTER the browser has already captured its drag
+          // image, and is silently ignored. That's what caused the first drag
+          // to render only the (now 40% opaque) live card as the drag image
+          // and required the user to drag a second time for it to "stick".
+          //
+          // To get a faithful drag image on the FIRST drag (before React has
+          // re-rendered anything in response to setDraggingId), we clone the
+          // source card's DOM directly into the pre-mounted offscreen host and
+          // hand that clone to setDragImage. The clone is a real, laid-out
+          // card, so the OS drag image is the actual card the user picked up.
+          const sourceEl = event.currentTarget as HTMLElement;
+          const host = dragGhostHostRef.current;
+          if (host) {
+            // Clear any previous ghost content (left over from an earlier
+            // portal render that ran after a previous drag).
+            host.replaceChildren();
+            const clone = sourceEl.cloneNode(true) as HTMLElement;
+            clone.classList.add("task-card-ghost");
+            clone.removeAttribute("draggable");
+            clone.style.position = "static";
+            clone.style.visibility = "visible";
+            clone.style.transform = "none";
+            clone.style.opacity = "1";
+            host.appendChild(clone);
+            try {
+              const rect = clone.getBoundingClientRect();
+              // Offset the ghost so the cursor sits at the same point on the
+              // card the user grabbed (matches what users expect: the card
+              // they grabbed follows the pointer 1:1). Clamp so we always
+              // land inside the card.
+              const offsetX = Math.max(8, Math.min(rect.width - 8, event.clientX - rect.left));
+              const offsetY = Math.max(8, Math.min(rect.height - 8, event.clientY - rect.top));
+              event.dataTransfer.setDragImage(clone, offsetX, offsetY);
+            } catch {
+              // Some browsers throw if the drag image isn't ready; the default
+              // drag image (the live card) is an acceptable fallback.
+            }
+          }
         }}
         onDragEnd={() => {
           setDraggingId(null);
           setDragSourceStatus(null);
           setDragOverCol(null);
+          // Clear the cloned ghost so the next drag builds a fresh one.
+          // We can't rely on React's portal render alone to manage this
+          // because setDragImage needs to fire on the FIRST dragstart — before
+          // React has re-rendered the portal — so we manage the host directly.
+          const host = dragGhostHostRef.current;
+          if (host) host.replaceChildren();
           window.setTimeout(() => {
             justDraggedRef.current = false;
           }, 140);
@@ -831,6 +910,13 @@ export function TaskBoard({
       </article>
     );
   }
+
+  // The drag ghost is built imperatively in onDragStart (cloning the source
+  // card into the pre-mounted offscreen host) and torn down in onDragEnd.
+  // We deliberately do NOT portal-render it from React: the OS drag image
+  // must be set synchronously inside dragstart, before React has re-rendered
+  // in response to setDraggingId. Managing the host directly in the DOM keeps
+  // the first drag working without any deferred state cycle.
 
   return (
     <>
@@ -1457,7 +1543,7 @@ export function TaskBoard({
                   const StageIcon = getTaskStageIcon(stage);
                   return (
                     <section
-                      className={`kanban-column ${dragOverCol === stage.id ? "dragover" : ""} ${draggingStageId === stage.id ? "dragging-stage" : ""} ${isDraggingTask ? "drag-card-active" : ""}`}
+                      className={`kanban-column ${dragOverCol === stage.id ? "dragover" : ""} ${draggingStageId === stage.id ? "dragging-stage" : ""}`}
                       key={stage.id}
                       style={{ ["--stage-accent" as string]: stage.color }}
                       aria-label={stage.label}

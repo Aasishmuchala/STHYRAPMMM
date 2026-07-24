@@ -494,7 +494,9 @@ main { padding: 30px 30px 60px; max-width: 1320px; }
 .col-empty { font-size: 11.5px; color: var(--text-faint); text-align: center; padding: 14px 6px; }
 .col.dragover { outline: 1.5px dashed var(--glass-border); outline-offset: -4px; background: var(--accent-soft); }
 .col.dragging-stage { opacity: 0.56; }
-.col.drag-card-active .col-body { gap: 16px; }
+/* Note: do NOT change column gap on drag — flex-gap changes reflow every card
+   in the column, which feels like a "tilt then drag" handoff. The drop
+   placeholder (rendered below the cards) is enough visual feedback. */
 
 /* ---- clients pipeline ---- */
 .pipe { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; align-items: start; }
@@ -1783,6 +1785,20 @@ html[data-workspace-surface="plane"] .dsw-pop {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(148, 163, 184, 0.18);
   box-shadow: 0 16px 36px -24px rgba(15, 23, 42, 0.24);
+}
+
+/* The pop is portaled to document.body, so the .side-switcher-scoped override
+   below doesn't match. Apply the same plane-mode typography directly to the
+   pop's items so the menu rows stay readable on the white background. */
+html[data-workspace-surface="plane"] .dsw-pop .dsw-item {
+  color: #55657f;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+html[data-workspace-surface="plane"] .dsw-pop .dsw-item.on {
+  color: #0b8a9f;
+  background: #f0f8fb;
 }
 
 html[data-workspace-surface="plane"] .skel {
@@ -6730,6 +6746,10 @@ html[data-workspace-surface="plane"] .profile-role {
   box-shadow: 0 22px 36px -30px rgba(15, 23, 42, 0.2);
   cursor: pointer;
   transition: transform 170ms ease, box-shadow 170ms ease, border-color 170ms ease;
+  /* During drag the source card must NOT animate — any transition on opacity or
+     transform reads as a "tilt" / fade handoff before the OS drag image kicks
+     in. We force those properties to be instantaneous while .dragging is set. */
+  transition-property: transform, box-shadow, border-color;
 }
 
 .task-card::before {
@@ -6748,8 +6768,34 @@ html[data-workspace-surface="plane"] .profile-role {
 }
 
 .task-card.dragging {
-  opacity: 0.88;
-  transform: rotate(1deg);
+  /* Source card stays in place; the OS drag image is the floating ghost.
+     Keeping any transform here causes a visible tilt on drag-start, which
+     makes the motion feel like "snap, then drag" instead of a single motion.
+     No transition on opacity either — we want the dim to be instant. */
+  opacity: 0.4;
+  cursor: grabbing;
+  transition: none;
+}
+
+/* Offscreen clone of the card used as the browser drag image. Mirrors
+   .task-card so the OS-rendered ghost looks identical to the source. */
+.task-card-ghost {
+  position: relative;
+  width: 344px;
+  padding: 14px 14px 13px;
+  border-radius: 22px;
+  border: 1px solid rgba(23, 32, 51, 0.06);
+  background:
+    radial-gradient(circle at 14% 12%, var(--card-glow-a, rgba(37, 99, 235, 0.14)), transparent 34%),
+    radial-gradient(circle at 90% 88%, var(--card-glow-b, rgba(245, 158, 11, 0.13)), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(252, 253, 255, 0.98));
+  box-shadow: 0 32px 48px -28px rgba(15, 23, 42, 0.4);
+  pointer-events: none;
+  /* The host div is positioned at -10000px,-10000px so the ghost is offscreen,
+     but we still need text wrapping and inline layout to work like a real card
+     so its measured size is correct. */
+  color: #1f2937;
+  font-family: inherit;
 }
 
 .task-card-topline {
