@@ -189,16 +189,23 @@ export default async function AttendancePage() {
     });
   }
 
-  const rosterMap = new Map<string, { userId: string; name: string; present: number; last: string | null }>();
+  const rosterMap = new Map<string, { userId: string; name: string; present: number; last: string | null; loggedDays: Set<string> }>();
   if (isManager) {
     for (const row of teamRecords) {
       const name = row.person?.full_name || row.person?.email || "Unknown";
-      const entry = rosterMap.get(row.user_id) ?? { userId: row.user_id, name, present: 0, last: null };
-      if (monthKey(row.work_date) === thisMonth && isLoggedStatus(row.status)) entry.present += 1;
+      const entry = rosterMap.get(row.user_id) ?? { userId: row.user_id, name, present: 0, last: null, loggedDays: new Set<string>() };
+      // A single check-in event fans out to one row per division the user
+      // belongs to (so each manager sees their own copy). If we counted rows,
+      // a member in N branches would have N rows per day → "26 days" when the
+      // truth is 13. Count distinct work_dates instead.
+      if (monthKey(row.work_date) === thisMonth && isLoggedStatus(row.status)) {
+        entry.loggedDays.add(row.work_date);
+      }
       if (isLoggedStatus(row.status) && (!entry.last || row.checked_in_at > entry.last)) entry.last = row.checked_in_at;
       rosterMap.set(row.user_id, entry);
     }
   }
+  for (const entry of rosterMap.values()) entry.present = entry.loggedDays.size;
 
   const roster = [...rosterMap.values()].sort((a, b) => b.present - a.present || a.name.localeCompare(b.name));
   const maxPresent = Math.max(1, ...roster.map((person) => person.present));
