@@ -102,3 +102,18 @@ export const IconPeople = (p: IconProps) => (
 export const IconChart = (p: IconProps) => (
   <Svg {...p}><path d="M4 19V5M4 19h16M8 15l3-4 3 3 5-7" /></Svg>
 );
+export const IconTarget = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5.5" /><circle cx="12" cy="12" r="1.5" fill="currentColor" /></Svg>
+);
+export const IconTrendingUp = (p: IconProps) => (
+  <Svg {...p}><path d="M3 17l6-6 4 4 8-8" /><path d="M14 7h7v7" /></Svg>
+);
+export const IconUserCheck = (p: IconProps) => (
+  <Svg {...p}><circle cx="9" cy="8" r="3.4" /><path d="M3 20a6 6 0 0 1 12 0" /><path d="M16 11l2 2 4-4" /></Svg>
+);
+export const IconZap = (p: IconProps) => (
+  <Svg {...p} strokeWidth={1.6}><path d="M13 2L4 14h7l-1 8 9-12h-7z" /></Svg>
+);
+export const IconBriefcase = (p: IconProps) => (
+  <Svg {...p}><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" /><path d="M3 13h18" /></Svg>
+);

@@ -35,9 +35,40 @@ export function NotificationsBell() {
 
   useEffect(() => {
     setMounted(true);
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
+    // Only start the 60s poll once the bell scrolls into view (it lives in the
+    // top bar — always visible on first paint — but IntersectionObserver is
+    // cheap, and it correctly suspends the polling when the user opens a
+    // full-screen modal/overlay that hides the bell).
+    const el = containerRef.current;
+    if (!el) return;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    function start() {
+      if (timer) return;
+      load();
+      timer = setInterval(load, 60000);
+    }
+    function stop() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) start(); else stop();
+        }
+      },
+      { rootMargin: "0px", threshold: 0 },
+    );
+    io.observe(el);
+    // Begin polling immediately on mount as well — the bell is in the top bar
+    // and is already visible by the time this effect runs.
+    start();
+    return () => {
+      io.disconnect();
+      stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

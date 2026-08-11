@@ -1,9 +1,19 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { IconSearch, IconSparkle } from "@/components/icons";
 import { SignOutButton } from "@/components/auth/SignOutButton";
-import { NotificationsBell } from "./NotificationsBell";
-import { GlobalSearch } from "./GlobalSearch";
+
+// Optional features are pulled out of the critical-path bundle — they only
+// register when the user clicks the bell or the search trigger.
+const GlobalSearch = dynamic(
+  () => import("./GlobalSearch").then((m) => m.GlobalSearch),
+  { ssr: false },
+);
+const NotificationsBell = dynamic(
+  () => import("./NotificationsBell").then((m) => m.NotificationsBell),
+  { ssr: false },
+);
 
 export function TopBar({ initials, canSeeFinances, onMenu }: { initials: string; canSeeFinances: boolean; onMenu?: () => void }) {
   function openAi() {

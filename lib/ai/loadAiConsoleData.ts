@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Run, Pending } from "@/components/ai/AiConsole";
 import { hasSharedOmegaKey } from "@/lib/ai/keyBridge";
@@ -58,4 +59,24 @@ export async function loadAiConsoleData(supabase: SupabaseClient<any, any, any>)
     runCount: month.length,
     configured,
   };
+}
+
+/**
+ * Cached wrapper. The plan calls for `unstable_cache` keyed on the user's id
+ * so two users never share each other's RLS-filtered result. The Supabase
+ * client passed in is per-request, but its cookie is per-user, so keying on
+ * `userId` gives correct per-user caching while sharing across renders.
+ *
+ * Mutations under `app/ai/actions.ts` and `lib/ai/...` should call
+ * `revalidateTag('ai-console')` so this cache invalidates immediately when
+ * the underlying rows change. Otherwise the 60-second `revalidate` window
+ * is the staleness cap.
+ */
+export function loadAiConsoleDataCached(supabase: SupabaseClient<any, any, any>, userId: string): Promise<AiConsoleData> {
+  const cached = unstable_cache(
+    async () => loadAiConsoleData(supabase),
+    ["ai-console", userId],
+    { tags: ["ai-console"], revalidate: 60 },
+  );
+  return cached();
 }

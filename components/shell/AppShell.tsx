@@ -1,10 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
-import { CommandPalette } from "./CommandPalette";
-import { AiDrawerHost, type AiDrawerData } from "./AiDrawerHost";
+import type { AiDrawerData } from "./AiDrawerHost";
+
+// Optional surfaces — loaded only when the user activates them. The on-screen
+// trigger (Cmd-K, the AI pill) is part of the static TopBar chunk, so the
+// perceived latency drops to whatever the dynamic chunk fetch takes.
+const CommandPalette = dynamic(
+  () => import("./CommandPalette").then((m) => m.CommandPalette),
+  { ssr: false },
+);
+const AiDrawerHost = dynamic(
+  () => import("./AiDrawerHost").then((m) => m.AiDrawerHost),
+  { ssr: false },
+);
 
 type Nav = { slug: string; name: string };
 

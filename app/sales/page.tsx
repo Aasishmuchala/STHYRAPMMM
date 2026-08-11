@@ -1,33 +1,30 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { buildWorkspaceAccess } from "@/lib/access";
-import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
+import { resolveActiveCompany } from "@/lib/activeCompany";
+import {
+  getWorkspaceContext,
+  loadShellUserSummaryCached,
+  readActiveCompanySlugCached,
+} from "@/lib/workspaceContext";
 import { initials } from "@/lib/format";
-import { loadShellUserSummary } from "@/lib/shellUser";
 import { SalesView, type Deal, type SalesTarget, type Activity } from "@/components/sales/SalesView";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 type DealRow = Deal & { owner_id: string };
 
 export default async function SalesPage() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
-  const [{ data: profile }, { data: memberships }, { data: divisions }] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
-    supabase.from("divisions").select("id,slug,name").order("slug"),
-  ]);
-  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
-  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
-  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
+  const divs: DivisionOpt[] = ctx.divisions.filter(
     (d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id),
   );
-  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlugCached(), divs, access.isSuperAdmin);
 
   // Sales is a single-company view. Owners on "All companies" default to the first.
   const effective = divs.find((d) => d.id === activeCompany.activeDivisionId) ?? divs[0] ?? null;
@@ -62,9 +59,9 @@ export default async function SalesPage() {
     myActivity = myActRes.data ?? null;
     teamCallsToday = (teamActRes.data ?? []).reduce((s, r) => s + (r.calls ?? 0), 0);
   }
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: membershipRows,
+    memberships: ctx.memberships,
     accessibleDivisions: divs,
     canPickAll: access.isSuperAdmin,
   });

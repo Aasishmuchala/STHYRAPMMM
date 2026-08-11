@@ -3,8 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { IconChevronDown } from "@/components/icons";
-import { FiBriefcase } from "react-icons/fi";
+import { IconBriefcase, IconChevronDown } from "@/components/icons";
 
 type Nav = { slug: string; name: string };
 
@@ -124,7 +123,7 @@ export function DivisionSwitcher({ divisions, canPickAll = false }: { divisions:
         type="button"
       >
         <span className="dsw-trigger-icon" aria-hidden="true">
-          <FiBriefcase size={15} />
+          <IconBriefcase size={15} />
         </span>
         <span className="dsw-label">{label}</span>
         <span className="dsw-trigger-caret" aria-hidden="true">

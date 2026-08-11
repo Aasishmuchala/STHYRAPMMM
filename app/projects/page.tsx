@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { ProjectsView } from "@/components/projects/ProjectsView";
 import { buildWorkspaceAccess } from "@/lib/access";
-import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
+import { resolveActiveCompany, isInScope } from "@/lib/activeCompany";
+import {
+  getWorkspaceContext,
+  loadShellUserSummaryCached,
+  readActiveCompanySlugCached,
+} from "@/lib/workspaceContext";
 import { initials } from "@/lib/format";
-import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 type ProjectRow = {
@@ -25,33 +27,27 @@ type MemberRow = { id: string; full_name: string | null; email: string | null };
 type DivisionMembershipRow = { user_id: string; division_id: string; role: string };
 
 export default async function ProjectsPage() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const profile = ctx.profile;
+  const user = ctx.user;
 
   const [
-    { data: profile },
-    { data: memberships },
-    { data: divisions },
     { data: projectRows },
     { data: taskRows },
   ] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
-    supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("projects").select("id,name,division_id,client,description,starts_on,target_end_on,lead_id,lead:profiles!projects_lead_id_fkey(full_name),divisions(name)").is("deleted_at", null).eq("status", "active").order("name"),
     supabase.from("tasks").select("project_id,assignee_id").is("deleted_at", null),
   ]);
 
-  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
-  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
   const canSeeFinances = access.canSeeFinances;
-  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
+  const divs: DivisionOpt[] = ctx.divisions.filter(
     (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
   );
   // Scope the project list to the one active company (owners may pick "all").
-  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), divs, access.isSuperAdmin);
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlugCached(), divs, access.isSuperAdmin);
   // New projects can only be created inside the active company, so the create
   // form's Division dropdown offers just that company (all of them under "all").
   const creatableDivisions = (access.isSuperAdmin
@@ -129,9 +125,9 @@ export default async function ProjectsPage() {
       openTasks: (viewerManages ? taskCounts : myTaskCounts).get(project.id) ?? 0,
     };
     });
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: membershipRows,
+    memberships: ctx.memberships,
     accessibleDivisions: divs,
     canPickAll: access.isSuperAdmin,
   });

@@ -1,15 +1,12 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { AppShell } from "@/components/shell/AppShell";
 import { initials } from "@/lib/format";
-import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
-import { loadShellUserSummary } from "@/lib/shellUser";
+import { loadAiConsoleDataCached } from "@/lib/ai/loadAiConsoleData";
+import { getWorkspaceContext, loadShellUserSummaryCached } from "@/lib/workspaceContext";
 import { BurndownChart, type BurndownPoint } from "@/components/reports/BurndownChart";
 import { ActivityLog, type ActivityEntry } from "@/components/reports/ActivityLog";
-
-import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
 
 export const dynamic = "force-dynamic";
 
@@ -24,38 +21,35 @@ type ActivityRow = {
 };
 
 export default async function ReportsPage() {
-  const supabase = (await createClient()) as unknown as DB;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name,email,global_role")
-    .eq("id", user.id)
-    .maybeSingle<{ full_name: string | null; email: string | null; global_role: string | null }>();
-  const { data: memberships } = await supabase
-    .from("division_members")
-    .select("role,division_id")
-    .eq("user_id", user.id)
-    .returns<{ role: string; division_id: string }[]>();
-  const access = buildWorkspaceAccess(profile?.global_role, memberships ?? []);
-
-  const { data: divisionsRes } = await supabase.from("divisions").select("id,slug,name").order("slug");
-  const divisions = (divisionsRes ?? []) as { id: string; slug: string; name: string }[];
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
+  const divisions = ctx.divisions;
   const accessibleDivisions = divisions.filter(
     (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
   );
-  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), accessibleDivisions, access.isSuperAdmin);
+
+  // First batch: everything we need before deciding whether to render the data —
+  // active-company resolution, AI summary, shell user. Run in parallel.
+  const [activeSlug, aiData, shellUser] = await Promise.all([
+    readActiveCompanySlug(),
+    loadAiConsoleDataCached(supabase, user.id),
+    loadShellUserSummaryCached({
+      profile,
+      memberships: ctx.memberships,
+      accessibleDivisions: divisions,
+      canPickAll: access.isSuperAdmin,
+    }),
+  ]);
+
+  const activeCompany = resolveActiveCompany(activeSlug, accessibleDivisions, access.isSuperAdmin);
   const canViewReports = access.isSuperAdmin || (
     activeCompany.activeDivisionId != null && access.companyOwnerDivisionIds.has(activeCompany.activeDivisionId)
   );
-  const aiData = await loadAiConsoleData(supabase);
-  const shellUser = await loadShellUserSummary({
-    profile,
-    memberships: memberships ?? [],
-    accessibleDivisions: divisions,
-    canPickAll: access.isSuperAdmin,
-  });
 
   const shellProps = {
     divisions: divisions.map((d) => ({ slug: d.slug, name: d.name.replace(/^Sthyra\s+/, "") })),
@@ -97,14 +91,24 @@ export default async function ReportsPage() {
     );
   }
 
-  // ----- Activity / audit log -----
-  const { data: logRows } = await supabase
-    .from("activity_log")
-    .select("id,actor_id,action,entity_type,entity_label,changes,created_at")
-    .order("created_at", { ascending: false })
-    .limit(400)
-    .returns<ActivityRow[]>();
+  // Second batch: the actual report data — activity log + burndown — in parallel.
+  const [{ data: logRows }, { data: cyclesRes }] = await Promise.all([
+    supabase
+      .from("activity_log")
+      .select("id,actor_id,action,entity_type,entity_label,changes,created_at")
+      .order("created_at", { ascending: false })
+      .limit(400)
+      .returns<ActivityRow[]>(),
+    supabase
+      .from("project_cycles")
+      .select("id,name,project_id,starts_on,status,projects(name)")
+      .eq("status", "active")
+      .order("starts_on", { ascending: false })
+      .limit(1)
+      .returns<{ id: string; name: string; projects: { name: string } | { name: string }[] | null }[]>(),
+  ]);
   const rows = logRows ?? [];
+  const cycles = cyclesRes ?? [];
 
   const actorIds = Array.from(new Set(rows.map((r) => r.actor_id).filter((x): x is string => Boolean(x))));
   const actorNames = new Map<string, string>();
@@ -128,16 +132,6 @@ export default async function ReportsPage() {
     changes: r.changes,
     created_at: r.created_at,
   }));
-
-  // ----- Burndown (secondary) -----
-  const { data: cyclesRes } = await supabase
-    .from("project_cycles")
-    .select("id,name,project_id,starts_on,status,projects(name)")
-    .eq("status", "active")
-    .order("starts_on", { ascending: false })
-    .limit(1)
-    .returns<{ id: string; name: string; projects: { name: string } | { name: string }[] | null }[]>();
-  const cycles = cyclesRes ?? [];
 
   let chartData: BurndownPoint[] = [];
   let chartTitle = "Pick a cycle";

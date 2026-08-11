@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   FiActivity,
   FiCalendar,
@@ -18,8 +17,7 @@ import { AvatarStack, DonutChart, StatCard } from "@/components/ui";
 import { readActiveCompanySlug, resolveActiveCompany } from "@/lib/activeCompany";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
-import { loadShellUserSummary } from "@/lib/shellUser";
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext, loadShellUserSummaryCached } from "@/lib/workspaceContext";
 import type { DivisionOpt } from "@/lib/tasks-types";
 
 type RecordRow = {
@@ -89,22 +87,15 @@ function isLoggedStatus(status: RecordRow["status"]): boolean {
 }
 
 export default async function AttendancePage() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
-  const [{ data: profile }, { data: memberships }, { data: divisions }] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
-    supabase.from("divisions").select("id,slug,name").order("slug"),
-  ]);
-
-  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
+  const membershipRows = ctx.memberships;
   const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
-  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
+  const divs: DivisionOpt[] = ctx.divisions.filter(
     (d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id),
   );
   // Owners of a company/team must be able to see attendance of that team's
@@ -141,6 +132,7 @@ export default async function AttendancePage() {
     .select(
       "id,user_id,division_id,work_date,checked_in_at,status,location:attendance_locations(name),person:profiles!attendance_records_user_id_fkey(full_name,email)",
     )
+    .limit(2000)
     .gte("work_date", sinceStr)
     .order("checked_in_at", { ascending: false })
     .returns<RecordRow[]>();
@@ -288,7 +280,7 @@ export default async function AttendancePage() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
     memberships: membershipRows,
     accessibleDivisions: divs,

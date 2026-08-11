@@ -1,34 +1,25 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { AppShell } from "@/components/shell/AppShell";
 import { initials } from "@/lib/format";
-import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
-import { loadShellUserSummary } from "@/lib/shellUser";
-
-import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
+import { loadAiConsoleDataCached } from "@/lib/ai/loadAiConsoleData";
+import {
+  getWorkspaceContext,
+  loadShellUserSummaryCached,
+} from "@/lib/workspaceContext";
 
 export const dynamic = "force-dynamic";
 
 export default async function RoadmapPage() {
-  const supabase = (await createClient()) as unknown as DB;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name,email,global_role")
-    .eq("id", user.id)
-    .maybeSingle<{ full_name: string | null; email: string | null; global_role: string | null }>();
-  const { data: memberships } = await supabase
-    .from("division_members")
-    .select("role,division_id")
-    .eq("user_id", user.id)
-    .returns<{ role: string; division_id: string }[]>();
-  const access = buildWorkspaceAccess(profile?.global_role, memberships ?? []);
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
 
-  const [divisionsRes, releasesRes, okrsRes, aiData] = await Promise.all([
-    supabase.from("divisions").select("id,slug,name").order("slug"),
+  const [releasesRes, okrsRes, aiData] = await Promise.all([
     supabase
       .from("project_releases")
       .select("id,name,target_date,status,project_id,projects(name,division_id)")
@@ -41,14 +32,14 @@ export default async function RoadmapPage() {
       .order("period", { ascending: false })
       .limit(20)
       .returns<{ id: string; title: string; description: string | null; target_metric: Record<string, unknown>; current_value: number; period: string; division_id: string | null }[]>(),
-    loadAiConsoleData(supabase),
+    loadAiConsoleDataCached(supabase, user.id),
   ]);
 
-  const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
+  const divisions = ctx.divisions;
   const releases = (releasesRes.data ?? []) as { id: string; name: string; target_date: string | null; status: string; project_id: string; projects: { name: string; division_id: string } | { name: string; division_id: string }[] | null }[];
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: memberships ?? [],
+    memberships: ctx.memberships,
     accessibleDivisions: divisions,
     canPickAll: access.isSuperAdmin,
   });

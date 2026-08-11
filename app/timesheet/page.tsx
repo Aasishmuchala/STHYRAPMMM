@@ -1,32 +1,24 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { AppShell } from "@/components/shell/AppShell";
 import { TimesheetGrid } from "@/components/timesheet/TimesheetGrid";
 import { initials } from "@/lib/format";
-import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
-import { loadShellUserSummary } from "@/lib/shellUser";
-
-import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
+import { loadAiConsoleDataCached } from "@/lib/ai/loadAiConsoleData";
+import {
+  getWorkspaceContext,
+  loadShellUserSummaryCached,
+} from "@/lib/workspaceContext";
 
 export const dynamic = "force-dynamic";
 
 export default async function TimesheetPage() {
-  const supabase = (await createClient()) as unknown as DB;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name,email,global_role")
-    .eq("id", user.id)
-    .maybeSingle<{ full_name: string | null; email: string | null; global_role: string | null }>();
-  const { data: memberships } = await supabase
-    .from("division_members")
-    .select("role,division_id")
-    .eq("user_id", user.id)
-    .returns<{ role: string; division_id: string }[]>();
-  const access = buildWorkspaceAccess(profile?.global_role, memberships ?? []);
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
   if (!access.canSeePeople) redirect("/");
 
   // Window: last 7 days (Mon -> Sun)
@@ -38,8 +30,7 @@ export default async function TimesheetPage() {
   const startIso = weekStart.toISOString().slice(0, 10);
   const endIso = weekEnd.toISOString().slice(0, 10);
 
-  const [divisionsRes, peopleRes, logsRes, aiData] = await Promise.all([
-    supabase.from("divisions").select("id,slug,name").order("slug"),
+  const [peopleRes, logsRes, aiData] = await Promise.all([
     supabase
       .from("profiles")
       .select("id,full_name,email,avatar_seed,global_role")
@@ -52,16 +43,16 @@ export default async function TimesheetPage() {
       .gte("started_at", startIso)
       .lt("started_at", endIso)
       .returns<{ id: string; task_id: string; profile_id: string; started_at: string; minutes: number; note: string | null }[]>(),
-    loadAiConsoleData(supabase),
+    loadAiConsoleDataCached(supabase, user.id),
   ]);
 
-  const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
+  const divisions = ctx.divisions;
   const people = (peopleRes.data ?? []).filter(() =>
-    access.isSuperAdmin || memberships?.some((m) => m.division_id) // everyone with at least one membership
+    access.isSuperAdmin || ctx.memberships.some((m) => m.division_id) // everyone with at least one membership
   );
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: memberships ?? [],
+    memberships: ctx.memberships,
     accessibleDivisions: divisions,
     canPickAll: access.isSuperAdmin,
   });

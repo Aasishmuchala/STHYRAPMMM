@@ -1,13 +1,12 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
 import { PageHeader, Button } from "@/components/ui";
 import { initials } from "@/lib/format";
-import { loadShellUserSummary } from "@/lib/shellUser";
+import { loadShellUserSummaryCached } from "@/lib/workspaceContext";
+import { getWorkspaceContext } from "@/lib/workspaceContext";
 import { DEFAULT_TASK_STAGES } from "@/lib/tasks-types";
 import type {
   BoardTask,
@@ -78,23 +77,18 @@ function buildTaskHref(search: { div?: string; project?: string; view?: string; 
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<{ div?: string; project?: string; view?: string; tab?: string; cycle?: string; module?: string; assignee?: string }> }) {
   const sp = await searchParams;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
   const [
-    { data: profile },
-    { data: memberships },
-    { data: divisions },
     { data: projectRows },
     { data: memberRows },
     { data: myTaskProjectRows },
     { data: myTaskAssigneeRows },
   ] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
-    supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("projects").select("id,name,division_id,lead_id").is("deleted_at", null).eq("status", "active").order("name"),
     supabase.from("profiles").select("id,full_name").eq("is_active", true),
     supabase.from("tasks").select("project_id").eq("assignee_id", user.id).is("deleted_at", null),
@@ -106,9 +100,9 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     ? await supabase.from("tasks").select("project_id").in("id", myAssignedTaskIds).is("deleted_at", null)
     : { data: [] as { project_id: string | null }[] };
 
-  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
+  const membershipRows = ctx.memberships;
   const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
-  const divs: DivisionOpt[] = ((divisions ?? []) as DivisionOpt[]).filter(
+  const divs: DivisionOpt[] = ctx.divisions.filter(
     (division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id)
   );
   // Scope everything on this page to the one company the user has active. Owners
@@ -335,7 +329,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
   const modulesHref = buildTaskHref(sp, { tab: "modules", cycle: null });
   const epicCount = tasks.filter((task) => task.item_type === "epic").length;
   const boardCount = tasks.filter((task) => task.item_type !== "epic").length;
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
     memberships: membershipRows,
     accessibleDivisions: divs,

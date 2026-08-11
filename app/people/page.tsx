@@ -1,12 +1,14 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { PeopleView } from "@/components/people/PeopleView";
 import { buildWorkspaceAccess } from "@/lib/access";
-import { readActiveCompanySlug, resolveActiveCompany, isInScope } from "@/lib/activeCompany";
+import { resolveActiveCompany, isInScope } from "@/lib/activeCompany";
+import {
+  getWorkspaceContext,
+  loadShellUserSummaryCached,
+  readActiveCompanySlugCached,
+} from "@/lib/workspaceContext";
 import { initials } from "@/lib/format";
-import { loadShellUserSummary } from "@/lib/shellUser";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Person, PersonMembership, PersonDaily, PersonTask } from "@/components/people/types";
 
@@ -15,27 +17,22 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<{ user?: string; div?: string }>;
 }) {
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
   const sp = await searchParams;
-  const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
   const [
-    { data: profile },
-    { data: memberships },
-    { data: divisions },
     { data: workload },
     { data: allMemberships },
   ] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
-    supabase.from("divisions").select("id,slug,name").order("slug"),
     supabase.from("profile_workload_v1").select("profile_id,full_name,email,global_role,is_active,open_tasks,done_tasks,overdue_tasks,active_cycles,projects_led,created_at"),
     supabase.from("division_members").select("id,user_id,division_id,role,divisions(name,slug)"),
   ]);
 
-  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
-  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
   if (!access.canSeePeople) redirect("/");
 
   // Build membership lookup keyed by user_id
@@ -74,10 +71,10 @@ export default async function PeoplePage({
   // Scope the roster to the active company. A person is an "employee" of a
   // company when they hold a division_members row in it; super-admins aren't
   // employees but can view any company, and "All companies" shows everyone.
-  const accessibleDivs: DivisionOpt[] = (divisions ?? [])
+  const accessibleDivs: DivisionOpt[] = ctx.divisions
     .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
     .filter((d) => access.isSuperAdmin || access.workspaceDivisionIds.has(d.id) || access.financeDivisionIds.has(d.id) || access.peopleDivisionIds.has(d.id));
-  const activeCompany = resolveActiveCompany(await readActiveCompanySlug(), accessibleDivs, access.isSuperAdmin);
+  const activeCompany = resolveActiveCompany(await readActiveCompanySlugCached(), accessibleDivs, access.isSuperAdmin);
   const scopedDivs: DivisionOpt[] = accessibleDivs.filter((d) => isInScope(activeCompany, d.id));
   const scopedPeople: Person[] = people.filter((p) =>
     (membershipsByUser.get(p.id) ?? []).some((m) => isInScope(activeCompany, m.division_id))
@@ -147,9 +144,9 @@ export default async function PeoplePage({
         due_date: r.due_date,
       }));
   }
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: membershipRows,
+    memberships: ctx.memberships,
     accessibleDivisions: accessibleDivs,
     canPickAll: access.isSuperAdmin,
   });

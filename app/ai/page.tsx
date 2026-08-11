@@ -1,44 +1,32 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { AiConsole } from "@/components/ai/AiConsole";
-import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
+import { loadAiConsoleDataCached } from "@/lib/ai/loadAiConsoleData";
 import { deriveAiPolicy } from "@/lib/ai/policy";
 import { initials } from "@/lib/format";
-import { loadShellUserSummary } from "@/lib/shellUser";
-
-import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
+import {
+  getWorkspaceContext,
+  loadShellUserSummaryCached,
+} from "@/lib/workspaceContext";
 
 export const dynamic = "force-dynamic";
 
 export default async function AiPage() {
-  const supabase = (await createClient()) as unknown as DB;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name,email,global_role")
-    .eq("id", user.id)
-    .maybeSingle<{ full_name: string | null; email: string | null; global_role: string | null }>();
-  const { data: memberships } = await supabase
-    .from("division_members")
-    .select("role,division_id")
-    .eq("user_id", user.id)
-    .returns<{ role: string; division_id: string }[]>();
-
-  const policy = deriveAiPolicy(profile?.global_role, memberships ?? []);
+  const policy = deriveAiPolicy(profile?.global_role, ctx.memberships);
   if (!policy.canUseAssistant) redirect("/");
 
   const isOwner = policy.audience === "owner";
-  const [divisionsRes, aiData] = await Promise.all([
-    supabase.from("divisions").select("id,slug,name").order("slug"),
-    loadAiConsoleData(supabase),
-  ]);
-  const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
-  const shellUser = await loadShellUserSummary({
+  const aiData = await loadAiConsoleDataCached(supabase, user.id);
+  const divisions = ctx.divisions;
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: memberships ?? [],
+    memberships: ctx.memberships,
     accessibleDivisions: divisions,
     canPickAll: isOwner,
   });

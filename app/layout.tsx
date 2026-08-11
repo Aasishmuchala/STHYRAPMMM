@@ -4,6 +4,7 @@ import { Manrope, Inter, JetBrains_Mono, Cormorant_Garamond } from "next/font/go
 import type { CSSProperties } from "react";
 import { buildAppearanceStyleVars, isAllowedTheme } from "@/lib/appearance";
 import { WorkspaceToaster } from "@/components/shell/WorkspaceToaster";
+import { IdlePrefetch } from "@/components/shell/IdlePrefetch";
 import "./globals.css";
 
 // Inter (body) + Manrope (display headings) are above-the-fold everywhere, so they preload.
@@ -21,6 +22,10 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // The cookie store only needs one async hop — read every appearance cookie
+  // off the same `jar` to avoid a second round-trip. Each `jar.get(...)` is
+  // synchronous so they can't be parallelized further, but we at least skip
+  // calling `await cookies()` more than once per render.
   const jar = await cookies();
   const storedTheme = jar.get("sthyra-theme")?.value || "slate";
   const theme = isAllowedTheme(storedTheme) ? storedTheme : "slate";
@@ -38,6 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         {children}
         <WorkspaceToaster />
+        <IdlePrefetch />
       </body>
     </html>
   );

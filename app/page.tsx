@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext, loadShellUserSummaryCached } from "@/lib/workspaceContext";
+import { loadAiConsoleDataCached } from "@/lib/ai/loadAiConsoleData";
 import { getDashboard } from "@/lib/queries";
 import { inrShort, pct, initials } from "@/lib/format";
 import { isCompanyEmail } from "@/lib/auth/companyEmail";
@@ -9,8 +10,6 @@ import { StatCard, sparkSeries } from "@/components/ui";
 import { GettingStarted } from "@/components/home/GettingStarted";
 import { HomeAiCard } from "@/components/home/HomeAiCard";
 import { QuickNew } from "@/components/home/QuickNew";
-import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
-import { loadShellUserSummary } from "@/lib/shellUser";
 import {
   IconStudios, IconDigital, IconConstruction, IconLivingTwin, IconLayers,
 } from "@/components/icons";
@@ -42,21 +41,20 @@ function IconMargin({ size = 18 }: { size?: number }) {
 }
 
 export default async function HomePage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  if (!isCompanyEmail(user.email)) redirect("/login?error=company-email-only");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  if (!isCompanyEmail(ctx.user.email)) redirect("/login?error=company-email-only");
 
+  const supabase = ctx.supabase;
   const today = new Date();
   const sb = supabase as unknown as DB;
-  const [{ data: memberships }, d, aiData] = await Promise.all([
-    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
-    getDashboard(supabase, today, user.id),
-    loadAiConsoleData(sb),
+  const [d, aiData] = await Promise.all([
+    getDashboard(supabase, today, ctx.user.id),
+    loadAiConsoleDataCached(sb, ctx.user.id),
   ]);
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile: d.profile,
-    memberships: (memberships ?? []) as { role: string; division_id: string }[],
+    memberships: ctx.memberships,
     accessibleDivisions: d.navDivisions,
     canPickAll: d.isOwner,
   });

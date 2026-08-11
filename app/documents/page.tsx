@@ -1,11 +1,9 @@
 import { redirect } from "next/navigation";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/shell/AppShell";
 import { DocumentsView } from "@/components/documents/DocumentsView";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { initials } from "@/lib/format";
-import { loadShellUserSummary } from "@/lib/shellUser";
+import { getWorkspaceContext, loadShellUserSummaryCached } from "@/lib/workspaceContext";
 import type { DivisionOpt } from "@/lib/tasks-types";
 import type { Doc } from "@/lib/doc-types";
 
@@ -14,32 +12,34 @@ type DocRow = Omit<Doc, "division_name" | "division_slug"> & { divisions: Div };
 
 export default async function DocumentsPage({ searchParams }: { searchParams: Promise<{ div?: string }> }) {
   const sp = await searchParams;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = (await createClient()) as unknown as SupabaseClient<any, any, any>;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const profile = ctx.profile;
 
-  const [{ data: profile }, { data: memberships }, { data: divisions }, { data: docRows }] = await Promise.all([
-    supabase.from("profiles").select("full_name,email,global_role").eq("id", user.id).maybeSingle(),
-    supabase.from("division_members").select("role,division_id").eq("user_id", user.id),
-    supabase.from("divisions").select("id,slug,name").order("slug"),
-    supabase.from("documents").select("id,title,doc_type,status,body_md,storage_path,updated_at,division_id,divisions(name,slug)").is("deleted_at", null).order("updated_at", { ascending: false }).returns<DocRow[]>(),
-  ]);
+  const { data: docRows } = await supabase
+    .from("documents")
+    // TODO: strip body_md once DocReader is wired to lazy-fetch on open.
+    // The reader still consumes the body straight off the list payload.
+    .select("id,title,doc_type,status,body_md,storage_path,updated_at,division_id,divisions(name,slug)")
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(2000)
+    .returns<DocRow[]>();
 
-  const membershipRows = (memberships ?? []) as { role: string; division_id: string }[];
-  const access = buildWorkspaceAccess(profile?.global_role, membershipRows);
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
 
   const documents: Doc[] = (docRows ?? []).map((d) => ({
     ...d,
     division_name: d.divisions?.name ?? "",
     division_slug: d.divisions?.slug ?? "",
   })).filter((doc) => access.isSuperAdmin || access.workspaceDivisionIds.has(doc.division_id));
-  const divs: DivisionOpt[] = (divisions ?? [])
+  const divs: DivisionOpt[] = ctx.divisions
     .map((d: DivisionOpt) => ({ id: d.id, slug: d.slug, name: d.name }))
     .filter((division) => access.isSuperAdmin || access.workspaceDivisionIds.has(division.id) || access.financeDivisionIds.has(division.id));
-  const shellUser = await loadShellUserSummary({
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: membershipRows,
+    memberships: ctx.memberships,
     accessibleDivisions: divs,
     canPickAll: access.isSuperAdmin,
   });

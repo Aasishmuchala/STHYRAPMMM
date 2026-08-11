@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadUserWorkspaceAccess } from "@/lib/server-access";
@@ -438,6 +438,7 @@ export async function askAi(
   revalidatePath("/");
   revalidatePath("/tasks");
   revalidatePath("/projects");
+  revalidateTag("ai-console");
   return { ok: true, text: finalText, actions: allLogs, cost, sessionId, title: nextTitle };
 }
 
@@ -486,6 +487,7 @@ export async function generateBrief(sessionIdInput: string | null): Promise<AskR
   await notify(supabase, user.id, "digest", "Morning brief", res.text);
   revalidatePath("/ai");
   revalidatePath("/");
+  revalidateTag("ai-console");
   return { ok: true, text: res.text, actions: [], cost, sessionId, title: "Morning brief" };
 }
 
@@ -518,6 +520,7 @@ export async function approvePending(id: string): Promise<{ ok: true } | { error
   await supabase.from("ai_pending_actions").update({ status: "approved" }).eq("id", id);
   revalidatePath("/ai");
   revalidatePath("/");
+  revalidateTag("ai-console");
   return { ok: true };
 }
 
@@ -528,6 +531,7 @@ export async function rejectPending(id: string): Promise<{ ok: true } | { error:
   const { error } = await supabase.from("ai_pending_actions").update({ status: "rejected" }).eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/ai");
+  revalidateTag("ai-console");
   return { ok: true };
 }
 
@@ -541,6 +545,7 @@ export async function saveOmegaKey(key: string): Promise<{ ok: true; status: str
   await writeSharedOmegaKey(k, user?.id ?? null);
   revalidatePath("/settings");
   revalidatePath("/ai");
+  revalidateTag("ai-console");
   return { ok: true, status: (data as string) ?? "saved" };
 }
 
@@ -551,6 +556,7 @@ export async function clearOmegaKey(): Promise<{ ok: true } | { error: string }>
   await clearSharedOmegaKey();
   revalidatePath("/settings");
   revalidatePath("/ai");
+  revalidateTag("ai-console");
   return { ok: true };
 }
 

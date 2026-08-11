@@ -1,24 +1,25 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconChevronDown,
   IconClients,
-  IconConstruction,
-  IconDigital,
+  IconClock,
   IconDoc,
   IconFinance,
+  IconHome,
   IconLayers,
-  IconLivingTwin,
   IconPeople,
   IconSettings,
   IconSparkle,
-  IconStudios,
+  IconTarget,
   IconTasks,
+  IconTrendingUp,
+  IconUserCheck,
+  IconZap,
 } from "@/components/icons";
-import { FiClock, FiHome, FiPlus, FiTarget, FiTrendingUp, FiUserCheck, FiZap } from "react-icons/fi";
 import { DivisionSwitcher } from "./DivisionSwitcher";
 
 type Nav = { slug: string; name: string };
@@ -28,24 +29,6 @@ type Group = {
   items: Item[];
   defaultOpen?: boolean;
 };
-
-const divisionMeta: Record<string, { Icon: (p: { size?: number }) => React.ReactElement; start: string; end: string; tint: string }> = {
-  studios: { Icon: IconStudios, start: "#0f766e", end: "#115e59", tint: "rgba(255,255,255,0.14)" },
-  digital: { Icon: IconDigital, start: "#15803d", end: "#0f766e", tint: "rgba(255,255,255,0.14)" },
-  construction: { Icon: IconConstruction, start: "#c2410c", end: "#ea580c", tint: "rgba(255,255,255,0.14)" },
-  living_twin: { Icon: IconLivingTwin, start: "#1d4ed8", end: "#2563eb", tint: "rgba(255,255,255,0.14)" },
-};
-
-function getDivisionMeta(slug: string, name: string) {
-  const key = slug.toLowerCase();
-  if (divisionMeta[key]) return divisionMeta[key];
-
-  const normalized = name.toLowerCase();
-  if (normalized.includes("construction")) return { Icon: IconConstruction, start: "#c2410c", end: "#ea580c", tint: "rgba(255,255,255,0.14)" };
-  if (normalized.includes("digital")) return { Icon: IconDigital, start: "#15803d", end: "#0f766e", tint: "rgba(255,255,255,0.14)" };
-  if (normalized.includes("studio")) return { Icon: IconStudios, start: "#0f766e", end: "#115e59", tint: "rgba(255,255,255,0.14)" };
-  return { Icon: IconLivingTwin, start: "#1d4ed8", end: "#2563eb", tint: "rgba(255,255,255,0.14)" };
-}
 
 function NavGroup({
   title,
@@ -81,6 +64,7 @@ function NavGroup({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={true}
                 onClick={onNavigate}
                 className={`nav-item ${isActive ? "active" : ""}${index < visible.length - 1 ? " nav-item-border" : ""}`}
                 aria-current={isActive ? "page" : undefined}
@@ -124,15 +108,15 @@ export function Sidebar({
       defaultOpen: true,
       items: [
         { href: "/tasks", label: "Tasks", Icon: IconTasks, show: true },
-        { href: "/roadmap", label: "Roadmap", Icon: FiTarget, show: true },
+        { href: "/roadmap", label: "Roadmap", Icon: IconTarget, show: true },
         { href: "/projects", label: "Projects", Icon: IconLayers, show: true },
-        { href: "/timesheet", label: "Timesheet", Icon: FiClock, show: true },
+        { href: "/timesheet", label: "Timesheet", Icon: IconClock, show: true },
       ],
     },
     {
       title: "Sales & CRM",
       items: [
-        { href: "/sales", label: "Sales", Icon: FiTrendingUp, show: true },
+        { href: "/sales", label: "Sales", Icon: IconTrendingUp, show: true },
         { href: "/clients", label: "Clients", Icon: IconClients, show: canSeeFinances },
       ],
     },
@@ -140,7 +124,7 @@ export function Sidebar({
       title: "Team",
       items: [
         { href: "/people", label: "People", Icon: IconPeople, show: canSeePeople },
-        { href: "/attendance", label: "Attendance", Icon: FiUserCheck, show: true },
+        { href: "/attendance", label: "Attendance", Icon: IconUserCheck, show: true },
       ],
     },
     {
@@ -151,7 +135,7 @@ export function Sidebar({
       title: "Library",
       items: [
         { href: "/documents", label: "Documents", Icon: IconDoc, show: true },
-        { href: "/reports", label: "Reports", Icon: FiZap, show: true },
+        { href: "/reports", label: "Reports", Icon: IconZap, show: true },
       ],
     },
   ];
@@ -175,9 +159,9 @@ export function Sidebar({
         </div>
 
         <nav className="nav-home" aria-label="Home">
-          <Link href="/" onClick={onNavigate} className={`side-card nav-item nav-home-link ${active("/") ? "active" : ""}`} aria-current={active("/") ? "page" : undefined}>
+          <Link href="/" prefetch={true} onClick={onNavigate} className={`side-card nav-item nav-home-link ${active("/") ? "active" : ""}`} aria-current={active("/") ? "page" : undefined}>
             <span className="card-icon card-icon-soft">
-              <FiHome size={18} />
+              <IconHome size={18} />
             </span>
             <span>Home &middot; Inbox</span>
           </Link>
@@ -188,53 +172,13 @@ export function Sidebar({
             <NavGroup key={group.title} {...group} activeHref={active} onNavigate={onNavigate} />
           ))}
         </div>
-
-        {divisions.length > 0 && (
-          <section className="sidebar-section" aria-label="Your teams">
-            <div className="side-card teams-card">
-              <div className="teams-head">
-                <div className="teams-label">Your Teams</div>
-                <button type="button" className="teams-add" aria-label="Add team">
-                  <FiPlus size={14} />
-                </button>
-              </div>
-              <nav className="teams-list">
-                {divisions.map((division) => {
-                  const meta = getDivisionMeta(division.slug, division.name);
-                  const href = `/divisions/${division.slug}`;
-                  const Icon = meta.Icon;
-                  const teamStyle = {
-                    "--team-start": meta.start,
-                    "--team-end": meta.end,
-                    "--team-tint": meta.tint,
-                  } as CSSProperties;
-                  return (
-                    <Link
-                      key={division.slug}
-                      href={href}
-                      onClick={onNavigate}
-                      className={`nav-item team-item ${active(href) ? "active" : ""}`}
-                      aria-current={active(href) ? "page" : undefined}
-                      style={teamStyle}
-                    >
-                      <span className="card-icon team-icon">
-                        <Icon size={16} />
-                      </span>
-                      <span>{division.name}</span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
-          </section>
-        )}
       </div>
 
       <div className="side-bottom">
         <nav className="side-card utility-card" aria-label="Utilities">
           {(isOwner || canSeeFinances) && (
-            <Link href="/automations" onClick={onNavigate} className={`nav-item utility-item ${active("/automations") ? "active" : ""}`} aria-current={active("/automations") ? "page" : undefined}>
-              <FiZap size={16} />
+            <Link href="/automations" prefetch={true} onClick={onNavigate} className={`nav-item utility-item ${active("/automations") ? "active" : ""}`} aria-current={active("/automations") ? "page" : undefined}>
+              <IconZap size={16} />
               <span>Automations</span>
               <span className="nav-card-arrow">
                 <IconChevronDown size={15} style={{ transform: "rotate(-90deg)" }} />
@@ -242,7 +186,7 @@ export function Sidebar({
             </Link>
           )}
           {isOwner && (
-            <Link href="/ai" onClick={onNavigate} className={`nav-item utility-item ${active("/ai") ? "active" : ""}`} aria-current={active("/ai") ? "page" : undefined}>
+            <Link href="/ai" prefetch={true} onClick={onNavigate} className={`nav-item utility-item ${active("/ai") ? "active" : ""}`} aria-current={active("/ai") ? "page" : undefined}>
               <IconSparkle size={16} />
               <span>Assistant</span>
               <span className="nav-card-arrow">
@@ -250,7 +194,7 @@ export function Sidebar({
               </span>
             </Link>
           )}
-          <Link href="/settings" onClick={onNavigate} className={`nav-item utility-item ${active("/settings") ? "active" : ""}`} aria-current={active("/settings") ? "page" : undefined}>
+          <Link href="/settings" prefetch={true} onClick={onNavigate} className={`nav-item utility-item ${active("/settings") ? "active" : ""}`} aria-current={active("/settings") ? "page" : undefined}>
             <IconSettings size={16} />
             <span>Settings</span>
             <span className="nav-card-arrow">

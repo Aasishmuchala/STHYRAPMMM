@@ -1,35 +1,26 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { buildWorkspaceAccess } from "@/lib/access";
 import { AppShell } from "@/components/shell/AppShell";
 import { AutomationsView } from "@/components/automations/AutomationsView";
 import { initials } from "@/lib/format";
-import { loadAiConsoleData } from "@/lib/ai/loadAiConsoleData";
-import { loadShellUserSummary } from "@/lib/shellUser";
-
-import type { LooseSupabase as DB } from "@/lib/supabase/loose-client";
+import { loadAiConsoleDataCached } from "@/lib/ai/loadAiConsoleData";
+import {
+  getWorkspaceContext,
+  loadShellUserSummaryCached,
+} from "@/lib/workspaceContext";
 
 export const dynamic = "force-dynamic";
 
 export default async function AutomationsPage() {
-  const supabase = (await createClient()) as unknown as DB;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const ctx = await getWorkspaceContext();
+  if (!ctx) redirect("/login");
+  const supabase = ctx.supabase;
+  const user = ctx.user;
+  const profile = ctx.profile;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name,email,global_role")
-    .eq("id", user.id)
-    .maybeSingle<{ full_name: string | null; email: string | null; global_role: string | null }>();
-  const { data: memberships } = await supabase
-    .from("division_members")
-    .select("role,division_id")
-    .eq("user_id", user.id)
-    .returns<{ role: string; division_id: string }[]>();
-  const access = buildWorkspaceAccess(profile?.global_role, memberships ?? []);
+  const access = buildWorkspaceAccess(profile?.global_role, ctx.memberships);
 
-  const [divisionsRes, projectsRes, rulesRes, webhooksRes, aiData] = await Promise.all([
-    supabase.from("divisions").select("id,slug,name").order("slug"),
+  const [projectsRes, rulesRes, webhooksRes, aiData] = await Promise.all([
     supabase
       .from("projects")
       .select("id,name,division_id")
@@ -46,13 +37,13 @@ export default async function AutomationsPage() {
       .select("id,name,channel,enabled,project_id,division_id")
       .order("created_at", { ascending: false })
       .returns<{ id: string; name: string; channel: string; enabled: boolean; project_id: string | null; division_id: string | null }[]>(),
-    loadAiConsoleData(supabase),
+    loadAiConsoleDataCached(supabase, user.id),
   ]);
 
-  const divisions = (divisionsRes.data ?? []) as { id: string; slug: string; name: string }[];
-  const shellUser = await loadShellUserSummary({
+  const divisions = ctx.divisions;
+  const shellUser = await loadShellUserSummaryCached({
     profile,
-    memberships: memberships ?? [],
+    memberships: ctx.memberships,
     accessibleDivisions: divisions,
     canPickAll: access.isSuperAdmin,
   });
