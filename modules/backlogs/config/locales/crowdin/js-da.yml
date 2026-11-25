@@ -1,0 +1,89 @@
+#-- copyright
+#OpenProject is an open source project management software.
+#Copyright (C) the OpenProject GmbH
+#This program is free software; you can redistribute it and/or
+#modify it under the terms of the GNU General Public License version 3.
+#OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+#Copyright (C) 2006-2013 Jean-Philippe Lang
+#Copyright (C) 2010-2013 the ChiliProject Team
+#This program is free software; you can redistribute it and/or
+#modify it under the terms of the GNU General Public License
+#as published by the Free Software Foundation; either version 2
+#of the License, or (at your option) any later version.
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#You should have received a copy of the GNU General Public License
+#along with this program; if not, write to the Free Software
+#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+#See COPYRIGHT and LICENSE files for more details.
+#++
+---
+da:
+  js:
+    backlogs:
+      action_menu:
+        menu_label:
+          one: Handlinger for arbejdspakken
+          other: Handlinger for %{count} valgte arbejdspakker
+      announcements:
+        batch_too_large: "%{count} arbejdspakker kan ikke flyttes på én gang. Vælg højst %{max}."
+        fallback_item_label: Arbejdspakke
+        fallback_list_name: en anden liste
+        menu_scope_changed: Markeringen i menuen er ændret. Åbn menuen igen, før du flytter arbejdspakker.
+        move_failed_check_position: Flytningen mislykkedes. Tjek arbejdspakkens nuværende placering.
+        move_failed_check_positions_batch:
+          other: Flytningen mislykkedes. Tjek arbejdspakkernes nuværende placeringer.
+        move_failed_rolled_back: Flytningen mislykkedes. %{label} er sat tilbage på sin tidligere placering.
+        move_failed_rolled_back_batch:
+          other: Flytningen mislykkedes. %{count} arbejdspakker er sat tilbage på deres tidligere placeringer.
+        moved: "%{label} er flyttet til placering %{position} af %{total}"
+        moved_batch:
+          other: "%{count} arbejdspakker er flyttet til placering %{first} til %{last} af %{total}"
+        moved_batch_to_list:
+          other: "%{count} arbejdspakker er flyttet til %{list}, placering %{first} til %{last} af %{total}"
+        moved_to_list: "%{label} er flyttet til %{list}, placering %{position} af %{total}"
+      selection:
+        card_state: Valgt
+        cleared: Markeringen er ryddet.
+        not_selectable: Markeringen er uændret. Arbejdspakken indgår ikke i listens rækkefølge.
+        range_blocked: Markeringen er uændret. Området indeholder en arbejdspakke, der ikke indgår i listens rækkefølge.
+        range_restarted:
+          one: Området kunne ikke udvides. %{count} arbejdspakke valgt.
+          other: Området kunne ikke udvides. %{count} arbejdspakker valgt.
+        range_unavailable: Markeringen er uændret. Fold listen ud for at vælge området.
+        selected:
+          one: "%{count} arbejdspakke valgt."
+          other: "%{count} arbejdspakker valgt."
+    burndown_chart:
+      chart_label: Burndown-diagram
+    burnup_chart:
+      chart_label: Burnup-diagram
+    created_resolved_chart:
+      chart_label: Diagram over oprettede og løste arbejdspakker
+      work_packages: Arbejdspakker
+    sprint_charts:
+      column_with_unit: "%{label} (%{unit})"
+      description_summary: 'Data i %{label}: %{from} – %{to}. %{values}.'
+      description_value: "%{label}: %{value}"
+      non_working_day: Arbejdsfri dag
+      unit:
+        story_points: story points
+      value_with_unit:
+        story_points:
+          one: "%{value} story point"
+          other: "%{value} story points"
+      y_axis_title:
+        story_points: Story points
+        time: Anslået tid
+    sprint_work_package_graph:
+      chart_label: Diagram over arbejdspakker efter status
+      count_column: Arbejdspakker
+      status_column: Status
+    velocity_chart:
+      chart_label: Hastighedsdiagram
+      sprint_column: Sprint
+    work_packages:
+      properties:
+        storyPoints: Story points

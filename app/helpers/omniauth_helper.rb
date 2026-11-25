@@ -1,0 +1,99 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module OmniauthHelper
+  def omniauth_direct_login?
+    direct_login_provider.is_a? String
+  end
+
+  def omniauth_start_url_options
+    { script_name: OpenProject::Configuration.rails_relative_url_root }.compact
+  end
+
+  def omniauth_login_path_options
+    omniauth_start_url_options.tap do |opts|
+      opts[:back_url] = params[:back_url] if params[:back_url].present?
+    end
+  end
+
+  def omniauth_provider_button(name, display_name: nil, icon: nil)
+    render(Primer::Beta::Button.new(tag: :a,
+                                    href: omniauth_login_path(name, omniauth_login_path_options),
+                                    block: true,
+                                    classes: "auth-provider auth-provider-#{name}",
+                                    data: { turbo: false })) do
+      label = tag.span(provider_button_label(name, display_name), class: "auth-provider-name")
+
+      safe_join([provider_icon_tag(name, icon), label].compact)
+    end
+  end
+
+  def provider_icon_tag(name, icon)
+    return if icon.blank?
+
+    image_tag(icon, alt: "", class: "auth-provider-icon")
+  rescue Sprockets::Rails::Helper::AssetNotFound
+    Rails.logger.warn { "Skipping unresolvable icon #{icon.inspect} of omniauth provider #{name}." }
+    nil
+  end
+
+  ##
+  # Per default the user may choose the usual password login as well as several omniauth providers
+  # on the login page and in the login drop down menu.
+  #
+  # With his configuration option you can set a specific omniauth provider to be
+  # used for direct login. Meaning that the login provider selection is skipped and
+  # the configured provider is used directly instead.
+  #
+  # If this option is active /login will lead directly to the configured omniauth provider,
+  # with a temporary form in between so that we can ensure we only POST to the provider (CVE-2015-9284).
+  def direct_login_provider
+    Setting.omniauth_direct_login_provider.presence
+  end
+
+  def provider_button_label(name, display_name)
+    I18n.t("account.continue_with_provider", name: display_name.presence || name)
+  end
+
+  # Returns nil unless the hook produced actual provider markup. In development
+  # Rails annotates every rendered partial with HTML comments, so a hook that
+  # rendered nothing still comes back non-blank.
+  def auth_provider_html
+    html = call_hook :view_account_login_auth_provider
+    content = Rails.env.development? ? html.gsub(/<!--.*?-->/m, "") : html
+
+    html if content.present?
+  end
+
+  # Uses the controller-assigned flag so /login/internal can still render the
+  # password form when instance-wide password login is off.
+  def show_password_login_form?
+    @force_password_login_form || Users::PasswordLogin.enabled? # rubocop:disable Rails/HelperInstanceVariable
+  end
+end

@@ -1,0 +1,39 @@
+name: RuboCop
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "extensions/blocknote-extensions/**"
+      - "extensions/op-blocknote-hocuspocus/**"
+
+jobs:
+  rubocop:
+    name: RuboCop
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1.342.0
+      - name: Run RuboCop
+        uses: reviewdog/action-rubocop@v2.23.0
+        with:
+          reporter: github-pr-annotations
+          fail_level: any
+          rubocop_version: gemfile
+          rubocop_extensions: >
+            rubocop-capybara:gemfile
+            rubocop-factory_bot:gemfile
+            rubocop-openproject:gemfile
+            rubocop-performance:gemfile
+            rubocop-rails:gemfile
+            rubocop-rspec:gemfile
+            rubocop-rspec_rails:gemfile
+          only_changed: true

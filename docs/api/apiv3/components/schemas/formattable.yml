@@ -1,0 +1,25 @@
+# Schema: Formattable
+---
+type: object
+required:
+  - format
+properties:
+  format:
+    type: string
+    enum:
+      - plain
+      - markdown
+      - custom
+    readOnly: true
+    description: Indicates the formatting language of the raw text
+  raw:
+    type: string
+    description: The raw text, as entered by the user
+  html:
+    type: string
+    readOnly: true
+    description: The text converted to HTML according to the format
+examples:
+  - format: markdown
+    raw: I **am** formatted!
+    html: I <strong>am</strong> formatted!

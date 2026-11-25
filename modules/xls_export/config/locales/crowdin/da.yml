@@ -1,0 +1,17 @@
+---
+da:
+  different_formats: Forskellige formater
+  export:
+    format:
+      xls: XLS
+      xls_with_descriptions: XLS med beskrivelser
+      xls_with_relations: XLS med relationer
+  export_to_excel: Eksporter XLS
+  plugin_openproject_xls_export:
+    description: Eksportér lister som Excel-regneark (.xls).
+    name: Sthyra Studios XLS Export
+  print_with_description: Udskriftsvisning med beskrivelse
+  sentence_separator_or: eller
+  xls_export:
+    child_of: underordnet til
+    parent_of: overordnet til

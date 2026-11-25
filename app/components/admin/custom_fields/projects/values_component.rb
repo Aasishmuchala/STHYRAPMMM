@@ -1,0 +1,148 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Admin
+  module CustomFields
+    module Projects
+      class ValuesComponent < ApplicationComponent
+        include OpPrimer::ComponentHelpers
+
+        Row = Data.define(:id, :label, :depth, :caption, :enabled, :project_specific?, :required?,
+                          :parent_project_specific?)
+
+        INDENTATION_PER_LEVEL = 16
+
+        def initialize(custom_field:, project:)
+          super()
+
+          @custom_field = custom_field
+          @project = project
+        end
+
+        private
+
+        attr_reader :custom_field, :project
+
+        def rows
+          @rows ||= values_toggleable? ? all_rows : all_rows.select(&:enabled)
+        end
+
+        def all_rows
+          custom_field.list? ? option_rows : item_rows
+        end
+
+        def option_rows
+          custom_field.custom_options.where(project_id: [nil, project.id]).map do |option|
+            Row.new(id: option.id, label: option.value, depth: 0, caption: nil, enabled: enabled?(option),
+                    project_specific?: option.project_id.present?, required?: false, parent_project_specific?: false)
+          end
+        end
+
+        # The items come in pre-order, so every parent's row is known before its children.
+        def item_rows
+          rows = { custom_field.hierarchy_root.id => nil }
+
+          hierarchy_items.map do |item|
+            rows[item.id] = item_row(item, rows.fetch(item.parent_id))
+          end
+        end
+
+        def item_row(item, parent_row)
+          Row.new(id: item.id, label: item.label, depth: parent_row ? parent_row.depth + 1 : 0,
+                  caption: item_caption(item), enabled: enabled?(item),
+                  project_specific?: item.project_id.present?, required?: required_item_ids.include?(item.id),
+                  parent_project_specific?: parent_row&.project_specific? || false)
+        end
+
+        def required_item_ids
+          @required_item_ids ||= custom_field.required_value_ids_in(project).to_set
+        end
+
+        def hierarchy_items
+          custom_field.hierarchy_root.descendants_preordered.where(project_id: [nil, project.id])
+        end
+
+        def item_caption(item)
+          ::CustomFields::Hierarchy::HierarchicalItemFormatter.new(label: false).format(item:).presence
+        end
+
+        def enabled?(value)
+          custom_field.usable_value_id?(project, value.id)
+        end
+
+        def manageable?
+          EnterpriseToken.allows_to?(:project_specific_list_values)
+        end
+
+        def values_toggleable?
+          return @values_toggleable if defined?(@values_toggleable)
+
+          @values_toggleable = custom_field.values_toggleable_by?(User.current, project)
+        end
+
+        def required_notice?(row)
+          values_toggleable? && row.required?
+        end
+
+        def make_global?(row)
+          own_value_changeable?(row) && User.current.active_admin?
+        end
+
+        def value_menu?(row)
+          row.project_specific? || sub_values_addable?
+        end
+
+        def sub_values_addable?
+          custom_field.allow_additional_project_values? && custom_field.hierarchical_list?
+        end
+
+        def own_value_changeable?(row)
+          row.project_specific? && custom_field.allow_additional_project_values?
+        end
+
+        def indentation(row)
+          "padding-left: #{row.depth * INDENTATION_PER_LEVEL}px"
+        end
+
+        # Toggling a hierarchy item can change other items as well, so the list is reloaded afterwards.
+        def frame_arguments
+          {
+            refresh: :morph,
+            data: {
+              controller: "reload-frame-on-event",
+              reload_frame_on_event_event_name_value: "toggleSwitchSuccess",
+              reload_frame_on_event_url_value: helpers.values_path
+            }
+          }
+        end
+      end
+    end
+  end
+end

@@ -1,0 +1,273 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  inject,
+  Injector,
+  OnInit,
+} from '@angular/core';
+import { take } from 'rxjs/operators';
+import { DragAndDropService } from 'core-app/shared/helpers/drag-and-drop/drag-and-drop.service';
+import {
+  WorkPackageViewDisplayRepresentationService,
+  wpDisplayCardRepresentation,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-display-representation.service';
+import { WorkPackageTableConfiguration } from 'core-app/features/work-packages/components/wp-table/wp-table-configuration';
+import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
+import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
+import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
+import { DeviceService } from 'core-app/core/browser/device.service';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
+import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import { QueryResource } from 'core-app/features/hal/resources/query-resource';
+import { KeepTabService } from 'core-app/features/work-packages/components/wp-single-view-tabs/keep-tab/keep-tab.service';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
+import { WorkPackageViewBaselineService } from '../wp-view-base/view-services/wp-view-baseline.service';
+import { combineLatest } from 'rxjs';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { States } from 'core-app/core/states/states.service';
+import {
+  matchesRoutingId,
+  resolveRoutingId,
+} from 'core-app/features/work-packages/helpers/work-package-id-resolvers';
+import { ConfigurationService } from 'core-app/core/config/configuration.service';
+import {
+  GlobalEditFormChangesTrackerService,
+} from 'core-app/shared/components/fields/edit/services/global-edit-form-changes-tracker/global-edit-form-changes-tracker.service';
+import { WorkPackageViewSelectionService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
+
+@Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
+  selector: 'wp-list-view',
+  templateUrl: './wp-list-view.component.html',
+  styleUrls: ['./wp-list-view.component.sass'],
+  host: { class: 'op-wp-list-view work-packages-split-view--tabletimeline-side' },
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [
+    { provide: HalResourceNotificationService, useClass: WorkPackageNotificationService },
+    DragAndDropService,
+  ],
+  standalone: false,
+})
+export class WorkPackageListViewComponent extends UntilDestroyedMixin implements OnInit {
+  readonly I18n = inject(I18nService);
+  readonly injector = inject(Injector);
+  readonly keepTab = inject(KeepTabService);
+  readonly configurationService = inject(ConfigurationService);
+  readonly globalEditFormChangesTracker = inject(GlobalEditFormChangesTrackerService);
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly wpViewFilters = inject(WorkPackageViewFiltersService);
+  readonly deviceService = inject(DeviceService);
+  readonly CurrentProject = inject(CurrentProjectService);
+  readonly wpDisplayRepresentation = inject(WorkPackageViewDisplayRepresentationService);
+  readonly cdRef = inject(ChangeDetectorRef);
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  readonly wpTableBaseline = inject(WorkPackageViewBaselineService);
+  readonly pathHelper = inject(PathHelperService);
+  readonly urlParams = inject(UrlParamsService);
+  readonly states = inject(States);
+  readonly wpTableSelection = inject(WorkPackageViewSelectionService);
+
+  text = {
+    jump_to_pagination: this.I18n.t('js.work_packages.jump_marks.pagination'),
+    text_jump_to_pagination: this.I18n.t('js.work_packages.jump_marks.label_pagination'),
+    button_settings: this.I18n.t('js.button_settings'),
+  };
+
+  /** Switch between list and card view */
+  showTableView = true;
+
+  /** Determine when query is initially loaded */
+  tableInformationLoaded = false;
+
+  /** If loaded list of work packages is empty */
+  noResults = false;
+
+  /** Whether we should render a blocked view */
+  showResultOverlay$ = this.wpViewFilters.incomplete$;
+
+  public baselineEnabled:boolean;
+
+  /** */
+  readonly wpTableConfiguration = new WorkPackageTableConfiguration({
+    dragAndDropEnabled: true,
+  });
+
+  ngOnInit() {
+    // If a work package is open in the split view (per the URL), select its row.
+    // The split view lives in its own isolated query space and can't reach this
+    // list's own WorkPackageViewSelectionService directly - the old uiRouter-based
+    // WorkPackageSplitViewComponent#init did this via a shared query space/injector.
+    const details = this.urlParams.currentDetailsRouteParams();
+    if (details) {
+      this.selectSplitViewRow(details.routingId);
+    }
+
+    // Mark tableInformationLoaded when initially loading done
+    this.setupInformationLoadedListener();
+    const statesCombined = combineLatest([
+      this.querySpace.query.values$(),
+      this.wpTableBaseline.live$(),
+    ]);
+    statesCombined.pipe(
+      this.untilDestroyed(),
+    ).subscribe(([query]) => {
+      // Update the visible representation
+      this.updateViewRepresentation(query);
+      this.baselineEnabled = this.wpTableBaseline.isActive();
+      this.noResults = query.results.total === 0;
+      this.cdRef.detectChanges();
+    });
+
+    // Scroll into view the card/row that represents the last selected WorkPackage
+    // so when the user opens a WP detail page on a split-view and then clicks on
+    // the 'back button', the last selected card is visible on this list.
+    // ngAfterViewInit doesn't find the .-checked elements on components
+    // that inherit from this class (BcfListContainerComponent) so
+    // opting for a timeout to defer until the DOM is ready
+    setTimeout(() => {
+      const selectedRow = this.elementRef.nativeElement.querySelector('.wp-table--row.-checked');
+      const selectedCard = this.elementRef.nativeElement.querySelector('[data-test-selector="op-wp-single-card"].-checked');
+
+      // The header of the table hides the scrolledIntoView element
+      // so we scrollIntoView the previous element, if any
+      if (selectedRow?.previousElementSibling) {
+        selectedRow.previousElementSibling.scrollIntoView({ block: 'start' });
+      }
+
+      if (selectedCard) {
+        selectedCard.scrollIntoView({ block: 'start' });
+      }
+    }, 0);
+  }
+
+  protected setupInformationLoadedListener() {
+    this
+      .querySpace
+      .initialized
+      .values$()
+      .pipe(take(1))
+      .subscribe(() => {
+        this.tableInformationLoaded = true;
+        this.cdRef.detectChanges();
+      });
+  }
+
+  public showResizerInCardView():boolean {
+    return false;
+  }
+
+  protected updateViewRepresentation(query:QueryResource) {
+    this.showTableView = !(this.deviceService.isMobile
+      || this.wpDisplayRepresentation.valueFromQuery(query) === wpDisplayCardRepresentation);
+  }
+
+  handleWorkPackageClicked(event:{ workPackageId:string; double:boolean }) {
+    if (event.double) {
+      this.openInFullView(event.workPackageId);
+    }
+  }
+
+  openStateLink(event:{ workPackageId:string; requestedState:'show'|'split' }) {
+    const routingId = resolveRoutingId(this.states, event.workPackageId);
+    if (event.requestedState === 'split') {
+      this.openInSplitView(routingId);
+    } else {
+      this.openInFullView(routingId);
+    }
+  }
+
+  /**
+   * Special handling for clicking on cards.
+   * If we are on mobile, a click on the card should directly open the full view
+   */
+  handleWorkPackageCardClicked(event:{ workPackageId:string; double:boolean }):void {
+    if (this.deviceService.isMobile) {
+      this.openInFullView(event.workPackageId);
+    } else {
+      this.handleWorkPackageClicked(event);
+    }
+  }
+
+  // The work package cache is keyed by numeric id, so a semantic id from a deep link can
+  // only be matched against the loaded results. Their ancestors count too: hierarchy mode
+  // renders a row for them even though the query itself does not match them.
+  private selectSplitViewRow(routingId:string):void {
+    this
+      .querySpace
+      .results
+      .values$()
+      .pipe(take(1), this.untilDestroyed())
+      .subscribe((results) => {
+        const candidates = results.elements.flatMap((element) => [element, ...element.getAncestors()]);
+        const id = candidates.find((candidate) => matchesRoutingId(candidate, routingId))?.id;
+
+        if (id) {
+          this.wpTableSelection.initializeSelection([id]);
+        }
+      });
+  }
+
+  protected openInFullView(workPackageId:string) {
+    const routingId = resolveRoutingId(this.states, workPackageId);
+    const projectIdentifier = this.CurrentProject.identifier;
+    window.location.href = this.pathHelper.genericWorkPackagePath(projectIdentifier, routingId) + window.location.search;
+  }
+
+  /**
+   * Works for both the plain work-packages list and the gantt list, since both
+   * mount this component and only differ in their base path (/work_packages vs /gantt).
+   */
+  protected openInSplitView(workPackageId:string):void {
+    // Previously we checked that via uiRouter (via $transitions.onBefore). Since that got removed,
+    // we need to check that here explicitly.
+    if (
+      this.globalEditFormChangesTracker.thereAreFormsBeingEdited
+      && this.configurationService.warnOnLeavingUnsaved()
+      && !window.confirm(this.I18n.t('js.work_packages.confirm_edit_cancel'))
+    ) {
+      return;
+    }
+
+    const basePath = this.urlParams.basePathWithoutDetails();
+    const tab = this.keepTab.currentDetailsTab;
+    // Match the details/:work_package_id(/:tab) route's own defaults: { tab: 'overview' } -
+    // Rails' path helpers omit the segment when it's the default, so keep the same canonical
+    // (shorter) URL here rather than always spelling the tab out.
+    const tabSegment = tab === 'overview' ? '' : `/${tab}`;
+    Turbo.visit(
+      `${basePath}/details/${workPackageId}${tabSegment}${window.location.search}`,
+      { frame: 'content-bodyRight', action: 'advance' },
+    );
+  }
+}

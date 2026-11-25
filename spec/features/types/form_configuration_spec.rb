@@ -1,0 +1,465 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "form configuration", :js, :selenium do
+  shared_let(:admin) { create(:admin) }
+  let(:type) { create(:type) }
+  let(:variant) { type.default_variant }
+
+  let!(:project) { create(:project, types: [type]) }
+  let(:category) { create(:category, project:) }
+  let(:work_package) do
+    create(:work_package,
+           project:,
+           type:,
+           done_ratio: 10,
+           category:)
+  end
+
+  let(:wp_page) { Pages::FullWorkPackage.new(work_package) }
+  let(:form) { Components::Admin::TypeConfigurationForm.new }
+
+  describe "query group actions with EE token", with_ee: %i[edit_attribute_groups] do
+    describe "default configuration" do
+      include_context "with mobile screen size", 1920, 1700
+
+      let(:dialog) { Components::ConfirmationDialog.new }
+
+      before do
+        login_as(admin)
+        visit edit_form_configuration_path(type.default_variant.form_configuration)
+      end
+
+      def persisted_group_order
+        variant.reload.attribute_groups.reject { |group| group.key == :__empty }.map(&:translated_key)
+      end
+
+      def persisted_attribute_order(group_key)
+        variant.reload.attribute_groups.find { |group| group.key.to_s == group_key.to_s }&.attributes
+      end
+
+      it "resets the form properly after changes" do
+        form.rename_group("Details", "Whatever")
+        form.expect_attribute(key: :assignee)
+
+        # Reset and cancel
+        form.reset_button.click
+        dialog = find_test_selector("type-form-configuration-reset-dialog", visible: :all)
+        within(dialog) do
+          click_button I18n.t("js.button_cancel")
+        end
+
+        form.expect_group("Whatever", "Whatever")
+
+        # Wait for dialog close animation to finish before opening it again
+        expect(page).to have_no_css("dialog[open]")
+
+        # Reset and confirm
+        form.reset_button.click
+        dialog = find_test_selector("type-form-configuration-reset-dialog", visible: :all)
+        within(dialog) do
+          click_button I18n.t("button_reset")
+        end
+
+        expect(page).to have_no_css("[data-group-key]", text: /\bWhatever\b/)
+        form.expect_group("details", "Details")
+        form.expect_attribute(key: :assignee)
+      end
+
+      it "can remove all groups to be left with an invisible one (Regression #33592)" do
+        form.remove_group "Details"
+        form.remove_group "Estimates and progress"
+        form.remove_group "People"
+        form.remove_group "Costs"
+        form.remove_group "Other"
+
+        form.expect_empty
+
+        # Test the actual type backend
+        variant.reload
+        expect(variant.attribute_groups).to be_empty
+
+        # Visit work package with that type
+        wp_page.visit!
+        wp_page.ensure_page_loaded
+
+        wp_page.expect_hidden_field(:targetVersions)
+        wp_page.expect_hidden_field(:assignee)
+        wp_page.expect_hidden_field(:responsible)
+        wp_page.expect_hidden_field(:priority)
+        wp_page.expect_hidden_field(:date)
+        wp_page.expect_hidden_field(:category)
+        wp_page.expect_hidden_field(:done_ratio)
+
+        groups = page.all(".attributes-group--header-text").map(&:text)
+        expect(groups).to eq []
+        expect(page)
+          .to have_css(".work-packages--details--description", text: work_package.description)
+      end
+
+      it "allows modification of the form configuration" do
+        #
+        # Test default set of groups
+        #
+        form.expect_group "people",
+                          "People",
+                          { key: :assignee, translation: "Assignee" },
+                          { key: :responsible, translation: "Accountable" }
+
+        form.expect_group "estimates_and_progress",
+                          "Estimates and progress",
+                          { key: :estimated_time, translation: "Work" },
+                          { key: :remaining_time, translation: "Remaining work" },
+                          { key: :percentage_done, translation: "% Complete" },
+                          { key: :spent_time, translation: "Spent time" }
+
+        form.expect_group "details",
+                          "Details",
+                          { key: :category, translation: "Category" },
+                          { key: :date, translation: "Date" },
+                          { key: :priority, translation: "Priority" },
+                          { key: :target_versions, translation: "Target versions" }
+
+        #
+        # Modify configuration
+        #
+
+        # Disable target_versions
+        form.drag_and_drop(form.find_attribute_handle(:target_versions), form.inactive_group)
+        form.expect_inactive(:target_versions)
+
+        # Rename section
+        form.rename_group("Details", "Whatever")
+        form.rename_group("People", "Cool Stuff")
+
+        # Start renaming, but cancel
+        form.start_renaming_group("Cool Stuff")
+        input = find_test_selector("type-form-configuration-group-name-input", wait: 10)
+        input.set("FOOBAR")
+        page.find_test_selector("type-form-configuration-group-cancel", wait: 10).click
+        form.expect_group("Cool Stuff", "Cool Stuff")
+        expect(page).to have_no_css("[data-group-key]", text: /\bFOOBAR\b/)
+
+        # Create new group
+        form.add_attribute_group("New Group")
+        form.move_to(:category, "New Group")
+
+        # Delete attribute from group
+        form.remove_attribute("assignee")
+
+        # Expect configuration to be correct now
+        form.expect_no_attribute("assignee", "Cool Stuff")
+
+        form.expect_group "Cool Stuff",
+                          "Cool Stuff",
+                          { key: :responsible, translation: "Accountable" }
+
+        form.expect_group "estimates_and_progress",
+                          "Estimates and progress",
+                          { key: :estimated_time, translation: "Work" },
+                          { key: :remaining_time, translation: "Remaining work" },
+                          { key: :percentage_done, translation: "% Complete" },
+                          { key: :spent_time, translation: "Spent time" }
+
+        form.expect_group "Whatever",
+                          "Whatever",
+                          { key: :date, translation: "Date" }
+
+        form.expect_group "New Group",
+                          "New Group",
+                          { key: :category, translation: "Category" }
+
+        form.expect_inactive(:target_versions)
+
+        # Test the actual type backend
+        variant.reload
+        expect(variant.attribute_groups.map(&:key))
+          .to include(:people, :estimates_and_progress, :details, "New Group")
+        expect(variant.attribute_groups.detect { |g| g.key == :people }&.display_name).to eq("Cool Stuff")
+        expect(variant.attribute_groups.detect { |g| g.key == :details }&.display_name).to eq("Whatever")
+
+        # Visit work package with that type
+        wp_page.visit!
+        wp_page.ensure_page_loaded
+
+        # Target versions should be hidden
+        wp_page.expect_hidden_field(:targetVersions)
+
+        wp_page.expect_group("New Group") do
+          wp_page.expect_attributes category: category.name
+        end
+
+        wp_page.expect_group("Whatever") do
+          wp_page.expect_attributes combinedDate: "no start date - no finish date"
+        end
+
+        wp_page.expect_group("Cool Stuff") do
+          wp_page.expect_attributes responsible: "-"
+        end
+
+        # Empty attributes should be shown on toggle
+        wp_page.expect_hidden_field(:assignee)
+        wp_page.expect_hidden_field(:spent_time)
+
+        wp_page.expect_group("Estimates and progress") do
+          wp_page.expect_attributes estimated_time: "-"
+          wp_page.expect_attributes spent_time: "0h"
+        end
+
+        # New work package has the same configuration
+        wp_page.expect_hidden_field(:assignee)
+        wp_page.expect_hidden_field(:spent_time)
+        wp_page.click_create_wp_button(type)
+
+        wp_page.expect_group("Estimates and progress") do
+          expect(page).to have_css(".inline-edit--container.estimatedTime")
+        end
+
+        find_by_id("work-packages--edit-actions-cancel").click
+        expect(wp_page).not_to have_alert_dialog
+        loading_indicator_saveguard
+      end
+
+      it "offers target versions in the default configuration" do
+        form.expect_group "details",
+                          "Details",
+                          { key: :category, translation: "Category" },
+                          { key: :date, translation: "Date" },
+                          { key: :priority, translation: "Priority" },
+                          { key: :target_versions, translation: "Target versions" }
+
+        # The drag moves the row before the request that persists it, so the stream has to be
+        # waited for or the read below races it.
+        wait_for_turbo_stream do
+          form.drag_and_drop(form.find_attribute_handle(:target_versions), form.inactive_group)
+        end
+        form.expect_inactive(:target_versions)
+
+        expect(persisted_attribute_order(:details)).not_to include("target_versions")
+      end
+
+      context "with field format labels" do
+        let!(:custom_field) { create(:issue_custom_field, :integer, name: "MyNumber") }
+
+        before do
+          visit edit_form_configuration_path(type.default_variant.form_configuration)
+        end
+
+        it "shows no field format labels beside attributes" do
+          builtin_label = I18n.t("label_builtin")
+
+          expect(page.find(form.attribute_selector(:assignee))).to have_no_text(builtin_label)
+          expect(page.find(form.attribute_selector(:date))).to have_no_text(builtin_label)
+
+          form.move_to(custom_field.attribute_name, "Details")
+          expect(page.find(form.attribute_selector(custom_field.attribute_name))).to have_text(I18n.t(:label_integer))
+        end
+      end
+
+      it "cancels edits to new and persisted custom groups" do
+        initial_order = form.group_order
+
+        form.add_button_dropdown.click
+
+        expect(page).to have_text(I18n.t("types.edit.form_configuration.add_attribute_group"))
+        expect(page).to have_text(I18n.t("types.edit.form_configuration.add_query_group"))
+
+        click_on I18n.t("types.edit.form_configuration.add_attribute_group")
+
+        expect(page.find_test_selector("type-form-configuration-group-name-input", wait: 10).value).to eq("")
+
+        page.find_test_selector("type-form-configuration-group-cancel", wait: 10).click
+        expect(page).to have_no_test_selector("type-form-configuration-group-name-input")
+
+        expect(form.group_order).to eq(initial_order)
+
+        form.add_attribute_group("Saved custom group")
+
+        visit edit_form_configuration_path(type.default_variant.form_configuration)
+
+        group_key = form.send(:find_group, "Saved custom group")["data-group-key"]
+        form.send(:open_group_menu, "Saved custom group")
+        page.find_test_selector("type-form-configuration-group-rename-#{group_key}", visible: :all).click
+
+        input = page.find_test_selector("type-form-configuration-group-name-input", wait: 10)
+        expect(input.value).to eq("Saved custom group")
+
+        input.set("Renamed group")
+        page.find_test_selector("type-form-configuration-group-cancel", wait: 10).click
+
+        form.expect_group("Saved custom group", "Saved custom group")
+        expect(page).to have_no_css("[data-group-key]", text: /\bRenamed group\b/)
+      end
+
+      it "renames and deletes a group whose name contains special characters (Regression INTERNAL-963)" do
+        form.add_attribute_group("b) > 10.000 / 20.000 Nutzende")
+
+        visit edit_form_configuration_path(type.default_variant.form_configuration)
+
+        form.rename_group("b) > 10.000 / 20.000 Nutzende", "b) > 20.000 / 30.000 Nutzende")
+        expect(persisted_group_order).to include("b) > 20.000 / 30.000 Nutzende")
+
+        form.remove_group("b) > 20.000 / 30.000 Nutzende")
+        expect(persisted_group_order).not_to include("b) > 20.000 / 30.000 Nutzende")
+      end
+
+      it "edits query rows directly from their pencil button" do
+        form.add_query_group("Subtasks", :children)
+
+        within form.find_group("Subtasks") do
+          expect(page).to have_no_button(accessible_name: I18n.t("types.edit.form_configuration.row_actions"))
+          click_on accessible_name: I18n.t("types.edit.form_configuration.edit_query")
+        end
+
+        expect(page).to have_css(".wp-table--configuration-modal")
+      end
+
+      it "shows only delete for a single attribute row" do
+        form.add_attribute_group("New Group")
+        form.move_to(:category, "New Group")
+
+        single_row_menu_id = form.open_attribute_menu(:category)
+        single_row_menu_selector = "##{single_row_menu_id}"
+
+        expect(page).to have_selector(single_row_menu_selector, text: I18n.t("button_delete"))
+        expect(page).to have_no_css("#{single_row_menu_selector} [role='menuitem']",
+                                    text: I18n.t("label_agenda_item_move_to_top"))
+        expect(page).to have_no_css("#{single_row_menu_selector} [role='menuitem']",
+                                    text: I18n.t("label_agenda_item_move_up"))
+        expect(page).to have_no_css("#{single_row_menu_selector} [role='menuitem']",
+                                    text: I18n.t("label_agenda_item_move_down"))
+        expect(page).to have_no_css("#{single_row_menu_selector} [role='menuitem']",
+                                    text: I18n.t("label_agenda_item_move_to_bottom"))
+      end
+    end
+
+    describe "custom fields" do
+      let(:custom_fields) { [custom_field] }
+      let(:custom_field) { create(:issue_custom_field, :integer, is_required: true, name: "MyNumber") }
+      let(:cf_identifier) { custom_field.attribute_name }
+      let(:cf_identifier_api) { cf_identifier.camelcase(:lower) }
+
+      def add_cf_to_group
+        project
+        custom_field
+
+        login_as(admin)
+        visit edit_form_configuration_path(type.default_variant.form_configuration)
+
+        # Should be initially disabled
+        form.expect_inactive(cf_identifier)
+        form.expect_attribute(key: cf_identifier, translation: "MyNumber")
+
+        # Add into new group
+        form.add_attribute_group("New Group")
+        form.move_to(cf_identifier, "New Group")
+
+        # Make visible
+        form.expect_attribute(key: cf_identifier, translation: "MyNumber")
+      end
+
+      context "if active in project" do
+        let(:project) do
+          create(:project,
+                 types: [type])
+        end
+
+        it "can be added to type and is visible" do
+          add_cf_to_group
+
+          # Visit work package with that type
+          wp_page.visit!
+          wp_page.ensure_page_loaded
+
+          wp_page.expect_group("New Group") do
+            wp_page.expect_attributes cf_identifier_api => "-"
+          end
+        end
+      end
+    end
+  end
+
+  describe "without EE token", with_ee: false do
+    it "hides protected group and query actions" do
+      query = build(:global_query, user_id: 0)
+      groups = variant.attribute_groups.map { |group| [group.key, group.members] }
+      variant.attribute_groups = groups + [["Subtasks", [query]]]
+      variant.save!
+
+      login_as(admin)
+      visit edit_form_configuration_path(type.default_variant.form_configuration)
+      expect(page).to have_no_test_selector("type-form-configuration-add-button")
+
+      menu_id = form.send(:open_group_menu, "Details")
+      within "##{menu_id}" do
+        expect(page).to have_no_text(I18n.t("types.edit.form_configuration.rename_group"))
+        expect(page).to have_no_text(I18n.t("button_delete"))
+      end
+
+      expect(page).to have_no_button(accessible_name: I18n.t("types.edit.form_configuration.edit_query"))
+    end
+  end
+
+  describe "with EE token", with_ee: %i[edit_attribute_groups] do
+    it "shows protected group actions" do
+      login_as(admin)
+      visit edit_form_configuration_path(type.default_variant.form_configuration)
+
+      menu_id = form.send(:open_group_menu, "Details")
+      within "##{menu_id}" do
+        expect(page).to have_text(I18n.t("types.edit.form_configuration.rename_group"))
+        expect(page).to have_text(I18n.t("button_delete"))
+      end
+    end
+  end
+
+  describe "form submission", :js, with_ee: %i[edit_attribute_groups] do
+    it "only creates one group per add action" do
+      call_count = 0
+      subscription =
+        ActiveSupport::Notifications.subscribe("process_action.action_controller") do |*, payload|
+          payload => { controller:, action: }
+          if controller == "FormConfigurations::GroupsController" && action == "create"
+            call_count += 1
+          end
+        end
+
+      login_as(admin)
+      visit edit_form_configuration_path(type.default_variant.form_configuration)
+
+      form.expect_group("details", "Details")
+      form.add_attribute_group("New Group")
+
+      ActiveSupport::Notifications.unsubscribe(subscription)
+      expect(call_count).to eq(1), "Expected 1 group creation but got #{call_count}"
+    end
+  end
+end

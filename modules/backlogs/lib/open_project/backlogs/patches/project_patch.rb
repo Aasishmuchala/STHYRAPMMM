@@ -1,0 +1,60 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module OpenProject::Backlogs::Patches::ProjectPatch
+  extend ActiveSupport::Concern
+  include Projects::SprintSettings
+
+  included do
+    has_and_belongs_to_many :done_statuses, join_table: "done_statuses_for_project", class_name: "::Status"
+    has_and_belongs_to_many :backlog_excluded_types,
+                            join_table: "backlog_excluded_types",
+                            class_name: "::Type"
+    has_many :sprints, dependent: :destroy
+    has_many :backlog_buckets, dependent: :destroy
+  end
+
+  def backlogs_enabled?
+    module_enabled? "backlogs"
+  end
+
+  def many_active_sprints?
+    sprints.active.many?
+  end
+
+  # Globally closed statuses always count as done, so that an empty or corrupt project
+  # configuration still treats finished work as finished.
+  def statuses_considered_closed
+    ::Status.where(id: done_statuses.reorder(nil)).or(::Status.closed)
+  end
+
+  def statuses_considered_open
+    ::Status.where.not(id: statuses_considered_closed)
+  end
+end

@@ -1,0 +1,159 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+$pagination--font-size: var(--body-font-size)
+
+.op-pagination
+  display: flex
+  flex-wrap: wrap
+  justify-content: space-between
+  width: 100%
+  min-height: 45px
+
+  &--single-page
+    @media screen and (max-width: $breakpoint-sm)
+      display: none
+
+  &--pages
+    display: flex
+    min-width: 0
+    flex-grow: 2
+    flex-shrink: 2
+
+  &--options
+    display: flex
+    align-items: center
+    justify-content: end
+    flex-grow: 1
+    flex-shrink: 1
+
+    @media screen and (max-width: $breakpoint-sm)
+      display: none
+
+  &--items
+    list-style-type: none
+    display: flex
+    flex-wrap: wrap
+    align-items: center
+    margin: 0
+    padding: 0
+    font-size: $pagination--font-size
+
+  &--item
+    margin-inline-end: var(--base-size-4)
+    white-space: nowrap
+
+    &-link
+      box-sizing: border-box
+      margin: 0
+      display: inline-flex
+      align-items: center
+      min-width: var(--base-size-32)
+      height: var(--base-size-32)
+      justify-content: center
+      padding: var(--base-size-8) var(--base-size-6)
+      background: transparent
+      border-radius: var(--borderRadius-medium)
+      border: 0
+      color: var(--fgColor-default)
+      font: inherit
+      font-style: normal
+      line-height: 1
+      cursor: pointer
+      text-decoration: none
+      transition: background-color 0.2s cubic-bezier(0.3, 0, 0.5, 1)
+
+      &:hover
+        color: var(--fgColor-default)
+        text-decoration: none
+        background: var(--control-transparent-bgColor-hover)
+        transition-duration: 0.1s
+
+      &:focus-visible
+        outline: 2px solid var(--bgColor-accent-emphasis)
+        outline-offset: 2px
+
+      &_prev,
+      &_next
+        color: var(--fgColor-accent)
+
+        &:hover
+          color: var(--fgColor-accent)
+
+      &[aria-current]
+        color: var(--fgColor-onEmphasis)
+        background: var(--bgColor-accent-emphasis)
+        cursor: default
+
+    &-link-icon
+      width: var(--base-size-16)
+      height: var(--base-size-16)
+
+      &_prev
+        margin-inline-end: var(--base-size-4)
+
+      &_next
+        margin-inline-start: var(--base-size-4)
+
+  &--space
+    display: inline-flex
+    align-items: center
+    justify-content: center
+    min-width: var(--base-size-32)
+    height: var(--base-size-32)
+    color: var(--fgColor-disabled)
+    margin-inline-end: var(--base-size-4)
+
+  &--item_number,
+  &--space
+    @media screen and (max-width: $breakpoint-sm)
+      display: none
+
+  &--label
+    flex: 1
+    padding: 3px 0
+    margin-right: 5px
+    text-align: right
+    @include text-shortener
+
+  &--range,
+  &--info
+    display: flex
+    align-items: center
+    flex: 1
+    margin: 0 0 0 5px
+    @include text-shortener
+
+  &--info
+    flex-basis: auto
+
+  &--range
+    flex: 1 0 auto
+
+  &--range,
+  &--label
+    color: var(--fgColor-muted)

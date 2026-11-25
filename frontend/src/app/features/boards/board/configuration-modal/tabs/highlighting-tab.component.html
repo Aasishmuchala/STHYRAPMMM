@@ -1,0 +1,50 @@
+<div>
+  <form>
+    <p [textContent]="text.highlighting_mode.description"></p>
+
+    <div class="form--field">
+      <div class="form--field-container">
+        <label class="option-label">
+          <input type="radio"
+                 [(ngModel)]="entireCardMode"
+                 (change)="updateMode('inline')"
+                 [value]="true"
+                 name="entire_card_switch">
+          <span [textContent]="text.highlighting_mode.entire_card_by"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="form--field">
+      <div class="form--field-container">
+        <div class="form--select-container">
+          <select #selectedAttribute
+                  (change)="updateMode(entireCardAttributes[selectedAttribute.selectedIndex])"
+                  id="selected_attribute"
+                  name="selected_attribute"
+                  [disabled]="highlightingMode === 'none'"
+                  class="form--select form--inline-select option-label--select">
+            @for (attribute of entireCardAttributes; track attribute) {
+              <option [textContent]="text.highlighting_mode[attribute]"
+                      [selected]="lastEntireCardAttribute === attribute"
+                      [value]="attribute"></option>
+            }
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form--field">
+      <div class="form--field-container">
+        <label class="option-label">
+          <input type="radio"
+                 [(ngModel)]="highlightingMode"
+                 (change)="updateMode('none')"
+                 value="none"
+                 name="highlighting_mode_switch">
+          <span [textContent]="text.highlighting_mode.none"></span>
+        </label>
+      </div>
+    </div>
+  </form>
+</div>

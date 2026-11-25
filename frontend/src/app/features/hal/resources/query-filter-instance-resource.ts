@@ -1,0 +1,161 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { QueryOperatorResource } from 'core-app/features/hal/resources/query-operator-resource';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
+import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import { QueryFilterInstanceSchemaResource } from 'core-app/features/hal/resources/query-filter-instance-schema-resource';
+import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
+
+export type QueryFilterReference =
+  | { id:string|number; href?:string|null; name?:string }
+  | { id?:string|number|null; href:string; name?:string };
+
+export type QueryFilterValue = HalResource|string|number|QueryFilterReference;
+
+function isFilterId(value:unknown):value is string|number {
+  return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
+}
+
+function isQueryFilterReference(value:object):value is QueryFilterReference {
+  const id = 'id' in value ? value.id : undefined;
+  const href = 'href' in value ? value.href : undefined;
+  const name = 'name' in value ? value.name : undefined;
+
+  return (id == null || isFilterId(id))
+    && (href == null || typeof href === 'string')
+    && (name === undefined || typeof name === 'string')
+    && (isFilterId(id) || (typeof href === 'string' && href.length > 0));
+}
+
+export function isQueryFilterValue(value:unknown):value is QueryFilterValue {
+  if (isFilterId(value) || value instanceof HalResource) {
+    return true;
+  }
+
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && isQueryFilterReference(value);
+}
+
+export function queryFilterValueId(value:unknown):string|number|null {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+
+  if (value instanceof HalResource) {
+    return value.id ?? (value.href ? idFromLink(value.href) : null);
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  if ('id' in value && (typeof value.id === 'string' || typeof value.id === 'number')) {
+    return value.id;
+  }
+
+  if ('href' in value && typeof value.href === 'string' && value.href.length > 0) {
+    return idFromLink(value.href);
+  }
+
+  return null;
+}
+
+export class QueryFilterInstanceResource extends HalResource {
+  public filter:QueryFilterResource;
+
+  public operator:QueryOperatorResource;
+
+  public values:QueryFilterValue[];
+
+  private memoizedCurrentSchemas:Record<string, QueryFilterInstanceSchemaResource> = {};
+
+  @LazyInject(SchemaCacheService) schemaCache:SchemaCacheService;
+
+  @LazyInject(PathHelperService) pathHelper:PathHelperService;
+
+  public $initialize(source:unknown) {
+    super.$initialize(source);
+
+    this.$links.schema = {
+      href: `${this.pathHelper.api.v3.apiV3Base}/queries/filter_instance_schemas/${idFromLink(this.filter.href)}`,
+    } as unknown as CallableHalLink;
+  }
+
+  public get id():string {
+    return this.filter.id;
+  }
+
+  public get name():string {
+    return this.filter.name;
+  }
+
+  /**
+   * Get the complete current schema.
+   *
+   * The filter instance's schema is made up of a static and a variable part.
+   * The variable part depends on the currently selected operator.
+   * Therefore, the schema differs based on the selected operator.
+   */
+  public get currentSchema():QueryFilterInstanceSchemaResource|null {
+    if (!this.operator) {
+      return null;
+    }
+
+    const key = this.operator.href!.toString();
+
+    if (this.memoizedCurrentSchemas[key] === undefined) {
+      try {
+        this.memoizedCurrentSchemas[key] = (this.schemaCache.of(this) as unknown as QueryFilterInstanceSchemaResource).resultingSchema(this.operator);
+      } catch (e) {
+        console.error(`Failed to access filter schema${String(e)}`);
+      }
+    }
+
+    return this.memoizedCurrentSchemas[key];
+  }
+
+  public isCompletelyDefined() {
+    return this.values.length || (this.currentSchema && !this.currentSchema.isValueRequired());
+  }
+
+  public findOperator(operatorSymbol:string):QueryOperatorResource|undefined {
+    return (this.schemaCache.of(this).availableOperators as QueryOperatorResource[]|undefined)?.find((operator:QueryOperatorResource) => operator.id === operatorSymbol);
+  }
+
+  public isTemplated() {
+    let flag = false;
+    (this.values as { href:string, toString():string }[]).find((value) => {
+      const href:string = value?.href || value.toString() || '';
+      flag = href.includes('{id}');
+    });
+    return flag;
+  }
+}

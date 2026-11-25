@@ -1,0 +1,86 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Projects
+  module Settings
+    module WorkPackages
+      module CustomFields
+        class OverviewComponent < ApplicationComponent
+          include OpPrimer::ComponentHelpers
+          include OpTurbo::Streamable
+
+          def initialize(project:, query:)
+            super()
+
+            @project = project
+            @query = query
+          end
+
+          private
+
+          attr_reader :project, :query
+
+          def docs_url = OpenProject::Static::Links.url_for(:sysadmin_docs, :types)
+
+          def variants_by_field
+            @variants_by_field ||= matching_field_variant_pairs
+                                     .group_by(&:first)
+                                     .sort_by { |field, _| field.name.downcase }
+                                     .to_h { |field, pairs| [field, pairs.map(&:last)] }
+          end
+
+          def matching_field_variant_pairs
+            applied_variants.flat_map do |variant|
+              variant.custom_fields
+                     .select { |field| matching_field_ids.include?(field.id) }
+                     .map { |field| [field, variant] }
+            end
+          end
+
+          def matching_field_ids
+            @matching_field_ids ||= query.results.pluck(:id).to_set
+          end
+
+          def project_specific_value_counts
+            variants_by_field.keys
+                             .select(&:project_specific_values_supported?)
+                             .index_with { |field| field.restrictable_values.where(project_id: project.id).count }
+          end
+
+          def applied_variants
+            @applied_variants ||= project.project_types
+                                         .includes(variant: [:type, { form_configuration: :custom_fields }])
+                                         .map(&:variant)
+          end
+        end
+      end
+    end
+  end
+end

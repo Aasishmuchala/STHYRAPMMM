@@ -1,0 +1,63 @@
+<%#-- copyright
+OpenProject is an open source project management software.
+Copyright (C) the OpenProject GmbH
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License version 3.
+
+OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+Copyright (C) 2006-2013 Jean-Philippe Lang
+Copyright (C) 2010-2013 the ChiliProject Team
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+See COPYRIGHT and LICENSE files for more details.
+
+++#%>
+<% html_title t(:label_forum_plural) %>
+
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { t(:label_forum_plural) }
+    header.with_breadcrumbs(
+      [{ href: project_overview_path(@project.id), text: @project.name },
+       t(:label_forum_plural)]
+    )
+  end
+%>
+
+<% if User.current.allowed_in_project?(:manage_forums, @project) %>
+  <%=
+    render(Primer::OpenProject::SubHeader.new) do |subheader|
+      subheader.with_action_button(
+        scheme: :primary,
+        leading_icon: :plus,
+        label: t(:label_forum_new),
+        tag: :a,
+        href: new_project_forum_path(@project)
+      ) do
+        Forum.model_name.human
+      end
+    end
+  %>
+<% end %>
+<%= render(Forums::IndexComponent.new(forums: @forums, project: @project)) %>
+
+<%= other_formats_links do |f| %>
+  <%= f.link_to "Atom", url: { controller: "/activities", action: "index", id: @project, show_messages: 1, key: User.current.rss_key } %>
+<% end %>
+
+<% content_for :header_tags do %>
+  <%= auto_discovery_link_tag(:atom, { controller: "/activities", action: "index", id: @project, format: "atom", show_messages: 1, key: User.current.rss_key }) %>
+<% end %>

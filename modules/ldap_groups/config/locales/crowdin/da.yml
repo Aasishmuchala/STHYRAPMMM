@@ -1,0 +1,97 @@
+---
+da:
+  activerecord:
+    attributes:
+      ldap_groups/synchronized_filter:
+        auth_source: Godkendelseskilde
+        base_dn: Base-DN for søgning
+        filter_string: LDAP-filter
+        group_name_attribute: Attribut for gruppenavn
+        ldap_auth_source: LDAP-forbindelse
+        member_lookup_attribute: Attribut for gruppemedlemmer
+        sync_users: Synkroniser brugere
+      ldap_groups/synchronized_group:
+        auth_source: Godkendelseskilde
+        dn: DN
+        ldap_auth_source: LDAP-forbindelse
+        sync_users: Synkroniser brugere
+    errors:
+      models:
+        ldap_groups/synchronized_filter:
+          must_contain_base_dn: Filterets base-DN skal ligge inden for LDAP-forbindelsens base-DN
+    models:
+      ldap_groups/synchronized_filter:
+        one: Filter til synkronisering af LDAP-grupper
+        other: Filtre til synkronisering af LDAP-grupper
+      ldap_groups/synchronized_group:
+        one: Synkroniseret LDAP-gruppe
+        other: Synkroniserede LDAP-grupper
+  ee:
+    upsell:
+      ldap_groups:
+        description: Synkroniser LDAP-grupper med grupper i Sthyra Studios for at administrere brugere, ændre deres tilladelser og gøre brugeradministration på tværs af grupper nemmere.
+        title: Synkronisering af LDAP-grupper
+  ldap_groups:
+    label_group_key: Filternøgle for LDAP-gruppe
+    label_menu_item: Synkronisering af LDAP-grupper
+    label_synchronize: Find LDAP-grupper
+    settings:
+      name_attribute: Attribut for navn på LDAP-grupper
+      name_attribute_text: Den LDAP-attribut, der bruges til at navngive gruppen i Sthyra Studios, når den oprettes af et filter
+    synchronized_filters:
+      add_new: Tilføj synkroniseret LDAP-filter
+      destroy:
+        confirmation: Hvis du fortsætter, fjernes det synkroniserede filter %{name} og alle %{groups_count} grupper, der er oprettet via det.
+        heading: Vil du fjerne det synkroniserede filter %{name}?
+        removed_groups: 'Advarsel: Følgende grupper fjernes fra Sthyra Studios og fra alle projekter!'
+        title: Fjern det synkroniserede filter %{name}
+        verification_html: Skriv filterets navn %{name} for at bekræfte sletningen.
+      form:
+        base_dn_text: 'Angiv den base-DN, som filteret skal søge fra. Den skal ligge under base-DN for den valgte LDAP-forbindelse. Lad feltet stå tomt for at genbruge forbindelsens base-DN
+
+          '
+        filter_string_text: Angiv det LDAP-filter efter RFC 4515, der returnerer de grupper i dit LDAP, som skal synkroniseres med Sthyra Studios.
+        group_name_attribute_text: Angiv den attribut i LDAP-gruppen, der bruges som gruppens navn i Sthyra Studios.
+        member_lookup_attribute_text: 'Lad feltet stå tomt for at bruge standardopslaget baglæns: Sthyra Studios søger efter brugere, hvis memberOf-attribut svarer til gruppens DN. Det kræver, at brugerposterne har attributten memberOf (Active Directory, OpenLDAP med memberof-overlay). Angiv navnet på den attribut i gruppeposterne, der viser medlemmernes DN, for i stedet at slå op forlæns. Eksempler: "uniqueMember" (groupOfUniqueNames), "member" (groupOfNames). Brug det til LDAP-servere, der ikke vedligeholder memberOf-attributten på brugerposterne.
+
+          '
+      label_n_groups_found:
+        one: "%{count} gruppe fundet af filteret"
+        other: "%{count} grupper fundet af filteret"
+        zero: Ingen grupper blev fundet af filteret
+      plural: Filtre til synkronisering af LDAP-grupper
+      singular: Filter til synkronisering af LDAP-grupper
+    synchronized_groups:
+      add_new: Tilføj synkroniseret LDAP-gruppe
+      destroy:
+        confirmation: Hvis du fortsætter, fjernes den synkroniserede gruppe %{name} og alle %{users_count} brugere, der er synkroniseret via den.
+        heading: Vil du fjerne den synkroniserede gruppe %{name}?
+        info: Selve gruppen i Sthyra Studios og medlemmer, der er tilføjet uden for denne LDAP-synkronisering, fjernes ikke.
+        title: Fjern den synkroniserede gruppe %{name}
+      form:
+        auth_source_text: Vælg, hvilken LDAP-forbindelse der skal bruges.
+        dn_text: Angiv gruppens fulde DN i LDAP
+        group_text: Vælg en eksisterende gruppe i Sthyra Studios, som medlemmerne af LDAP-gruppen skal synkroniseres med
+        sync_users_text: 'Hvis du aktiverer denne indstilling, vil de fundne brugere også automatisk blive oprettet i Sthyra Studios. Uden det vil kun eksisterende konti i Sthyra Studios blive tilføjet til grupper.
+
+          '
+      help_text_html: |
+        Modulet gør det muligt at sætte en synkronisering op mellem grupper i LDAP og Sthyra Studios.
+        <br/>
+        Som standard bruger OpenProject <strong>opslag baglæns</strong>: Det søger efter brugere, hvis <em>memberOf</em>-attribut svarer til gruppens DN.
+        Det kræver, at brugerposterne har attributten <em>memberOf</em> (Active Directory, OpenLDAP med memberof-overlay).
+        <br/>
+        Hvis din LDAP-server ikke vedligeholder <em>memberOf</em> på brugerposterne (fx fordi den bruger <em>groupOfUniqueNames</em> med <em>uniqueMember</em>),
+        kan du konfigurere <strong>opslag forlæns</strong> ved at angive <em>Attribut for gruppemedlemmer</em> i synkroniseringsfilteret.
+        <br/>
+        Grupperne synkroniseres hver time via et cron-job.
+        [Læs vores dokumentation om emnet](docs_url).
+      no_members: Gruppen har endnu ingen synkroniserede medlemmer.
+      no_results: Der blev ikke fundet nogen synkroniserede grupper.
+      plural: Synkroniserede LDAP-grupper
+      singular: Synkroniseret LDAP-gruppe
+      upsell:
+        description: Brug synkroniserede LDAP-grupper til at administrere brugere, ændre deres tilladelser og gøre brugeradministration på tværs af grupper nemmere.
+  plugin_openproject_ldap_groups:
+    description: Synkronisering af medlemskab af LDAP-grupper.
+    name: Sthyra Studios LDAP groups

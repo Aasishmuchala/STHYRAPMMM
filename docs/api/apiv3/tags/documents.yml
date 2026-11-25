@@ -1,0 +1,50 @@
+---
+description: |-
+  A document is a file containing a list of attachments.
+
+  ## Actions
+
+  | Link                     | Description                                         | Condition                                                                                                         |
+  | :----------------------: | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+  | update                   | Updates the document                                | **Permission**: manage documents                                                                                  |
+  | addAttachment            | Adds an attachment to the document                  | **Permission**: manage documents                                                                                  |
+  | createCollaborationToken | Creates a token for the real-time collaboration server | **Permission**: view documents. The document is collaborative and real-time collaboration is enabled.          |
+
+  ## Real-time collaboration
+
+  Collaborative documents are edited through the real-time collaboration server (Hocuspocus). To connect to it:
+
+  1. Create a collaboration token with `POST /api/v3/documents/{id}/collaboration_token`
+     (the `createCollaborationToken` link of the document).
+  2. Connect a Hocuspocus provider to the `collaborationServer` link of the response, using `documentName` as
+     the provider's `name` and `token` as its `token`.
+  3. Before `expiresInSeconds` runs out, create a new token, sending the current one as `token` so it is revoked
+     30 seconds later (the `createCollaborationToken` link of the response). Doing so at about 80% of the
+     lifetime is recommended, like the OpenProject web frontend does. Hand the new token to the server right away
+     by calling `sendToken()` on the provider. A token that is already revoked (i.e. was sent before) is rejected.
+  4. If the WebSocket connection is closed with code `4401`, create a new token and reconnect.
+
+  Limitations:
+
+  - Requests authenticated with a collaboration token cannot create further collaboration tokens.
+    Do that with your own credentials (session, API key or OAuth token).
+  - The collaboration server rejects browser connections whose `Origin` does not match the OpenProject
+    host. Server-side clients that send no `Origin` header are not affected.
+
+  ## Linked Properties
+
+  | Link          | Description                               | Type           | Constraints           | Supported operations | Condition                                 |
+  | :-----------: | -------------------------------------     | -------------  | --------------------- | -------------------- | ----------------------------------------- |
+  | self          | This document                             | Document       | not null              | READ                 |                                           |
+  | project       | The project the document is in            | Project        | not null              | READ / WRITE         |                                           |
+  | attachments   | The attachments belonging to the document | []Attachment   | not null              | READ / WRITE         |                                           |
+
+  ## Local Properties
+
+  | Property     | Description                                               | Type     | Constraints                                          | Supported operations | Condition                                                   |
+  | :----------: | --------------------------------------------------------- | -------- | ---------------------------------------------------- | -------------------- | ----------------------------------------------------------- |
+  | id           | Document's id                                             | Integer  | x > 0                                                | READ                 |                                                             |
+  | title        | The title chosen for the collection of documents          | String   | max 60 characters                                    | READ                 |                                                             |
+  | description  | A text describing the documents                           | String   |                                                      | READ                 |                                                             |
+  | createdAt    | The time the document was created at                      | DateTime |                                                      | READ                 |                                                             |
+name: Documents

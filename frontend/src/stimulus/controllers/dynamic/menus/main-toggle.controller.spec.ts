@@ -1,0 +1,104 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { waitFor } from '@testing-library/dom';
+import { vi, type Mock } from 'vitest';
+
+import { setupStimulusTest, type StimulusTestContext, stubPendingPluginContext, stubPluginContext } from 'core-stimulus/test-helpers';
+import type MainToggleControllerType from './main-toggle.controller';
+
+describe('Main menu toggle controller', () => {
+  let ctx:StimulusTestContext;
+  let MainToggleController:typeof MainToggleControllerType;
+  let syncWithPage:Mock;
+  let toggle:Mock;
+
+  const pluginContext = () => ({
+    injector: { get: () => ({ syncWithPage, toggle }) },
+  });
+
+  beforeAll(async () => {
+    ({ default: MainToggleController } = await import('./main-toggle.controller'));
+  });
+
+  beforeEach(async () => {
+    syncWithPage = vi.fn();
+    toggle = vi.fn();
+    stubPluginContext(pluginContext());
+
+    ctx = await setupStimulusTest({
+      controllers: { 'menus--main-toggle': MainToggleController },
+    });
+  });
+
+  afterEach(() => {
+    ctx.dispose();
+    vi.restoreAllMocks();
+  });
+
+  async function renderToggle() {
+    await ctx.mount('<button data-controller="menus--main-toggle"></button>');
+    return ctx.getController<MainToggleControllerType>('menus--main-toggle');
+  }
+
+  it('initializes the menu service after connect', async () => {
+    await renderToggle();
+
+    await waitFor(() => {
+      expect(syncWithPage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('delegates navigation toggles to the menu service', async () => {
+    const controller = await renderToggle();
+    await waitFor(() => {
+      expect(syncWithPage).toHaveBeenCalled();
+    });
+
+    const event = new CustomEvent('click', { cancelable: true });
+    controller.toggleNavigation(event);
+
+    expect(toggle).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('does not initialize the menu when disconnected before the context resolves', async () => {
+    const resolveContext = stubPendingPluginContext();
+
+    const controller = await renderToggle();
+    const button = ctx.container.querySelector('button')!;
+
+    button.remove();
+    await ctx.nextFrame();
+
+    resolveContext(pluginContext());
+    await ctx.nextFrame();
+
+    expect(syncWithPage).not.toHaveBeenCalled();
+    expect(controller.pluginContext).toBeInstanceOf(Promise);
+  });
+});

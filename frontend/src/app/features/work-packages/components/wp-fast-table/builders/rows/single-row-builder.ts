@@ -1,0 +1,295 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { isNavigableColumn, navigableCellClassName } from 'core-app/features/work-packages/components/wp-fast-table/handlers/state/keyboard/roving-tabindex';
+import { Injector } from '@angular/core';
+import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { locateTableRowByIdentifier } from 'core-app/features/work-packages/components/wp-fast-table/helpers/wp-table-row-helpers';
+import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+import { WorkPackageViewColumnsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-columns.service';
+import { TableActionRenderer } from 'core-app/features/work-packages/components/wp-fast-table/builders/table-action-renderer';
+import {
+  internalBaselineColumn,
+  internalContextMenuColumn,
+  internalSortColumn,
+  sharedUserColumn,
+} from 'core-app/features/work-packages/components/wp-fast-table/builders/internal-sort-columns';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { debugLog } from 'core-app/shared/helpers/debug_output';
+import { RelationCellbuilder } from '../relation-cell-builder';
+import {
+  CellBuilder,
+  tdClassName,
+} from '../cell-builder';
+import {
+  isRelationColumn,
+  QueryColumn,
+} from '../../../wp-query/query-column';
+import { WorkPackageTable } from 'core-app/features/work-packages/components/wp-fast-table/wp-fast-table';
+import { WorkPackageViewBaselineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-baseline.service';
+import { BaselineColumnBuilder } from 'core-app/features/work-packages/components/wp-fast-table/builders/baseline/baseline-column-builder';
+import { ShareCellbuilder } from '../share-cell-builder';
+import { renderedColumns } from '../rendered-columns';
+
+// Work package table row entries
+export const tableRowClassName = 'wp-table--row';
+// Work package and timeline rows
+export const commonRowClassName = 'wp--row';
+
+export class SingleRowBuilder {
+  // Injections
+  @LazyInject() wpTableColumns:WorkPackageViewColumnsService;
+
+  @LazyInject() wpTableBaseline:WorkPackageViewBaselineService;
+
+  @LazyInject() I18n!:I18nService;
+
+  // Cell builder instance
+  protected cellBuilder = new CellBuilder(this.injector, this.workPackageTable.configuration);
+
+  // Relation cell builder instance
+  protected relationCellBuilder = new RelationCellbuilder(this.injector);
+
+  // Share cell builder instance
+  protected shareCellBuilder = new ShareCellbuilder(this.injector);
+
+  // Details Link builder
+  protected contextLinkBuilder = new TableActionRenderer(this.injector);
+
+  // Baseline column builder
+  protected baselineColumnBuilder = new BaselineColumnBuilder(this.injector);
+
+  // Build the augmented columns set to render with
+  protected readonly augmentedColumns:QueryColumn[] = this.buildAugmentedColumns();
+
+  constructor(
+    public readonly injector:Injector,
+    protected workPackageTable:WorkPackageTable,
+  ) {
+  }
+
+  /**
+   * Returns the current set of columns
+   */
+  public get columns():QueryColumn[] {
+    return this.wpTableColumns.getColumns();
+  }
+
+  /**
+   * Returns the current set of columns, augmented by the internal columns
+   * we add for buttons and timeline.
+   */
+  protected buildAugmentedColumns():QueryColumn[] {
+    const rendered = renderedColumns(this.workPackageTable.configuration, this.wpTableBaseline.isActive());
+
+    return [
+      ...(rendered.drag ? [internalSortColumn] : []),
+      ...(rendered.baseline ? [internalBaselineColumn] : []),
+      ...this.columns,
+      ...(rendered.trailing ? [internalContextMenuColumn] : []),
+    ];
+  }
+
+  protected get rowHeaderColumn():'subject'|'id'|null {
+    if (this.augmentedColumns.some((column) => column.id === 'subject')) return 'subject';
+    return this.augmentedColumns.some((column) => column.id === 'id') ? 'id' : null;
+  }
+
+  public buildCell(workPackage:WorkPackageResource, column:QueryColumn):HTMLTableCellElement|null {
+    // handle relation types
+    if (isRelationColumn(column)) {
+      return this.relationCellBuilder.build(workPackage, column);
+    }
+
+    if (column.id === sharedUserColumn.id) {
+      return this.shareCellBuilder.build(workPackage, column);
+    }
+
+    // Handle property types
+    switch (column.id) {
+      case internalContextMenuColumn.id:
+        if (this.workPackageTable.configuration.actionsColumnEnabled) {
+          return this.contextLinkBuilder.build(workPackage);
+        }
+        if (this.workPackageTable.configuration.columnMenuEnabled) {
+          const td = document.createElement('td');
+          td.classList.add('hide-when-print');
+          if (isNavigableColumn(column, this.workPackageTable.configuration)) {
+            td.classList.add(navigableCellClassName);
+          }
+          return td;
+        }
+        return null;
+
+      case internalBaselineColumn.id:
+        return this.baselineColumnBuilder.build(workPackage, column);
+
+      default:
+        return this.cellBuilder.build(workPackage, column, column.id === this.rowHeaderColumn);
+    }
+  }
+
+  /**
+   * Build the columns on the given empty row
+   */
+  public buildEmpty(workPackage:WorkPackageResource):[HTMLTableRowElement, boolean] {
+    const row = this.createEmptyRow(workPackage);
+    return this.buildEmptyRow(workPackage, row);
+  }
+
+  /**
+   * Create an empty unattached row element for the given work package
+   * @param workPackage
+   * @returns {any}
+   */
+  public createEmptyRow(workPackage:WorkPackageResource) {
+    const identifier = this.classIdentifier(workPackage);
+    const tr = document.createElement('tr');
+    tr.setAttribute('tabindex', '-1');
+    tr.dataset.workPackageId = workPackage.id!;
+    tr.dataset.classIdentifier = identifier;
+    tr.classList.add(
+      tableRowClassName,
+      commonRowClassName,
+      identifier,
+      `${identifier}-table`,
+      'issue',
+    );
+
+    return tr;
+  }
+
+  /**
+   * In case the table will end up empty, we insert a placeholder
+   * row to provide some space within the tbody.
+   */
+  public get placeholderRow() {
+    const tr:HTMLTableRowElement = document.createElement('tr');
+    const td:HTMLTableCellElement = document.createElement('td');
+
+    tr.classList.add('wp--placeholder-row');
+    td.colSpan = this.augmentedColumns.length;
+    tr.appendChild(td);
+
+    return tr;
+  }
+
+  public classIdentifier(workPackage:WorkPackageResource) {
+    return `wp-row-${workPackage.id}`;
+  }
+
+  /**
+   * Refresh a row that is currently being edited, that is, some edit fields may be open
+   */
+  /** `_depth` is the row's nesting depth in the rendered query, which hierarchy rows draw; plain rows have none. */
+  public refreshRow(workPackage:WorkPackageResource, row:HTMLTableRowElement, _depth?:number):HTMLTableRowElement {
+    const oldCells = Array.from(row.cells);
+    const retained = new Map<string, HTMLTableCellElement>();
+
+    this.augmentedColumns.forEach((column:QueryColumn) => {
+      const oldTd = oldCells.find((cell) => cell.classList.contains(column.id));
+      if (oldTd && (this.retainsOnRefresh(column) || this.isColumnBeingEdited(workPackage, column, oldTd))) {
+        retained.set(column.id, oldTd);
+      }
+    });
+
+    const retainedCells = new Set(retained.values());
+    oldCells.filter((cell) => !retainedCells.has(cell)).forEach((cell) => cell.remove());
+
+    let anchor:ChildNode|null = null;
+    [...this.augmentedColumns].reverse().forEach((column:QueryColumn) => {
+      const retainedCell = retained.get(column.id);
+      if (retainedCell) {
+        if (retainedCell.nextSibling !== anchor) {
+          row.insertBefore(retainedCell, anchor);
+        }
+        anchor = retainedCell;
+        return;
+      }
+
+      const cell = this.buildCell(workPackage, column);
+      if (cell) {
+        row.insertBefore(cell, anchor);
+        anchor = cell;
+      }
+    });
+
+    return row;
+  }
+
+  private retainsOnRefresh(column:QueryColumn):boolean {
+    return column.id !== internalBaselineColumn.id && column.id.startsWith('__internal');
+  }
+
+  protected isColumnBeingEdited(
+    workPackage:WorkPackageResource,
+    column:QueryColumn,
+    cell:HTMLTableCellElement,
+  ):boolean {
+    const field = this.workPackageTable.editing.forms[workPackage.id!]?.activeFields[column.id];
+
+    return field?.element !== undefined && cell.contains(field.element);
+  }
+
+  protected buildEmptyRow(workPackage:WorkPackageResource, row:HTMLTableRowElement):[HTMLTableRowElement, boolean] {
+    const change = this.workPackageTable.editing.change(workPackage);
+    const cells:Record<string, HTMLTableCellElement> = {};
+
+    if (change && !change.isEmpty()) {
+      // Try to find an old instance of this row
+      const oldRow = locateTableRowByIdentifier(
+        this.classIdentifier(workPackage),
+        this.workPackageTable.tableAndTimelineContainer,
+      );
+
+      change.changedAttributes.forEach((attribute:string) => {
+        const oldCell = oldRow?.querySelector<HTMLTableCellElement>(`.${tdClassName}.${attribute}`);
+        if (oldCell) {
+          cells[attribute] = oldCell;
+        }
+      });
+    }
+
+    this.augmentedColumns.forEach((column:QueryColumn) => {
+      let cell:Element|null;
+      const oldCell = cells[column.id];
+
+      if (oldCell) {
+        debugLog(`Rendering previous open column ${column.id} on ${workPackage.id}`);
+        row.appendChild(oldCell);
+      } else {
+        cell = this.buildCell(workPackage, column);
+
+        if (cell) {
+          row.appendChild(cell);
+        }
+      }
+    });
+
+    return [row, false];
+  }
+}

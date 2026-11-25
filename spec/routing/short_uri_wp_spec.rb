@@ -1,0 +1,82 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "routes for old issue uris", type: :request do
+  # These are routing specs and should be moved to
+  # spec/routing.
+  # As redirect_to is not supported by routing specs they have
+  # to be marked as type request. However, this breaks when
+  # moving them to spec/routing.
+  describe "for index action" do
+    before do
+      get("/wp")
+    end
+
+    it do
+      expect(last_response).to be_redirect
+      expect(last_response.location).to end_with "/work_packages"
+    end
+  end
+
+  describe "with specific id" do
+    before do
+      get("/wp/1234")
+    end
+
+    it do
+      expect(last_response).to be_redirect
+      expect(last_response.location).to end_with "/work_packages/1234"
+    end
+
+    it "keeps a format suffix" do
+      get("/wp/1234.md")
+      expect(last_response).to be_redirect
+      expect(last_response.location).to end_with "/work_packages/1234.md"
+    end
+
+    it "drops a format suffix that is not alphanumeric" do
+      get("/wp/1234.m%20d")
+      expect(last_response).to be_redirect
+      expect(last_response.location).to end_with "/work_packages/1234"
+    end
+
+    it "drops a format suffix with a bracket" do
+      get("/wp/1234.md%5B")
+      expect(last_response).to be_redirect
+      expect(last_response.location).to end_with "/work_packages/1234"
+    end
+
+    it "has a path helper" do
+      expect(work_package_short_path("123")).to eq("/wp/123")
+      expect(work_package_short_path(%w[123 a_tab foo])).to eq("/wp/123/a_tab/foo")
+    end
+  end
+end

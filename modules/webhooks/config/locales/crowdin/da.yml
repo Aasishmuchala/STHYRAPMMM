@@ -1,0 +1,80 @@
+---
+da:
+  activerecord:
+    attributes:
+      webhooks/log:
+        event_name: Hændelsens navn
+        response_body: Svar
+        response_code: Svarkode
+        url: Payload-URL
+      webhooks/webhook:
+        enabled: Aktiveret
+        events: Hændelser
+        projects: Aktiverede projekter
+        secret: Signaturhemmelighed
+        url: Payload-URL
+    models:
+      webhooks/log:
+        one: Webhook-log
+        other: Webhook-logge
+      webhooks/webhook:
+        one: Webhook
+        other: Webhooks
+  plugin_openproject_webhooks:
+    description: Leverer et plugin-API til webhooks i Sthyra Studios for bedre integration med tredjeparter.
+    name: Sthyra Studios Webhooks
+  webhooks:
+    outgoing:
+      deliveries:
+        no_results_table: Der er ikke foretaget nogen leveringer for denne webhook de seneste dage.
+        time: Leveringstidspunkt
+        title: Seneste leveringer
+      events:
+        comment: Kommentar
+        created: Oprettet
+        internal_comment: Intern kommentar
+        updated: Opdateret
+      explanation_html: 'Når der sker en hændelse, fx at en arbejdspakke oprettes eller et projekt opdateres, sender Sthyra Studios en POST-forespørgsel til de konfigurerede web-endepunkter. Ofte sendes hændelsen først, når den [konfigurerede sammenlægningsperiode](aggregation_path) er gået.
+
+        '
+      form:
+        apiv3_doc_url: Se API-dokumentationen for at få flere oplysninger
+        description:
+          placeholder: Valgfri beskrivelse af webhooken.
+        enabled:
+          description: 'Når feltet er markeret, udløses webhooken ved de valgte hændelser. Fjern markeringen for at slå webhooken fra.
+
+            '
+        events:
+          title: Aktiverede hændelser
+        introduction: 'Send en POST-forespørgsel til payload-URL''en nedenfor ved enhver hændelse i det projekt, som du abonnerer på. Payloaden svarer til APIv3-repræsentationen af det objekt, der ændres.
+
+          '
+        project_ids:
+          all: Alle projekter
+          description: Vælg, hvilke projekter webhooken skal udføres for.
+          selected: Kun valgte projekter
+          title: Aktiverede projekter
+        secret:
+          description: 'Hvis den er angivet, bruger Sthyra Studios denne hemmelige værdi til at signere webhookens payload.
+
+            '
+        selected_project_ids:
+          title: Valgte projekter
+      label_add_new: Tilføj ny webhook
+      label_edit: Rediger webhook
+      label_x_events:
+        one: "%{count} hændelse"
+        other: "%{count} hændelser"
+        zero: Ingen hændelser
+      no_results_table: Der er endnu ikke defineret nogen webhooks.
+      status:
+        disabled: Webhooken er slået fra
+        disabled_text: Klik på knappen Rediger for at aktivere webhooken.
+        enabled: Webhooken er slået til
+        enabled_text: Webhooken sender payloads for hændelserne nedenfor.
+    plural: Webhooks
+    resources:
+      time_entry:
+        name: Tidsregistrering
+    singular: Webhook

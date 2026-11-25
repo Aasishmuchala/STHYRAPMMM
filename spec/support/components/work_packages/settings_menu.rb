@@ -1,0 +1,111 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "../../toasts/expectations"
+
+module Components
+  module WorkPackages
+    class SettingsMenu
+      include Capybara::DSL
+      include Capybara::RSpecMatchers
+      include RSpec::Matchers
+      include Toasts::Expectations
+
+      MENU_LABEL = "More actions"
+
+      def open_and_save_query(name)
+        open_and_choose("Save")
+        within_modal_fill_in_and_save(name:)
+      end
+
+      def open_and_save_query_as(name)
+        open_and_choose("Save as")
+        within_modal_fill_in_and_save(name:)
+      end
+
+      def open_and_choose(name)
+        open!
+        choose(name)
+      end
+
+      def open!
+        find(:button, accessible_name: MENU_LABEL).click
+        dropdown_menu
+      end
+
+      def dropdown_menu
+        page.find(:menu, MENU_LABEL)
+      end
+
+      def expect_open
+        expect(page).to have_selector(:menu, MENU_LABEL)
+      end
+
+      def expect_closed
+        expect(page).to have_no_selector(:menu, MENU_LABEL)
+      end
+
+      def choose(target)
+        within(:menu, MENU_LABEL) do
+          if target.is_a?(Regexp)
+            find(:menuitem, text: target).click
+          else
+            find(:menuitem, target, exact: true).click
+          end
+        end
+      end
+
+      def expect_options(*options)
+        expect_open
+        options.each do |text|
+          expect(page).to have_selector(:menuitem, text, exact: true)
+        end
+      end
+
+      private
+
+      def within_modal_fill_in_and_save(name:)
+        modal.within_modal do
+          fill_in "save-query-name", with: name
+          click_button "Save"
+        end
+        wait_for_save_completion
+      end
+
+      def wait_for_save_completion
+        expect_and_dismiss_toaster
+        modal.expect_closed
+      end
+
+      def modal
+        Components::Common::Modal.new
+      end
+    end
+  end
+end

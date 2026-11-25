@@ -1,0 +1,9 @@
+@if (resource) {
+  <h2 class="op-board-list--header-title editable-toolbar-title--fixed">
+    <small [textContent]="text.project"></small>
+    <a [href]="pathHelper.projectPath(idFromLink(resource.href))"
+      [textContent]="resource.name"
+      target="_blank">
+    </a>
+  </h2>
+}

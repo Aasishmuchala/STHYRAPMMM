@@ -1,0 +1,118 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Statuses administration" do
+  current_user { create(:admin) }
+
+  describe "New status page" do
+    before do
+      visit new_status_path
+    end
+
+    describe "with EE token", with_ee: %i[readonly_work_packages] do
+      it "allows to set readonly status" do
+        expect(page).to have_field "status[is_readonly]", disabled: false
+      end
+    end
+
+    describe "without EE token" do
+      it "does not allow to set readonly status" do
+        expect(page).to have_field "status[is_readonly]", disabled: true
+      end
+    end
+  end
+
+  describe "Work Package statuses page" do
+    context "without any statuses" do
+      it 'displays the "no results" text' do
+        visit statuses_path
+        expect(page).to have_text("There are currently no work package statuses.")
+        expect(page).to have_text("Add a new status")
+      end
+    end
+
+    context "with some statuses" do
+      let!(:new_status) { create(:default_status, name: "I am new") }
+      let!(:in_progress_status) { create(:status, name: "Working on it") }
+      let!(:closed_status) { create(:closed_status, name: "Job finished") }
+
+      it "list statuses" do
+        visit statuses_path
+        expect(page).to have_text("I am new")
+        expect(page).to have_text("Working on it")
+        expect(page).to have_text("Job finished")
+      end
+
+      it "links a status's workflow count to the filtered workflows list" do
+        workflow = create(:named_workflow, name: "Review flow")
+        create(:status_transition, workflow:, old_status: in_progress_status)
+        create(:named_workflow, name: "Unrelated flow")
+
+        visit statuses_path
+
+        within(".Box-row", text: "Working on it") do
+          click_link I18n.t("statuses.index.workflows_count", count: 1)
+        end
+
+        expect(page).to have_current_path(/workflows/)
+        expect(page).to have_text("Review flow")
+        expect(page).to have_no_text("Unrelated flow")
+      end
+    end
+  end
+
+  describe "Edit status page" do
+    let(:status) { create(:status, name: "In progress") }
+
+    it "shows a usage banner linking to the filtered list of workflows" do
+      workflow = create(:named_workflow, name: "Review flow")
+      create(:status_transition, workflow:, old_status: status)
+      create(:named_workflow, name: "Unrelated flow")
+
+      visit edit_status_path(status)
+
+      expect(page).to have_text("This status is used by 1 workflow.")
+
+      click_link "View workflows"
+
+      expect(page).to have_current_path(/workflows/)
+      expect(page).to have_text("Review flow")
+      expect(page).to have_no_text("Unrelated flow")
+    end
+
+    it "shows no banner when no workflow uses the status" do
+      visit edit_status_path(status)
+
+      expect(page).to have_text("In progress")
+      expect(page).to have_no_text("This status is used by")
+    end
+  end
+end

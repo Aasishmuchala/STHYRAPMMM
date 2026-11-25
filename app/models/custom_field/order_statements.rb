@@ -1,0 +1,208 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module CustomField::OrderStatements
+  ORDER_JOIN_METHOD_BY_FIELD_FORMAT = OpenProject::MultiKeyHash.expand(
+    %w[string date datetime bool link] => :join_for_order_by_string_sql,
+    "int" => :join_for_order_by_int_sql,
+    "float" => :join_for_order_by_float_sql,
+    "calculated_value" => :join_for_order_by_calculated_value_sql,
+    "list" => :join_for_order_by_list_sql,
+    "user" => :join_for_order_by_user_sql,
+    "version" => :join_for_order_by_version_sql,
+    %w[hierarchy weighted_item_list] => :join_for_order_by_hierarchy_sql
+  ).freeze
+
+  # Sorts values that are not usable in the work package's project after all others. As positions are
+  # also grouped by, it has to be beyond any actual position, hence the largest bigint.
+  UNAVAILABLE_VALUE_POSITION = (2**63) - 1
+
+  # Returns the expression to use in ORDER BY clause to sort objects by their
+  # value of the custom field.
+  def order_statement
+    "cf_order_#{id}.value" if ORDER_JOIN_METHOD_BY_FIELD_FORMAT.key?(field_format)
+  end
+
+  # Returns the join statement that is required to sort objects by their value
+  # of the custom field.
+  def order_join_statement
+    method_name = ORDER_JOIN_METHOD_BY_FIELD_FORMAT[field_format]
+    send(method_name) if method_name
+  end
+
+  # Returns the ORDER BY option defining order of objects without value for the
+  # custom field.
+  def order_null_handling(asc)
+    null_direction = asc ? "FIRST" : "LAST"
+    Arel.sql("NULLS #{null_direction}")
+  end
+
+  # Returns the expression to use in GROUP BY (and ORDER BY) clause to group
+  # objects by their value of the custom field.
+  def group_by_statement
+    return unless can_be_used_for_grouping?
+
+    order_statement
+  end
+
+  # Returns the expression to use in SELECT clause if it differs from one used
+  # to group by
+  def group_by_select_statement
+    return unless %w[list hierarchy weighted_item_list].include?(field_format)
+
+    # MIN needed to not add this column to group by, ANY_VALUE can be used when
+    # minimum required PostgreSQL becomes 16
+    "MIN(cf_order_#{id}.ids)"
+  end
+
+  # Returns the join statement that is required to group objects by their value
+  # of the custom field.
+  def group_by_join_statement
+    return unless can_be_used_for_grouping?
+
+    order_join_statement
+  end
+
+  private
+
+  def can_be_used_for_grouping? = field_format.in?(%w[list date bool int float string link hierarchy])
+
+  # Template for all the join statements.
+  #
+  # For single value custom fields the join ensures single value for every
+  # customized object using DISTINCT ON and selecting first value by id of
+  # custom value:
+  #
+  #   LEFT OUTER JOIN (
+  #     SELECT DISTINCT ON (cv.customized_id), cv.customized_id, xxx "value"
+  #       FROM custom_values cv
+  #       WHERE …
+  #       ORDER BY cv.customized_id, cv.id
+  #   ) cf_order_NNN ON cf_order_NNN.customized_id = …
+  #
+  # For multi value custom fields the GROUP BY and value aggregate function
+  # ensure single value for every customized object:
+  #
+  #   LEFT OUTER JOIN (
+  #     SELECT cv.customized_id, ARRAY_AGG(xxx ORDERY BY yyy) "value"
+  #       FROM custom_values cv
+  #       WHERE …
+  #       GROUP BY cv.customized_id, cv.id
+  #   ) cf_order_NNN ON cf_order_NNN.customized_id = …
+  #
+  def join_for_order_sql(value:, add_select: nil, join: nil, multi_value: false)
+    customized_type_condition = OpenProject::SqlSanitization.sanitize(
+      "cv.customized_type = ?", self.class.customized_class.base_class.name
+    )
+
+    <<~SQL.squish
+      LEFT OUTER JOIN (
+        SELECT
+          #{'DISTINCT ON (cv.customized_id)' unless multi_value}
+            cv.customized_id
+            , #{value} "value"
+            #{", #{add_select}" if add_select}
+          FROM #{CustomValue.quoted_table_name} cv
+          #{join}
+          WHERE #{customized_type_condition}
+            AND cv.custom_field_id = #{id}
+            AND cv.value IS NOT NULL
+            AND cv.value != ''
+          #{multi_value ? 'GROUP BY cv.customized_id' : 'ORDER BY cv.customized_id, cv.id'}
+      ) cf_order_#{id}
+        ON cf_order_#{id}.customized_id = #{self.class.customized_class.quoted_table_name}.id
+    SQL
+  end
+
+  def join_for_order_by_string_sql = join_for_order_sql(value: "cv.value")
+
+  def join_for_order_by_int_sql = join_for_order_sql(value: "cv.value::decimal(60)")
+
+  def join_for_order_by_float_sql = join_for_order_sql(value: "cv.value::double precision")
+
+  def join_for_order_by_calculated_value_sql
+    join_for_order_sql(value: "CASE cv.value WHEN 't' THEN 1 WHEN 'f' THEN 0 ELSE cv.value::double precision END")
+  end
+
+  def join_for_order_by_list_sql
+    position = disclosed_sql("co.position", UNAVAILABLE_VALUE_POSITION)
+    value_id = disclosed_sql("cv.value", "'#{CustomField::UnavailableValue::GROUP_KEY}'")
+
+    join_for_order_sql(
+      value: multi_value? ? "ARRAY_AGG(#{position} ORDER BY #{position})" : position,
+      add_select: "#{multi_value? ? "ARRAY_TO_STRING(ARRAY_AGG(#{value_id} ORDER BY #{position}), '.')" : value_id} ids",
+      join: "INNER JOIN #{CustomOption.quoted_table_name} co ON co.id = cv.value::bigint",
+      multi_value:
+    )
+  end
+
+  def join_for_order_by_user_sql
+    columns_array = "ARRAY[users_for_ordering.lastname, users_for_ordering.firstname, users_for_ordering.mail]"
+
+    join_for_order_sql(
+      value: multi_value? ? "ARRAY_AGG(#{columns_array} ORDER BY #{columns_array})" : columns_array,
+      join: "INNER JOIN #{User.quoted_table_name} users_for_ordering ON users_for_ordering.id = cv.value::bigint",
+      multi_value:
+    )
+  end
+
+  def join_for_order_by_version_sql
+    join_for_order_sql(
+      value: if multi_value?
+               "array_agg(versions_for_ordering.name ORDER BY versions_for_ordering.name)"
+             else
+               "versions_for_ordering.name"
+             end,
+      join: "INNER JOIN #{Version.quoted_table_name} versions_for_ordering ON versions_for_ordering.id = cv.value::bigint",
+      multi_value:
+    )
+  end
+
+  def join_for_order_by_hierarchy_sql
+    position = disclosed_sql("item.position_cache", UNAVAILABLE_VALUE_POSITION)
+    value_id = disclosed_sql("cv.value", "'#{CustomField::UnavailableValue::GROUP_KEY}'")
+
+    join_for_order_sql(
+      value: multi_value? ? "ARRAY_AGG(#{position} ORDER BY #{position})" : position,
+      add_select: "#{multi_value? ? "ARRAY_TO_STRING(ARRAY_AGG(#{value_id} ORDER BY #{position}), '.')" : value_id} ids",
+      join: "INNER JOIN #{CustomField::Hierarchy::Item.quoted_table_name} item ON item.id = cv.value::bigint",
+      multi_value:
+    )
+  end
+
+  # Values not usable in the project of the customized work package sort and group together as a
+  # single value that does not reveal which values they are.
+  def disclosed_sql(expression, replacement)
+    return expression unless project_specific_values_supported?
+
+    project_sql = "SELECT project_id AS id FROM #{WorkPackage.quoted_table_name} WHERE id = cv.customized_id"
+
+    "CASE WHEN #{usable_value_condition('cv.value::bigint', project_sql)} THEN #{expression} ELSE #{replacement} END"
+  end
+end

@@ -1,0 +1,13 @@
+<%=
+  flex_layout(align_items: :center, classes: "gap-2") do |type_container|
+    type_container.with_column do
+      render(Primer::Beta::Text.new) { start_date }
+    end
+    type_container.with_column do
+      render(Primer::Beta::Text.new) { "-" }
+    end
+    type_container.with_column do
+      render(Primer::Beta::Text.new) { finish_date }
+    end
+  end
+%>

@@ -1,0 +1,145 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+class Status < ApplicationRecord
+  include Lists::MoveAfterAnchor
+
+  enum :category, { to_do: "to_do", in_progress: "in_progress", closed: "closed" }
+
+  scope :not_closed, -> { where("#{table_name}.category IS DISTINCT FROM 'closed'") }
+
+  SORTABLE_LIST_TYPE = "status"
+
+  default_scope { order_by_position }
+  before_destroy :check_integrity
+  has_many :workflow_status_transitions,
+           class_name: "Workflows::StatusTransition",
+           foreign_key: "old_status_id",
+           inverse_of: :old_status,
+           dependent: :delete_all
+  acts_as_list
+
+  belongs_to :color, class_name: "Color"
+
+  before_destroy :delete_workflows
+
+  validates :name,
+            presence: true,
+            uniqueness: { case_sensitive: false },
+            length: { maximum: 256 }
+
+  validates :default_done_ratio, inclusion: { in: 0..100, allow_nil: false }
+
+  validate :default_status_must_not_be_readonly
+
+  after_save :unmark_old_default_value, if: :is_default?
+
+  scope :visible, ->(user = User.current) { user.allowed_in_any_project?(:view_work_packages) ? all : none }
+
+  def unmark_old_default_value
+    Status.where.not(id:).update_all(is_default: false)
+  end
+
+  # Returns the default status for new issues
+  def self.default
+    where_default.first
+  end
+
+  def self.where_default
+    where(is_default: true)
+  end
+
+  def self.order_by_position
+    order(:position)
+  end
+
+  # Maps each given status to the number of distinct workflows whose transitions reference it
+  def self.workflow_counts(statuses)
+    ids = statuses.map(&:id)
+    return {} if ids.empty?
+
+    workflow_ids = Hash.new { |hash, key| hash[key] = Set.new }
+    Workflows::StatusTransition.touching_statuses(ids)
+      .pluck(:workflow_id, :old_status_id, :new_status_id)
+      .each do |workflow_id, old_id, new_id|
+        workflow_ids[old_id] << workflow_id
+        workflow_ids[new_id] << workflow_id
+      end
+
+    workflow_ids.slice(*ids).transform_values(&:size)
+  end
+
+  def workflow_count
+    Workflows::StatusTransition.touching_statuses(id).distinct.count(:workflow_id)
+  end
+
+  def self.can_readonly?
+    EnterpriseToken.allows_to?(:readonly_work_packages)
+  end
+  delegate :can_readonly?, to: :class
+
+  def <=>(other)
+    position <=> other.position
+  end
+
+  def to_s; name end
+
+  def is_readonly
+    return false unless can_readonly?
+
+    super
+  end
+  alias :is_readonly? :is_readonly
+
+  ##
+  # Overrides cache key so that changes to EE state are reflected
+  def cache_key
+    "#{super}/#{can_readonly?}"
+  end
+
+  private
+
+  def check_integrity
+    raise "Can't delete status" if WorkPackage.exists?(status_id: id)
+  end
+
+  def default_status_must_not_be_readonly
+    if is_readonly? && is_default?
+      errors.add(:is_readonly, :readonly_default_exlusive)
+    end
+  end
+
+  # Deletes associated workflows
+  def delete_workflows
+    Workflows::StatusTransition
+      .where(old_status_id: id)
+      .or(Workflows::StatusTransition.where(new_status_id: id))
+      .delete_all
+  end
+end

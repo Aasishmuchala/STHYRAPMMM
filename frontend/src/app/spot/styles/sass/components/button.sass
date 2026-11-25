@@ -1,0 +1,48 @@
+.spot-button
+  @include spot-body-small
+
+  display: inline-flex
+  flex-direction: row
+  align-items: center
+  justify-content: center
+  flex-wrap: nowrap
+  line-height: calc(#{$spot-spacing-1_25} - 2px) // The border needs to be removed from this
+  min-height: $spot-spacing-2
+
+  margin: 0
+  padding: 0 $spot-spacing-0_75
+  border-width: 1px
+  border-style: solid
+  border-radius: $spot-spacing-1
+  border-color: var(--button-default-borderColor-rest)
+  background-color: var(--button-default-bgColor-rest)
+  color: var(--button-default-fgColor-rest)
+  cursor: pointer
+
+  &, *
+    box-sizing: border-box
+
+  &:focus
+    @include focus
+
+  &:hover
+    background-color: var(--button-default-bgColor-hover)
+    border-color: var(--button-default-borderColor-hover)
+    color: var(--button-default-fgColor-rest)
+
+  &:active
+    background-color: var(--button-default-bgColor-active)
+    border-color: var(--button-default-borderColor-active)
+    color: var(--button-default-fgColor-rest)
+
+  &[disabled]
+    &,
+    &:hover,
+    &:active
+      border-color: var(--button-default-borderColor-disabled)
+      background-color: var(--button-default-bgColor-disabled)
+      color: var(--button-default-fgColor-disabled)
+      cursor: default
+
+  .spot-checkbox
+    margin-right: $spot-spacing-0_75

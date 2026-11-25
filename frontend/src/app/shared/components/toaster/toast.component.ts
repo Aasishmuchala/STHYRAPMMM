@@ -1,0 +1,144 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { ChangeDetectionStrategy, Component, Input, OnInit, inject } from '@angular/core';
+import {
+  BehaviorSubject,
+  Observable,
+  isObservable,
+} from 'rxjs';
+import {
+  finalize,
+  timeout,
+} from 'rxjs/operators';
+import { take } from 'rxjs/internal/operators/take';
+
+import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { IToast, ToastService, ToastType, ToastUpload } from 'core-app/shared/components/toaster/toast.service';
+
+function isToastUpload(entry:unknown):entry is ToastUpload {
+  return Array.isArray(entry) && entry.length === 2 && entry[0] instanceof File && isObservable(entry[1]);
+}
+
+@Component({
+  templateUrl: './toast.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'op-toast',
+  standalone: false,
+})
+export class ToastComponent implements OnInit {
+  readonly I18n = inject(I18nService);
+  readonly toastService = inject(ToastService);
+
+  @Input() public toast:IToast;
+
+  public text = {
+    close_popup: this.I18n.t('js.close_popup_title'),
+  };
+
+  public type:ToastType;
+
+  public icon?:string;
+
+  public uploadCount = 0;
+
+  public errors:unknown[] = [];
+
+  public uploads:ToastUpload[] = [];
+
+  public show = false;
+
+  public canBeHidden = false;
+
+  public removable = true;
+
+  public loading$ = new BehaviorSubject<boolean>(false);
+
+  ngOnInit():void {
+    this.type = this.toast.type;
+    this.icon = this.toast.icon ? `toast-icon icon-${this.toast.icon}` : '';
+
+    this.removable = !['upload', 'loading'].includes(this.type);
+
+    if (this.type === 'error' && Array.isArray(this.data)) {
+      this.errors = this.data;
+    }
+
+    if (this.type === 'upload') {
+      this.uploads = Array.isArray(this.data) ? this.data.filter(isToastUpload) : [];
+      this.removable = false;
+      this.canBeHidden = this.uploads.length > 5;
+    }
+
+    if (this.type === 'loading' && this.loadingObservable) {
+      this.removable = false;
+      this.loading$.next(true);
+      this.loadingObservable
+        .pipe(
+          take(1),
+          timeout(20000),
+          finalize(() => {
+            this.loading$.next(false);
+            this.remove();
+          }),
+        )
+        .subscribe();
+    }
+  }
+
+  public get data():unknown {
+    return this.toast.data;
+  }
+
+  public get loadingObservable():Observable<unknown>|undefined {
+    return this.type === 'loading' && isObservable(this.data) ? this.data : undefined;
+  }
+
+  public remove():void {
+    this.toastService.remove(this.toast);
+  }
+
+  /**
+   * Execute the link callback from content.link.target
+   * and close this toaster.
+   */
+  public executeTarget():void {
+    if (this.toast.link) {
+      this.toast.link.target();
+      this.remove();
+    }
+  }
+
+  public onUploadSuccess():void {
+    this.uploadCount += 1;
+  }
+
+  public get uploadText():string {
+    const count = this.uploads.length;
+    return this.I18n.t('js.label_upload_counter', { done: this.uploadCount, count });
+  }
+}

@@ -1,0 +1,75 @@
+<%#-- copyright
+OpenProject is an open source project management software.
+Copyright (C) the OpenProject GmbH
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License version 3.
+
+OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+Copyright (C) 2006-2013 Jean-Philippe Lang
+Copyright (C) 2010-2013 the ChiliProject Team
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+See COPYRIGHT and LICENSE files for more details.
+
+++#%>
+
+<%=
+  render(Primer::OpenProject::PageHeader.new) do |header|
+    header.with_title { @forum.name }
+    header.with_description { @forum.description }
+    header.with_breadcrumbs(
+      [{ href: project_overview_path(@project.id), text: @project.name },
+       { href: project_forums_path(@project), text: t(:label_forum_plural) },
+       @forum.name]
+    )
+
+    watcher_action_button(header, @forum)
+  end
+%>
+<% can_add_topic = authorize_for(:messages, :new) %>
+<% if can_add_topic || @topics.any? %>
+  <%=
+    render(Primer::OpenProject::SubHeader.new) do |subheader|
+      if @topics.any?
+        subheader.with_quick_sort do
+          render(Forums::Topics::SortMenuComponent.new(forum: @forum, sort_criteria: @sort_criteria))
+        end
+      end
+
+      if can_add_topic
+        subheader.with_action_button(
+          scheme: :primary,
+          leading_icon: :plus,
+          label: t("forums.show.new_topic"),
+          tag: :a,
+          href: new_project_forum_topic_path(@project, @forum)
+        ) do
+          t("forums.show.topic")
+        end
+      end
+    end
+  %>
+<% end %>
+
+<%= render(Forums::Topics::TableComponent.new(rows: @topics, forum: @forum)) %>
+
+<%= other_formats_links do |f| %>
+  <%= f.link_to "Atom", url: { key: User.current.rss_key } %>
+<% end %>
+<% html_title h(@forum.name) %>
+<% content_for :header_tags do %>
+  <%= auto_discovery_link_tag(:atom, { format: "atom", key: User.current.rss_key }, title: "#{@project}: #{@forum}") %>
+<% end %>

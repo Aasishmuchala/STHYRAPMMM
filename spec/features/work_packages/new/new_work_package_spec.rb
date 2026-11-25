@@ -1,0 +1,560 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+require "support/edit_fields/edit_field"
+require "features/work_packages/work_packages_page"
+require "features/page_objects/notification"
+
+RSpec.describe "new work package", :js do
+  shared_let(:status) { create(:status, is_default: true) }
+  shared_let(:priority) { create(:priority, is_default: true) }
+  shared_let(:type_task) { create(:type_task) }
+  shared_let(:type_milestone) { create(:type_milestone, position: type_task.position + 1) }
+  shared_let(:type_bug) { create(:type_bug, position: type_milestone.position + 1) }
+  shared_let(:types) { [type_task, type_milestone, type_bug] }
+  shared_let(:project) do
+    create(:project, types:)
+  end
+
+  let(:permissions) { %i[view_work_packages add_work_packages edit_work_packages work_package_assigned] }
+  let(:user) do
+    create(:user, member_with_permissions: { project => permissions })
+  end
+
+  let(:work_packages_page) { WorkPackagesPage.new(project) }
+
+  let(:subject) { "My subject" }
+  let(:description) { "A description of the newly-created work package." }
+
+  let(:subject_field) { wp_page.edit_field :subject }
+  let(:description_field) { wp_page.edit_field :description }
+  let(:project_field) { wp_page.edit_field :project }
+  let(:assignee_field) { wp_page.edit_field :assignee }
+  let(:type_field) { wp_page.edit_field :type }
+  let(:toaster) { PageObjects::Notifications.new(page) }
+
+  def disable_leaving_unsaved_warning
+    create(:user_preference, user:, others: { warn_on_leaving_unsaved: false })
+  end
+
+  def save_work_package!(expect_success = true)
+    scroll_to_and_click find_by_id("work-packages--edit-actions-save")
+
+    if expect_success
+      toaster.expect_success("Successful creation.")
+    end
+  end
+
+  def click_create_work_package_button(type)
+    loading_indicator_saveguard
+
+    wp_page.click_create_wp_button(type)
+
+    loading_indicator_saveguard
+  end
+
+  def create_work_package(type, *)
+    click_create_work_package_button(type)
+    expect(page).to have_focus_on("#wp-new-inline-edit--field-subject")
+    wp_page.subject_field.set(subject)
+
+    wait_for_network_idle
+  end
+
+  def create_work_package_globally(type, project_name)
+    click_create_work_package_button(type)
+
+    wp_page.subject_field.set(subject)
+
+    project_field.openSelectField
+    project_field.set_value project_name
+
+    wait_for_network_idle
+  end
+
+  before do
+    disable_leaving_unsaved_warning
+    login_as(user)
+  end
+
+  shared_examples "work package creation workflow" do
+    before do
+      create_method.call(type_task, project.name)
+
+      expect(page).to have_selector(safeguard_selector, wait: 10)
+    end
+
+    it "creates a basic work package and then a subsequent work package" do
+      wp_page.subject_field.set(subject)
+      description_field.set_value(description)
+      save_work_package!
+
+      expect(page).to have_css(tabs_container_selector)
+      wp_page.edit_field(:description).expect_state_text(description)
+
+      # safeguards
+      wp_page.dismiss_toaster!
+      wp_page.expect_no_toaster(
+        message: "Successful creation."
+      )
+
+      subject_field.expect_state_text(subject)
+
+      create_method.call(type_bug, project.name)
+      expect(page).to have_selector(safeguard_selector, wait: 10)
+
+      # Use regex to not be case sensitive
+      type_field.expect_state_text /#{type_bug.name}/i
+    end
+
+    it "saves the work package with enter" do
+      subject_field = wp_page.subject_field
+      subject_field.set(subject)
+      subject_field.send_keys(:enter)
+
+      # safeguards
+      wp_page.dismiss_toaster!
+      wp_page.expect_no_toaster(
+        message: "Successful creation."
+      )
+
+      wp_page.edit_field(:subject).expect_text(subject)
+    end
+
+    context "with missing values" do
+      it "shows an error when subject is missing" do
+        description_field.set_value(description)
+
+        # Need to send keys to emulate change
+        subject_field = wp_page.subject_field
+        subject_field.set("")
+        subject_field.send_keys("a")
+        subject_field.send_keys(:backspace)
+
+        save_work_package!(false)
+        toaster.expect_error("Subject can't be blank.")
+      end
+    end
+
+    context "with subject set" do
+      it "can switch types and keep attributes" do
+        wp_page.subject_field.set(subject)
+        type_field.activate!
+        type_field.openSelectField
+        type_field.set_value type_bug.name
+
+        save_work_package!
+
+        wp_page.expect_attributes(subject:)
+        wp_page.expect_attributes type: type_bug.name.upcase
+      end
+    end
+
+    describe "custom fields" do
+      let(:custom_field1) do
+        create(
+          :work_package_custom_field,
+          field_format: "string",
+          is_required: true,
+          is_for_all: true
+        )
+      end
+      let(:custom_field2) do
+        create(
+          :work_package_custom_field,
+          field_format: "list",
+          possible_values: %w(foo bar xyz),
+          is_required: false,
+          is_for_all: true
+        )
+      end
+      let(:custom_fields) do
+        [custom_field1, custom_field2]
+      end
+      let(:type_task) { create(:type_task, custom_fields:) }
+      let(:project) do
+        create(:project,
+               types:)
+      end
+
+      it "saves and validates the custom field values" do
+        custom_fields.map(&:id)
+        cf1 = find(".#{custom_fields.first.attribute_name(:camel_case)} input")
+        expect(cf1).not_to be_nil
+
+        expect(page).to have_css(".#{custom_fields.last.attribute_name(:camel_case)} ng-select")
+
+        cf = wp_page.edit_field custom_fields.last.attribute_name(:camel_case)
+        cf.field_type = "create-autocompleter"
+        cf.openSelectField
+        cf.set_value "foo"
+        save_work_package!(false)
+
+        toaster.expect_error("#{custom_field1.name} can't be blank.")
+
+        cf1.set "Custom field content"
+        save_work_package!(true)
+
+        wp_page.expect_attributes "customField#{custom_field1.id}" => "Custom field content",
+                                  "customField#{custom_field2.id}" => "foo"
+      end
+    end
+  end
+
+  context "project split screen" do
+    let(:safeguard_selector) { ".work-packages--details-content.-create-mode" }
+    let(:tabs_container_selector) { ".op-work-package-details-tab-component--tabs" }
+    let(:wp_page) { Pages::PrimerizedSplitWorkPackage.new(WorkPackage.new) }
+    let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+
+    before do
+      wp_table.visit!
+    end
+
+    it_behaves_like "work package creation workflow" do
+      let(:create_method) { method(:create_work_package) }
+    end
+
+    it "reloads the table and selects the new work package" do
+      expect(page).to have_no_css(".wp--row")
+
+      create_work_package(type_task)
+      expect(page).to have_selector(safeguard_selector, wait: 10)
+
+      wp_page.subject_field.set("new work package")
+      save_work_package!
+      wp_page.dismiss_toaster!
+
+      expect(page).to have_css(".wp--row.-checked")
+
+      # Editing the subject after creation
+      # Fix for WP #23879
+      new_wp = WorkPackage.last
+      new_subject = "new subject"
+      table_subject = wp_table.edit_field(new_wp, :subject)
+      table_subject.activate!
+      table_subject.set_value new_subject
+      table_subject.submit_by_enter
+      table_subject.expect_state_text new_subject
+
+      wp_page.expect_toast(
+        message: "Successful update."
+      )
+
+      new_wp.reload
+      expect(new_wp.subject).to eq(new_subject)
+
+      # Expect this to be synced
+      details_subject = wp_table.edit_field(new_wp, :subject)
+      details_subject.expect_state_text new_subject
+    end
+
+    context "with semantic identifiers", with_settings: { work_packages_identifier: "semantic" } do
+      let(:semantic_project) { create(:project, identifier: "SPLITNEW", types:) }
+      let(:user) { create(:user, member_with_permissions: { semantic_project => permissions }) }
+      let(:wp_table) { Pages::WorkPackagesTable.new(semantic_project) }
+
+      it "opens the new work package by its semantic ID and selects its row" do
+        create_work_package(type_task)
+        expect(page).to have_selector(safeguard_selector, wait: 10)
+
+        wp_page.subject_field.set("new work package")
+        save_work_package!
+        wp_page.dismiss_toaster!
+
+        new_wp = WorkPackage.last
+        expect(page).to have_current_path(%r{/details/#{new_wp.identifier}})
+        expect(page).to have_css("#{wp_table.row_selector(new_wp)}.-checked")
+      end
+    end
+  end
+
+  context "full screen" do
+    let(:safeguard_selector) { ".work-package--new-state" }
+    let(:tabs_container_selector) { ".op-work-package-tabs" }
+    let(:existing_wp) { create(:work_package, type: type_bug, project:) }
+    let(:wp_page) { Pages::FullWorkPackage.new(existing_wp) }
+
+    before do
+      wp_page.visit!
+      wp_page.ensure_page_loaded
+    end
+
+    it "displays chosen date attribute for milestone type (#44701)" do
+      click_create_work_package_button(type_milestone)
+
+      date_field = wp_page.edit_field(:date)
+
+      date_field.expect_value(I18n.t("js.label_no_date"))
+
+      # Set date
+      date_field.click_to_open_datepicker
+      date = Date.current.iso8601
+      date_field.set_milestone_date date
+      date_field.save!
+
+      # Expect date to be displayed
+      date_field.expect_value date
+
+      # Save work package
+      wp_page.subject_field.set(subject)
+      wp_page.save!
+      wp_page.expect_and_dismiss_toaster(message: "Successful creation.")
+
+      # Expect date to be saved
+      expect(WorkPackage.last).to have_attributes(
+        start_date: Date.current,
+        is_milestone?: true
+      )
+    end
+
+    it_behaves_like "work package creation workflow" do
+      let(:create_method) { method(:create_work_package) }
+    end
+  end
+
+  context "global split screen" do
+    let(:safeguard_selector) { ".work-packages--details-content.-create-mode" }
+    let(:tabs_container_selector) { ".op-work-package-details-tab-component--tabs" }
+    let(:wp_page) { Pages::PrimerizedSplitWorkPackage.new(WorkPackage.new) }
+    let(:wp_table) { Pages::WorkPackagesTable.new(nil) }
+
+    before do
+      wp_table.visit!
+    end
+
+    it_behaves_like "work package creation workflow" do
+      let(:create_method) { method(:create_work_package_globally) }
+    end
+
+    it "can stop and re-create with correct selection (Regression #30216)" do
+      create_work_package_globally(type_bug, project.name)
+
+      click_on "Cancel"
+      expect(page).to have_no_css(safeguard_selector)
+
+      wp_page.click_create_wp_button type_bug
+      expect(page).to have_no_css(".ng-value", text: project.name)
+
+      project_field.openSelectField
+      project_field.set_value project.name
+
+      click_on "Cancel"
+    end
+
+    it "sets a default date that is readable (Regression #34291)" do
+      create_work_package_globally(type_bug, project.name)
+
+      date_field = wp_page.edit_field(:combinedDate)
+      date_field.expect_value("no start date - no finish date")
+
+      click_on "Cancel"
+    end
+
+    it "can save the work package with an assignee (Regression #32887)" do
+      create_work_package_globally(type_task, project.name)
+      expect(page).to have_selector(safeguard_selector, wait: 10)
+
+      assignee_field.openSelectField
+      assignee_field.set_value user.name
+      wait_for_network_idle
+
+      wp_page.subject_field.set("new work package")
+      save_work_package!
+      wp_page.dismiss_toaster!
+
+      assignee_field.expect_state_text user.name
+      wp = WorkPackage.last
+      expect(wp.assigned_to).to eq user
+    end
+
+    it "resets the dates when opening the datepicker and cancelling (Regression #44152)" do
+      create_work_package_globally(type_task, project.name)
+      expect(page).to have_selector(safeguard_selector, wait: 10)
+
+      # Open datepicker
+      date_field = wp_page.edit_field(:combinedDate)
+      date_field.click_to_open_datepicker
+
+      date_field.enable_start_date
+
+      # Select date
+      start = (Time.zone.today - 1.day).iso8601
+      date_field.set_start_date start
+
+      due = (Time.zone.today + 1.day).iso8601
+      date_field.set_due_date due
+
+      # Cancel
+      date_field.cancel_by_click
+      date_field.expect_value "no start date - no finish date"
+    end
+
+    it "Keeps 'Working days only' value upon saving (Bug #68380)" do
+      create_work_package_globally(type_task, project.name)
+      expect(page).to have_selector(safeguard_selector, wait: 10)
+
+      datepicker = wp_page.edit_field(:combinedDate).click_to_open_datepicker
+
+      datepicker.uncheck_working_days_only
+      datepicker.save!
+
+      wp_page.save!
+      wp_page.expect_and_dismiss_toaster(message: "Successful creation.")
+
+      expect(WorkPackage.last).to have_attributes(ignore_non_working_days: true)
+    end
+
+    context "with a project without type_bug" do
+      let!(:project_without_bug) do
+        create(:project, name: "Unrelated project", types: [type_task])
+      end
+
+      it "does not show that value in the project drop down" do
+        create_work_package_globally(type_bug, project.name)
+
+        project_field.openSelectField
+
+        expect(page).to have_css(".ng-dropdown-panel .ng-option", text: project.name)
+        expect(page).to have_no_css(".ng-dropdown-panel .ng-option", text: project_without_bug.name)
+      end
+    end
+  end
+
+  context "as a user with no permission to add work packages" do
+    let(:role) { create(:project_role, permissions: %i[view_work_packages]) }
+    let(:user) { create(:user, member_with_roles: { project => role }) }
+    let(:wp_page) { Pages::Page.new }
+
+    it "shows the authorization error on split creation paths" do
+      visit new_split_work_packages_path
+      wp_page.expect_flash(type: :error, message: I18n.t(:notice_not_authorized))
+
+      visit new_split_project_work_packages_path(project)
+      wp_page.expect_flash(type: :error, message: I18n.t(:notice_not_authorized))
+    end
+  end
+
+  context "as a user with add_work_packages permission, but not edit_work_packages permission (Regression 28580)" do
+    let(:role) { create(:project_role, permissions: %i(view_work_packages add_work_packages)) }
+    let(:user) { create(:user, member_with_roles: { project => role }) }
+    let(:wp_page) { Pages::FullWorkPackageCreate.new }
+
+    before do
+      visit new_project_work_packages_path(project)
+    end
+
+    it "can create the work package, but not update it after saving" do
+      type_field.activate!
+      type_field.set_value type_bug.name
+      type_field.expect_state_text(/#{type_bug.name}/i)
+      subject_field.update("new work package", save: true)
+
+      wp_page.expect_and_dismiss_toaster(
+        message: "Successful creation."
+      )
+
+      subject_field.expect_read_only
+      subject_field.display_element.click
+      subject_field.expect_inactive!
+    end
+  end
+
+  context "creating child work packages" do
+    let!(:parent) do
+      create(:work_package,
+             project:,
+             author: user,
+             start_date: Date.today - 5.days,
+             due_date: Date.today + 5.days)
+    end
+    let(:context_menu) { Components::WorkPackages::ContextMenu.new }
+    let(:split_create_page) { Pages::SplitWorkPackageCreate.new(project:) }
+    let(:permissions) { %i[view_work_packages add_work_packages edit_work_packages manage_subtasks] }
+    let(:wp_page) { Pages::FullWorkPackage.new(parent) }
+    let(:wp_page_create) { Pages::FullWorkPackageCreate.new(project:) }
+
+    it "from within the table" do
+      work_packages_page.visit_index
+
+      context_menu.open_for(parent)
+      context_menu.choose("Create new child")
+
+      # The dates are taken over from the parent by default
+      date_field = split_create_page.edit_field(:combinedDate)
+      date_field.expect_value("#{parent.start_date} - #{parent.due_date}")
+
+      date_field.click_to_open_datepicker
+      date_field.update ["", parent.due_date]
+
+      subject = split_create_page.edit_field(:subject)
+      subject.set_value "Child"
+
+      split_create_page.save!
+
+      split_create_page.expect_and_dismiss_toaster(message: I18n.t("js.notice_successful_create"))
+
+      split_create_page.expect_attributes(combinedDate: "no start date - #{parent.due_date.strftime('%m/%d/%Y')}")
+
+      expect(split_create_page).to have_test_selector("op-wp-breadcrumb", text: "Parent:\n#{parent.subject}")
+    end
+  end
+
+  context "with the settings menu on the full create page" do
+    let(:user) { create(:admin) }
+    let(:wp_page) { Pages::FullWorkPackageCreate.new(project:) }
+
+    before do
+      wp_page.visit!
+    end
+
+    it "lists the form configuration link and returns focus to the button" do
+      wp_page.expect_current_path
+      click_button(accessible_name: "Settings", exact: true)
+
+      within(:menu, "Settings") do
+        expect(page).to have_selector(:menuitem, "Configure form", focused: true)
+      end
+
+      page.driver.browser.keyboard.type(:escape)
+      expect(page).to have_no_menu
+      expect(page).to have_button(accessible_name: "Settings", exact: true, focused: true)
+    end
+
+    it "leads to the form configuration of the type" do
+      click_button(accessible_name: "Settings", exact: true)
+      within(:menu, "Settings") do
+        find(:menuitem, "Configure form", exact: true).click
+      end
+
+      expect(page).to have_current_path(%r{/types/\d+/form_configuration/edit})
+    end
+  end
+end

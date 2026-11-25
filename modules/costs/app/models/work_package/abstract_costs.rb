@@ -1,0 +1,191 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+class WorkPackage
+  class AbstractCosts
+    attr_reader :user, :project
+
+    def initialize(user: User.current, project: nil)
+      @user = user
+      @project = project
+    end
+
+    ##
+    # Adds to the given WorkPackage query's result an extra costs column.
+    #
+    # @param work_package_scope [WorkPackage::ActiveRecord_Relation]
+    # @return [WorkPackage::ActiveRecord_Relation] The query with the joined costs.
+    def add_to_work_packages(work_package_scope)
+      add_costs_to work_package_scope
+    end
+
+    ##
+    # Adds to the given WorkPackage collection query an extra costs column
+    def add_to_work_package_collection(wp_collection_scope)
+      add_costs_to wp_collection_scope
+    end
+
+    def add_own_costs_to_work_package_collection(wp_collection_scope)
+      wp_collection_scope
+        .joins(own_costs_arel(wp_collection_scope).join_sources)
+        .select(costs_sum_alias)
+    end
+
+    ##
+    # For the given work packages calculates the sum of all costs.
+    #
+    # @param [WorkPackage::ActiveRecord_Relation | Array[WorkPackage]] List of work packages.
+    # @return [Float] The sum of the work packages' costs.
+    def costs_of(work_packages:)
+      # AR will not expand :includes + :references inside a subquery, so the IDs have to be
+      # extracted in a separate (pluck) query rather than passing the relation itself.
+      wp_ids = work_package_ids(work_packages)
+
+      scope = costs_model.where(entity_type: "WorkPackage", entity_id: wp_ids).joins(:project)
+
+      filter_authorized(scope)
+        .sum(costs_value)
+        .to_f
+    end
+
+    ##
+    # The model on which the costs calculations are based.
+    # Can be any model which has the fields `overridden_costs` and `costs`
+    # and is related to work packages (i.e. has an `entity` association too).
+    #
+    # @return [Class] Class of the model the costs are based on, e.g. CostEntry or TimeEntry.
+    def costs_model
+      raise SubclassResponsibilityError
+    end
+
+    def costs_sum_alias
+      raise SubclassResponsibilityError
+    end
+
+    def subselect_alias
+      raise SubclassResponsibilityError
+    end
+
+    private
+
+    def work_package_ids(work_packages)
+      if work_packages.respond_to?(:pluck)
+        work_packages.pluck(:id)
+      else
+        Array(work_packages).map(&:id)
+      end
+    end
+
+    def costs_table_name
+      costs_model.table_name
+    end
+
+    def add_costs_to(scope)
+      scope
+        .joins(sum_arel(scope).join_sources)
+        .select(costs_sum_alias)
+    end
+
+    def costs_sum
+      WorkPackage.sum_over_visible_descendants(user, costs_value)
+    end
+
+    def costs_value
+      "COALESCE(#{costs_table_name}.overridden_costs, #{costs_table_name}.costs)"
+    end
+
+    ##
+    # Narrows down the query to only include costs visible to the user.
+    #
+    # @param [ActiveRecord::QueryMethods] scope Some query.
+    # @return [ActiveRecord::QueryMethods] The filtered query.
+    def filter_authorized(scope)
+      scope # allow all
+    end
+
+    def sum_arel(base_scope)
+      subselect = sum_subselect(base_scope)
+                  .as(subselect_alias)
+      wp_table
+        .outer_join(subselect)
+        .on(subselect[:id].eq(wp_table[:id]))
+    end
+
+    def sum_subselect(base_scope)
+      base_scope
+        .dup
+        .left_join_self_and_descendants
+        .except(:select)
+        .select("#{costs_sum} AS #{costs_sum_alias}")
+        .select(wp_table[:id])
+        .arel
+        .outer_join(ce_table)
+        .on(ce_table_join_condition)
+        .group(wp_table[:id])
+    end
+
+    def own_costs_arel(base_scope)
+      subselect = own_costs_subselect(base_scope)
+                  .arel
+                  .as(subselect_alias)
+      wp_table
+        .outer_join(subselect)
+        .on(subselect[:entity_id].eq(wp_table[:id]))
+    end
+
+    def own_costs_subselect(base_scope)
+      own_entries = costs_model.where(entity_type: "WorkPackage", entity_id: base_scope.select(:id))
+
+      filter_authorized(own_entries)
+        .group(:entity_id)
+        .select(:entity_id, "SUM(#{costs_value}) AS #{costs_sum_alias}")
+    end
+
+    def wp_table
+      WorkPackage.arel_table
+    end
+
+    def ce_table
+      costs_model.arel_table
+    end
+
+    def ce_table_join_condition
+      ce_table[:entity_type].eq("WorkPackage").and(ce_table[:entity_id].eq(WorkPackage.wp_descendants_table[:id])
+                                                                       .and(ce_authorization))
+    end
+
+    def ce_authorization
+      filter_authorized(costs_model.all).arel.ast.cores.last.wheres.last
+    end
+
+    def projects_table
+      Project.arel_table
+    end
+  end
+end

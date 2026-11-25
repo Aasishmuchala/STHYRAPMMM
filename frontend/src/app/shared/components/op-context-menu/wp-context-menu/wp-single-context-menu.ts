@@ -1,0 +1,246 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { AfterViewInit, Directive, inject, Input } from '@angular/core';
+import { isClickedWithModifier } from 'core-app/shared/helpers/link-handling/link-handling';
+import { AuthorisationService } from 'core-app/core/model-auth/model-auth.service';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+import { HookService } from 'core-app/features/plugins/hook-service';
+import { OpActionMenuItems } from 'core-app/shared/components/op-context-menu/action-menu/op-action-menu-items';
+import { withOcticon } from 'core-app/shared/components/op-context-menu/wp-context-menu/wp-menu-octicons';
+import { OpContextMenuItem } from 'core-app/shared/components/op-context-menu/op-context-menu.types';
+import {
+  ContextMenuItemGroups,
+  copyIdActionLabel,
+  isCopyIdAction,
+  PERMITTED_CONTEXT_MENU_ACTIONS,
+  sortContextMenuActions,
+} from 'core-app/shared/components/op-context-menu/wp-context-menu/wp-static-context-menu-actions';
+import { CopyToClipboardService } from 'core-app/shared/components/copy-to-clipboard/copy-to-clipboard.service';
+import {
+  WorkPackageAction,
+} from 'core-app/features/work-packages/components/wp-table/context-menu-helper/wp-context-menu-helper.service';
+import { WorkPackageAuthorization } from 'core-app/features/work-packages/services/work-package-authorization.service';
+import { TurboRequestsService } from 'core-app/core/turbo/turbo-requests.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { TimeEntryTimerService } from 'core-app/shared/components/time_entries/services/time-entry-timer.service';
+import { isTimerForWorkPackage, OngoingTimer } from 'core-app/shared/components/time_entries/services/ongoing-timer';
+import { DeviceService } from 'core-app/core/browser/device.service';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
+import { DialogCloseDetail } from 'core-turbo/dialog-stream-action';
+
+@Directive({
+  // eslint-disable-next-line @angular-eslint/directive-selector
+  selector: '[wpSingleContextMenu]',
+})
+export class WorkPackageSingleContextMenuDirective extends OpActionMenuItems implements AfterViewInit {
+  // eslint-disable-next-line @angular-eslint/no-input-rename
+  @Input('wpSingleContextMenu-workPackage') public workPackage:WorkPackageResource;
+
+  private currentTimer:OngoingTimer|null = null;
+
+  readonly HookService = inject(HookService);
+  readonly urlParams = inject(UrlParamsService);
+  readonly PathHelper = inject(PathHelperService);
+  readonly turboRequests = inject(TurboRequestsService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly authorisationService = inject(AuthorisationService);
+  readonly timeEntryService = inject(TimeEntryTimerService);
+  protected copyToClipboardService = inject(CopyToClipboardService);
+  protected deviceService = inject(DeviceService);
+
+  private closeDialogHandler:EventListener = this.handleTimeEntryDialogClose.bind(this);
+
+  ngAfterViewInit():void {
+    document.addEventListener('dialog:close', this.closeDialogHandler);
+
+    this.timeEntryService.activeTimer$.pipe(this.untilDestroyed()).subscribe((timer) => {
+      this.currentTimer = timer;
+    });
+  }
+
+  override ngOnDestroy():void {
+    document.removeEventListener('dialog:close', this.closeDialogHandler);
+    super.ngOnDestroy();
+  }
+
+  protected buildItems():Promise<OpContextMenuItem[]> {
+    return this.workPackage.project.$load().then(() => {
+      this.authorisationService.initModelAuth('work_package', this.workPackage.$links);
+
+      const authorization = new WorkPackageAuthorization(this.workPackage, this.PathHelper);
+      return this.menuItems(this.getPermittedActions(authorization));
+    });
+  }
+
+  public triggerContextMenuAction(action:WorkPackageAction, key:string) {
+    const { link } = action;
+
+    if (action.turboRequest) {
+      void this.turboRequests.requestStream(link!);
+      return;
+    }
+
+    switch (key) {
+      case 'copy_alphanumeric_id_to_clipboard':
+        this.copyToClipboardService.copy(this.workPackage.displayId);
+        break;
+      case 'copy_to_other_project':
+        window.location.href = `${this.PathHelper.staticBase}/work_packages/move/new?copy=true&ids[]=${this.workPackage.id!}`;
+        break;
+      case 'start_timer':
+        void this.timeEntryService.start(this.workPackage);
+        break;
+      case 'stop_timer':
+        void this.timeEntryService.stop();
+        break;
+      case 'copy':
+        if (this.workPackage.id) {
+          window.location.href = `${this.PathHelper.workPackageCopyPath(this.workPackage.project.identifier as string|null, this.workPackage.id)}`;
+        }
+        break;
+      case 'delete': {
+        const backUrl = this.urlParams.basePathWithoutDetails();
+        void this.turboRequests.request(
+          this.PathHelper.workPackagesBulkDeleteDialogPath([this.workPackage.id!], backUrl),
+          { method: 'GET' },
+        );
+        break;
+      }
+      case 'copy_link_to_clipboard': {
+        const url = new URL(String(link), window.location.origin);
+        this.copyToClipboardService.copy(url.toString());
+        break;
+      }
+      default:
+        window.location.href = link!;
+        break;
+    }
+  }
+
+  private getTimerAction():WorkPackageAction {
+    if (isTimerForWorkPackage(this.currentTimer, this.workPackage)) {
+      return {
+        key: 'stop_timer',
+        icon: 'icon-time-tracking-stop',
+        link: 'logTime',
+        hidden: !this.deviceService.isSmallDesktop,
+      };
+    } else {
+      return {
+        key: 'start_timer',
+        icon: 'icon-time-tracking-start',
+        link: 'logTime',
+        hidden: !this.deviceService.isSmallDesktop,
+      };
+    }
+  }
+
+  private getPermittedActions(authorization:WorkPackageAuthorization) {
+    let actions:WorkPackageAction[] = authorization.permittedActionsWithLinks(PERMITTED_CONTEXT_MENU_ACTIONS);
+
+    // Add the available actions on timers
+    actions = this.addTimerAction(actions);
+
+    // Splice plugin actions onto the core actions
+    this.getPermittedPluginActions(authorization).forEach((action:WorkPackageAction) => {
+      const index = action.indexBy ? action.indexBy(actions) : actions.length;
+      actions.splice(index, 0, action);
+    });
+
+    return actions;
+  }
+
+  private addTimerAction(actions:WorkPackageAction[]) {
+    const action = this.getTimerAction();
+    const timeIndex = actions.findIndex((action) => action.key === 'log_time');
+
+    if (timeIndex !== -1) {
+      actions.splice(timeIndex + 1, 0, action);
+    }
+
+    return actions;
+  }
+
+  private getPermittedPluginActions(authorization:WorkPackageAuthorization) {
+    const actions:WorkPackageAction[] = this.HookService.call('workPackageSingleContextMenu');
+    return authorization.permittedActionsWithLinks(actions);
+  }
+
+  private menuItems(permittedActions:WorkPackageAction[]):OpContextMenuItem[] {
+    const configureFormLink = this.workPackage.configureForm;
+
+    const groups = new ContextMenuItemGroups();
+
+    sortContextMenuActions(permittedActions)
+      .filter((action) => action.hidden !== true)
+      .forEach((action:WorkPackageAction) => {
+        const { key } = action;
+        const href = isCopyIdAction(key) || action.turboRequest ? undefined : action.link;
+
+        groups.addAction(key, {
+          disabled: false,
+          linkText: isCopyIdAction(key) ? copyIdActionLabel() : I18n.t(`js.button_${key}`),
+          href,
+          icon: action.icon ?? `icon-${key}`,
+          onClick: (event:MouseEvent) => {
+            if (href && isClickedWithModifier(event)) {
+              return false;
+            }
+
+            this.triggerContextMenuAction(action, key);
+            return true;
+          },
+        });
+      });
+
+    if (configureFormLink) {
+      groups.append('configure', {
+        href: configureFormLink.href as string|undefined,
+        icon: 'icon-settings3',
+        linkText: I18n.t('js.button_configure-form'),
+        onClick: () => false,
+      });
+    }
+
+    groups.transform(withOcticon);
+
+    return groups.items;
+  }
+
+  private handleTimeEntryDialogClose(event:CustomEvent<DialogCloseDetail>):void {
+    const { detail: { dialog, submitted } } = event;
+
+    if (dialog.id === 'time-entry-dialog' && submitted) {
+      void this.apiV3Service
+        .work_packages
+        .id(this.workPackage.id!)
+        .refresh();
+    }
+  }
+}

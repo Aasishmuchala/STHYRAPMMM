@@ -1,0 +1,21 @@
+#!/bin/bash -e
+
+BIND="${BIND:=0.0.0.0}"
+PORT="${PORT:=8080}"
+RAILS_ENV="${RAILS_ENV:="development"}"
+MIGRATE="${MIGRATE:="false"}"
+
+if [ "$RAILS_ENV" = "production" ] ; then
+	export OPENPROJECT_ENABLE__INTERNAL__ASSETS__SERVER=true
+fi
+
+if [ "$MIGRATE" = "true" ]; then
+	echo "Migrating database..."
+	bundle exec rake db:migrate
+fi
+
+# Clean up any dangling PID file
+rm -f ${APP_PATH}/tmp/pids/*
+
+# see `config/puma.rb` for configuration
+exec bundle exec rails server -u puma -b $BIND -p $PORT

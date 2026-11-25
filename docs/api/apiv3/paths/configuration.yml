@@ -1,0 +1,18 @@
+# /api/v3/configuration
+---
+get:
+  summary: Get instance configuration
+  operationId: get_configuration
+  tags:
+    - Configuration
+  description: Returns an object containing information about the global configuration.
+  responses:
+    '200':
+      description: OK
+      content:
+        application/hal+json:
+          schema:
+            $ref: '../components/schemas/configuration_model.yml'
+          examples:
+            response:
+              $ref: '../components/examples/configuration-response.yml'

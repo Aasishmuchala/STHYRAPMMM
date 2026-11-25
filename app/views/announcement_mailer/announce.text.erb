@@ -1,0 +1,13 @@
+<%= user_salutation(user) %>
+<%= header_summary  %>
+<%= "-" * 100 %>
+
+
+<%= "+" * 50 %>
+<%= CGI.unescapeHTML(strip_tags(body_subheader.to_s)) %>
+<%= CGI.unescapeHTML(strip_tags(body_header.to_s)) %>
+<%= "+" * 50 %>
+
+<%= CGI.unescapeHTML(strip_tags(body)) %>
+
+<%= "-" * 100 %>

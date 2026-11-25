@@ -1,0 +1,11 @@
+---
+da:
+  activerecord:
+    models:
+      grids/overview:
+        one: Oversigt
+        other: Oversigter
+  overviews:
+    label_dashboard: Oversigtspanel
+    label_home: "%{workspace_type}-forside"
+    label_overview: Overblik

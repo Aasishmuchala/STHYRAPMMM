@@ -1,0 +1,52 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Test mail notification", :js do
+  shared_let(:admin) { create(:admin) }
+
+  before do
+    login_as admin
+    visit admin_settings_mail_notifications_path(tab: :notifications)
+  end
+
+  it "shows the correct message on errors in test notification (Regression #28226)", with_ssrf_ip_allowlist: %w(127.0.0.1) do
+    error_message = '"error" with <strong>Markup?</strong>'
+    allow(UserMailer).to receive(:test_mail).and_raise error_message
+
+    expect_angular_frontend_initialized
+    wait_for_turbo { click_link "Send a test email" }
+
+    expected = "An error occurred while sending mail (#{error_message})"
+    expect_flash(type: :error, message: expected)
+    expect(UserMailer).to have_received(:test_mail).with(admin, delivery_method_options: {})
+    expect(page).to have_no_css(".op-toast.-error strong")
+  end
+end

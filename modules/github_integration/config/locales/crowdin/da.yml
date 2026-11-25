@@ -1,0 +1,86 @@
+#-- copyright
+#OpenProject is an open source project management software.
+#Copyright (C) the OpenProject GmbH
+#This program is free software; you can redistribute it and/or
+#modify it under the terms of the GNU General Public License version 3.
+#OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+#Copyright (C) 2006-2013 Jean-Philippe Lang
+#Copyright (C) 2010-2013 the ChiliProject Team
+#This program is free software; you can redistribute it and/or
+#modify it under the terms of the GNU General Public License
+#as published by the Free Software Foundation; either version 2
+#of the License, or (at your option) any later version.
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#You should have received a copy of the GNU General Public License
+#along with this program; if not, write to the Free Software
+#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#See COPYRIGHT and LICENSE files for more details.
+#++
+---
+da:
+  activerecord:
+    models:
+      deploy_status_check:
+        one: Kontrol af udrulningsstatus
+        other: Kontroller af udrulningsstatus
+      deploy_target:
+        one: Udrulningsmål
+        other: Udrulningsmål
+      github_check_run:
+        one: GitHub check run
+        other: GitHub check runs
+      github_pull_request:
+        one: GitHub pull request
+        other: GitHub pull requests
+      github_user:
+        one: GitHub-bruger
+        other: GitHub-brugere
+  attributes:
+    additions_count: Antal tilføjelser
+    changed_files_count: Ændrede filer
+    comments_count: Antal kommentarer
+    deletions_count: Antal sletninger
+    github: GitHub-id
+    github_app_owner_avatar_url: URL til ejerens avatar
+    github_avatar_url: Avatar-URL
+    github_html_url: URL til pull request
+    github_login: GitHub-login
+    github_updated_at: Opdateret
+    host: Vært
+    labels: Etiketter
+    repository: Repository
+    review_comments_count: Antal kommentarer i review
+  button_add_deploy_target: Tilføj udrulningsmål
+  label_deploy_target: Udrulningsmål
+  label_deploy_target_new: Nyt udrulningsmål
+  label_deploy_target_plural: Udrulningsmål
+  label_github_comment_user: GitHub-aktør
+  label_github_integration: GitHub-integration
+  label_github_webhook_secret: Webhook-hemmelighed
+  notice_deploy_target_created: Udrulningsmål oprettet
+  notice_deploy_target_destroyed: Udrulningsmål slettet
+  permission_introspection: Læs kørende Sthyra Studios-kerneversion og build SHA
+  permission_show_github_content: Vis GitHub-indhold
+  plugin_openproject_github_integration:
+    description: Integrerer Sthyra Studios og GitHub for en bedre arbejdsgang
+    name: Sthyra Studios GitHub Integration
+  project_module_github: GitHub
+  text_deploy_target_api_key_info: 'En [API-nøgle](docs_url) til Sthyra Studios, der tilhører en bruger med den globale tilladelse til introspektion.
+
+    '
+  text_deploy_target_type_info: 'Indtil videre understøttes kun Sthyra Studios selv.
+
+    '
+  text_github_comment_user_info: 'Den Sthyra Studios-bruger, hvis API-nøgle skal bruges til at godkende indgående webhook-forespørgsler. Når den er angivet, afvises forespørgsler, der er godkendt med andre brugeres legitimationsoplysninger. Brugeren skriver også de automatiske kommentarer om udrulningsstatus på arbejdspakker. Er der ikke angivet nogen, bruges systembrugeren.
+
+    '
+  text_github_webhook_secret_info: 'Et hemmeligt token, der deles med GitHub, når webhooken sættes op. Når det er angivet, kontrollerer Sthyra Studios headeren X-Hub-Signature-256 i hver indgående forespørgsel og afviser payloads, der ikke stemmer. Lad feltet stå tomt for at springe kontrollen over (anbefales ikke).
+
+    '
+  text_github_webhook_secret_missing_warning: 'Der er ikke konfigureret nogen webhook-hemmelighed. Alle forespørgsler til GitHubs webhook-endepunkt accepteres uden kontrol, så uautoriserede aktører kan forfalske hændelser. Det anbefales kraftigt at angive en hemmelighed.
+
+    '
+  text_pull_request_deployed_to: "%{pr_link} udrullet til %{deploy_target_link}"

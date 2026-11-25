@@ -1,0 +1,238 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+// Disable text selection in rows
+.wp--row
+  user-select: none
+
+// A placeholder row when the table is empty
+.wp--placeholder-row
+  height: 5px
+  border-bottom: none !important
+
+.wp-table--row
+  cursor: pointer
+  // Some padding for the inner cells of the display fields
+  .inline-edit--display-field:not(.op-table-baseline--field)
+    padding: 2px
+
+
+.wp-table--row,
+#empty-row-notification
+  height: var(--table-timeline--row-height)
+
+  // Hide collapsed rows (hierarchies, relations)
+  &.-collapsed
+    display: none
+
+  // The Pragmatic engine marks the picked-up row and keeps it in the DOM
+  // for the whole drag; show it in place as a dimmed placeholder
+  // (mirroring the Backlogs card treatment) instead of collapsing it.
+  &[data-dragging="source"]
+    opacity: 0.4
+    background-color: var(--bgColor-inset)
+
+  &.wp-table--sums-row:empty
+    height: 0
+
+.wp-table--sum-container
+  font-weight: var(--base-text-weight-bold)
+  padding: 3px 6px
+
+  &.__internal-sorthandle
+    white-space: nowrap
+
+.work-package-table--container table.generic-table tbody td,
+.work-package-table--container table.generic-table tbody th[scope="row"]
+  padding-left: 0
+  padding-top: 0
+  padding-bottom: 0
+  vertical-align: middle
+  // To display the input field border correctly (input height is 24px)
+  line-height: 24px
+
+  // Avoid that the select field gets too small
+  .inline-edit--field.ng-select
+    min-width: 140px
+
+.work-package-table--container table.generic-table tbody th[scope="row"]
+  font-weight: var(--base-text-weight-normal, 400)
+
+:where(.work-package-table--container) table th:where([scope="row"])
+  padding-right: 6px
+
+.work-package-table--container tr.context-menu-selection > th[scope="row"],
+.work-package-table--container tr.-checked > th[scope="row"]
+  color: var(--body-font-color) !important
+
+  a
+    color: var(--body-font-color) !important
+
+// Styles for inline editable attributes
+.work-package-table--container td.-editable,
+.work-package-table--container th[scope="row"].-editable
+  display: table-cell
+  width: auto
+
+  &:hover .inline-edit--active-field.-error:hover
+    border-color: var(--borderColor-danger-emphasis)
+
+.wp-table--faulty-query-icon
+  color: var(--fgColor-danger)
+
+// Remove padding from grouping rows (exceeds allowed width of 41px)
+.wp-table--group-header
+  height: var(--table-timeline--row-height)
+  background-color: var(--bgColor-muted)
+  td
+    padding: 0 !important
+    background-color: transparent !important
+
+  .group--value
+    @include text-shortener
+
+// Shrink column of details / inline-create icons
+.wp-table--configuration-modal--trigger
+  width: 60px
+  // Center the th icon
+  text-align: center !important
+  padding: 0 !important
+
+// Hide the context menu button outside mobile
+html:not(.-browser-mobile)
+  .wp-table--context-menu-td
+    width: 60px
+    // Override the default td line-height
+    line-height: initial !important
+    white-space: nowrap
+
+.wp-table--context-menu-td .Button
+  vertical-align: middle
+  &.-disabled
+    color: var(--fgColor-muted)
+  &:hover
+    text-decoration: none
+
+.wp-table--cell-container
+  @extend .ellipsis
+  display: inline-block
+  vertical-align: middle
+  width: 100%
+
+  @media print
+    white-space: normal
+
+  .wp-table--cell-td.-editing &
+    display: block
+    width: initial !important
+
+  .inline-edit--display-field
+    display: initial
+
+    &.bcfThumbnail
+      outline: none
+
+.inplace-editing--container
+  @include unset-button-styles
+  display: inline-block
+  border: 1px solid transparent
+  border-radius: 2px
+  overflow: visible
+  width: 100%
+
+// Special width rules for more or less fixed with fields
+.wp-table--cell-td.startDate,
+.wp-table--cell-td.dueDate
+  width: 160px
+
+.wp-table--cell-td img.thumbnail
+  height: 40px
+  outline: none
+
+.wp-table--table-header .generic-table--sort-header
+  max-width: none
+
+// The menu's custom elements sit between the flex header and its button and
+// have to pass the available width through for the indicator to reach the edge.
+.generic-table--sort-header > op-action-menu,
+.generic-table--sort-header > op-action-menu > action-menu
+  display: flex
+  flex: 1 1 auto
+  min-width: 0
+
+// The menu is anchored to the header cell, and Primer's `anchored-position`
+// offers no anchor offset below 4px, so the gap is pulled back here.
+.generic-table--sort-header > op-action-menu > action-menu > anchored-position
+  margin-top: calc(-1 * var(--base-size-4))
+
+.wp-table--column-menu-button
+  display: inline-flex
+  flex: 1 1 auto
+  align-items: center
+  gap: var(--base-size-4)
+  min-width: 0
+  max-width: 100%
+  padding: 0
+  border: 0
+  background: none
+  font: inherit
+  color: inherit
+  text-align: start
+  // Like the projects table's menu button: the header's uppercase stops at
+  // `action-menu` (see _table.sass), whose items must not inherit it.
+  text-transform: uppercase
+  letter-spacing: inherit
+  cursor: pointer
+
+.wp-table--column-menu-name
+  @include text-shortener
+
+.wp-table--column-menu-glyph
+  flex: 0 0 auto
+  align-self: center
+
+.wp-table--column-sort-indicator
+  flex: 0 0 auto
+  align-self: center
+  margin-inline-start: var(--base-size-8)
+
+  .generic-table--sort-header > &
+    margin-inline-start: var(--base-size-12)
+
+.wp-table--column-menu-indicator
+  flex: 0 0 auto
+  margin-inline-start: auto
+  visibility: hidden
+
+  th:hover &,
+  th:focus-visible &,
+  .wp-table--column-menu-button:focus-visible &,
+  [aria-expanded="true"] &
+    visibility: visible
+
+  @media (hover: none)
+    visibility: visible

@@ -1,0 +1,82 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Projects
+  module Settings
+    module WorkPackages
+      module CustomFields
+        class RowComponent < OpPrimer::BorderBoxRowComponent
+          delegate :variants_for, :values_path, :types_path, :types_linked?, :project_specific_value_count, :values_linked?,
+                   to: :table
+
+          def row_css_id = "project-custom-field-#{model.id}"
+
+          def row_data = { test_selector: row_css_id }
+
+          def custom_field
+            if values_linked?(model)
+              render(Primer::Beta::Link.new(href: values_path(model), font_weight: :bold)) { model.name }
+            else
+              render(Primer::Beta::Text.new(font_weight: :bold)) { model.name }
+            end
+          end
+
+          def field_format
+            format_label = helpers.label_for_custom_field_format(model.field_format)
+            count = project_specific_value_count(model)
+            return format_label if count.zero?
+
+            safe_join([format_label, project_specific_value_caption(count)])
+          end
+
+          def types
+            safe_join(variants_for(model).map { |variant| variant_name(variant) }, ", ")
+          end
+
+          private
+
+          def project_specific_value_caption(count)
+            render(Primer::Beta::Text.new(tag: :div, color: :muted, font_size: :small)) do
+              t("projects.settings.custom_fields.project_specific_values_count", count:)
+            end
+          end
+
+          def variant_name(variant)
+            if types_linked?
+              render(Primer::Beta::Link.new(href: types_path)) { variant.composite_name }
+            else
+              variant.composite_name
+            end
+          end
+        end
+      end
+    end
+  end
+end

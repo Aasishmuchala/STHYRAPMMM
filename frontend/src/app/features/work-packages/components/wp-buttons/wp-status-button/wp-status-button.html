@@ -1,0 +1,35 @@
+@if (status) {
+  <div
+    class="op-wp-status-button"
+    [ngClass]="{'op-wp-status-button_small' : small}"
+    data-test-selector="op-wp-status-button"
+    >
+    <op-action-menu
+      wpStatusDropdown
+      [wpStatusDropdown-workPackage]="workPackage"
+      [label]="text.status"
+      >
+      <button
+        primerButton
+        opActionMenuTrigger
+        [size]="small ? 'small' : 'medium'"
+        [leadingIcon]="isReadonly ? 'lock' : undefined"
+        trailingAction="triangle-down"
+        [iconSize]="small ? 'xsmall' : 'small'"
+        class="op-wp-status-button--button"
+        [ngClass]="statusHighlightClass"
+        [attr.aria-disabled]="!allowed || null"
+        title=""
+        opTooltip
+        [label]="text.status + ' ' + status.name"
+        [description]="disabledReason ?? undefined"
+        [tooltipWhenTruncated]="disabledReason ? undefined : statusText"
+        >
+        <span #statusText class="op-wp-status-button--text">
+          <span class="sr-only">{{ text.status }} </span>
+          <span [textContent]="status.name"></span>
+        </span>
+      </button>
+    </op-action-menu>
+  </div>
+}

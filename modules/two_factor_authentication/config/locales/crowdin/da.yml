@@ -1,0 +1,192 @@
+---
+da:
+  activerecord:
+    attributes:
+      two_factor_authentication/device:
+        channel: Kanal
+        default: Brug som standard
+        identifier: Navn
+      two_factor_authentication/device/sms:
+        phone_number: Telefonnummer
+      two_factor_authentication/device/webauthn:
+        webauthn_external: WebAuthn-id
+        webauthn_public_key: Offentlig WebAuthn-nøgle
+    errors:
+      models:
+        two_factor_authentication/device:
+          default_already_exists: er allerede angivet for en anden OTP-enhed.
+        two_factor_authentication/device/sms:
+          attributes:
+            phone_number:
+              error_phone_number_format: skal have formatet +XX XXXXXXXXX
+    models:
+      two_factor_authentication/backup_code:
+        one: Backup-kode
+        other: Backup-koder
+      two_factor_authentication/device:
+        one: 2FA-enhed
+        other: 2FA-enheder
+      two_factor_authentication/device/sms:
+        one: Mobiltelefon
+        other: Mobiltelefoner
+      two_factor_authentication/device/totp:
+        one: Godkendelsesapp
+        other: Godkendelsesapps
+      two_factor_authentication/device/webauthn:
+        one: WebAuthn
+        other: WebAuthn
+  button_continue: Fortsæt
+  button_make_active: Aktivér
+  button_make_default: Markér som standard
+  button_otp_by_sms: SMS
+  button_otp_by_voice: Opkald
+  button_resend_otp_form: Send igen
+  field_otp: Engangsadgangskode
+  label_confirmed: Bekræftet
+  label_otp_channel: Leveringskanal
+  notice_account_has_no_phone: Der er ikke knyttet noget mobilnummer til din konto.
+  notice_account_otp_expired: Den engangsadgangskode, som du har angivet, er udløbet.
+  notice_account_otp_invalid: Ugyldig engangsadgangskode.
+  notice_account_otp_send_failed: Din engangsadgangskode kunne ikke sendes.
+  notice_developer_strategy_otp: 'Udviklerstrategien dannede følgende engangsadgangskode: %{token} (kanal: %{channel})'
+  notice_phone_number_format: 'Angiv nummeret i følgende format: +XX XXXXXXXX.'
+  plugin_openproject_two_factor_authentication:
+    description: Pluginnet godkender dine brugere med to-faktor-godkendelse ved hjælp af en engangsadgangskode via TOTP-standarden (Google Authenticator) eller sendt til brugerens mobiltelefon via SMS eller opkald.
+    name: Sthyra Studios Two-factor authentication
+  text_otp_not_receive: Andre bekræftelsesmetoder
+  text_send_otp_again: 'Send engangsadgangskoden igen via:'
+  two_factor_authentication:
+    admin:
+      all_devices_deleted: Alle brugerens 2FA-enheder er slettet
+      button_delete_all_devices: Slet registrerede 2FA-enheder
+      button_register_mobile_phone_for_user: Registrer mobiltelefon
+      delete_all_are_you_sure: Er du sikker på, at du vil slette alle brugerens 2FA-enheder?
+      no_devices_for_user: Der er ikke registreret nogen 2FA-enhed for brugeren.
+      only_sms_allowed: Der kan kun sættes levering via SMS op for andre brugere.
+      self_edit_forbidden: Du kan ikke redigere dine egne 2FA-enheder her. Gå i stedet til Min konto > To-faktor-godkendelse.
+      self_edit_path_html: Gå til [To-faktor-godkendelse på din kontoside](self_edit_link) for at tilføje eller ændre dine egne 2FA-enheder
+      text_2fa_disabled: Brugeren har ikke sat en 2FA-enhed op via sin side 'Min konto'
+      text_2fa_enabled: Ved hvert login skal brugeren angive en engangskode fra sin standard-2FA-enhed.
+    backup_codes:
+      generate:
+        keep_safe_as_password: Vigtigt! Behandl koderne som adgangskoder.
+        keep_safe_warning: Gem dem i din adgangskodeadministrator, eller udskriv siden, og opbevar den et sikkert sted.
+        regenerate_warning: 'Advarsel: Hvis du har oprettet backup-koder før, bliver de ugyldige og virker ikke længere.'
+        title: Generér backup-koder
+      overview_description: |
+        Hvis du ikke har adgang til dine to-faktor-enheder, kan du bruge en backup-kode til at få adgang til din konto igen.
+        Brug knappen nedenfor til at generere et nyt sæt backup-koder.
+      plural: Backup-koder
+      singular: Backup-kode
+    channel_unavailable: Leveringskanalen %{channel} er ikke tilgængelig.
+    devices:
+      2fa_from_input_html: Angiv koden fra din <strong>%{device_name}</strong> for at bekræfte din identitet.
+      2fa_from_webauthn_html: Brug WebAuthn-enheden <strong>%{device_name}</strong>. Hvis den tilsluttes via USB, så sæt den i, og rør ved den. Klik derefter på knappen til login.
+      add_new: Tilføj ny 2FA-enhed
+      button_complete_registration: Fuldfør registrering af 2FA
+      cannot_delete_default: Standardenheden kan ikke slettes
+      confirm_default: Bekræft skift af standardenhed
+      confirm_device: Bekræft enhed
+      confirm_now: Ikke bekræftet – klik her for at aktivere
+      confirm_send_failed: Bekræftelsen af din 2FA-enhed mislykkedes.
+      deletion_are_you_sure: Er du sikker på, at du vil slette 2FA-enheden?
+      failed_to_delete: 2FA-enheden kunne ikke slettes.
+      is_default_cannot_delete: Enheden er markeret som standard og kan ikke slettes på grund af en aktiv sikkerhedspolitik. Markér en anden enhed som standard, før du sletter den.
+      make_default_are_you_sure: Er du sikker på, at du vil gøre 2FA-enheden til din standard?
+      make_default_failed: Standard-2FA-enheden kunne ikke opdateres.
+      not_existing: Der er ikke registreret nogen 2FA-enhed for din konto.
+      register: Registrer enhed
+      registration_complete: Registreringen af 2FA-enheden er fuldført!
+      registration_failed_token_invalid: Registreringen af 2FA-enheden mislykkedes, fordi tokenet var ugyldigt.
+      registration_failed_update: Registreringen af 2FA-enheden mislykkedes. Tokenet var gyldigt, men enheden kunne ikke opdateres.
+      sms:
+        description: 'Få en 2FA-kode i en SMS på din telefon, hver gang du logger ind.
+
+          '
+        redacted_identifier: Mobil enhed (%{redacted_number})
+        request_2fa_identifier: "%{redacted_identifier}, vi har sendt dig en godkendelseskode via %{delivery_channel}"
+        title: Mobil enhed
+      text_confirm_to_change_default_html: Bekræft skiftet af din standardenhed til <strong>%{new_identifier}</strong> ved at angive en engangsadgangskode fra din nuværende standardenhed.
+      text_confirm_to_complete_html: Fuldfør registreringen af din enhed <strong>%{identifier}</strong> ved at angive en engangsadgangskode fra din standardenhed.
+      text_identifier: Du kan give enheden et selvvalgt navn i dette felt.
+      totp:
+        account: Kontonavn/udsteder
+        description: 'Brug en engangskode, der dannes af en godkendelsesapp som Authy eller Google Authenticator.
+
+          '
+        provisioning_uri: Provisionerings-URI
+        question_cannot_scan: 'Kan du ikke scanne koden med din app?
+
+          '
+        secret_key: Hemmelig nøgle
+        setup: |
+          Hvis du vil sætte to-faktor-godkendelse op med Google Authenticator, så hent appen i Apple App Store eller Google Play Butik.
+          Når du har åbnet appen, kan du scanne QR-koden nedenfor for at registrere enheden.
+        text_cannot_scan: 'Hvis du ikke kan scanne koden, kan du indtaste den manuelt med følgende oplysninger:
+
+          '
+        time_based: Tidsbaseret
+        title: App til godkendelse
+      webauthn:
+        description: Registrer en FIDO2-enhed (fx en YubiKey) eller den sikre enklave i din mobile enhed.
+        further_steps: Når du har valgt et navn, kan du klikke på knappen Fortsæt. Din browser beder dig om at bruge din WebAuthn-enhed. Når du har gjort det, er enheden registreret.
+        title: WebAuthn
+    error_2fa_disabled: Levering af 2FA er deaktiveret.
+    error_invalid_backup_code: Ugyldig 2FA-backup-kode
+    error_is_enforced_not_active: 'Konfigurationsfejl: To-faktor-godkendelse er gjort obligatorisk, men der er ingen aktive strategier.'
+    error_no_device: Der blev ikke fundet nogen registreret 2FA-enhed for brugeren, selvom installationen kræver det.
+    error_no_matching_strategy: Der er ingen passende 2FA-strategi til brugeren. Kontakt din administrator.
+    forced_registration:
+      required_to_add_device: Administratoren har gjort to-faktor-godkendelse obligatorisk i installationen. Tilføj en metode til to-faktor-godkendelse for at logge ind.
+    label_2fa_disabled: To-faktor-godkendelse er ikke aktiv
+    label_2fa_enabled: To-faktor-godkendelse er aktiv
+    label_default_device: Standard-2FA-enhed
+    label_device: 2FA-enhed
+    label_device_type: Enhedstype
+    label_devices: 2FA-enheder
+    label_two_factor_authentication: To-faktor-godkendelse
+    login:
+      enter_backup_code_text: Angiv en gyldig backup-kode fra din liste over koder, hvis du ikke længere har adgang til dine registrerede 2FA-enheder.
+      enter_backup_code_title: Angiv backup-kode
+      other_device: Brug en anden enhed eller en backup-kode
+    message_bird:
+      sms_delivery_failed: Levering af SMS via MessageBird mislykkedes.
+      voice_delivery_failed: Opkald via MessageBird mislykkedes.
+    mobile_transmit_notification: Der er sendt en engangsadgangskode til din mobiltelefon.
+    no_valid_phone_number: Der findes ikke noget gyldigt telefonnummer.
+    notice_not_writable: Indstillingerne for 2FA er angivet med miljøvariabler og kan ikke overskrives.
+    remember:
+      active_session_notice: 'Din konto har en aktiv cookie til at huske login, der gælder til %{expires_on}. Indtil da kan du logge ind på din konto uden anden faktor.
+
+        '
+      clear_cookie: Fjern alle huskede 2FA-sessioner.
+      cookie_removed: Alle huskede 2FA-sessioner er fjernet.
+      dont_ask_again: Opret en cookie, der husker 2FA-godkendelsen på denne enhed i %{days} dage.
+      label: Husk
+      other_active_session_notice: Din konto har en aktiv cookie til at huske login i en anden session.
+    settings:
+      current_configuration: Nuværende konfiguration
+      failed_to_save_settings: 'Indstillingerne for 2FA kunne ikke opdateres: %{message}'
+      label_active_strategies: Aktive 2FA-strategier
+      label_enforced: Gør 2FA obligatorisk
+      label_remember: Husk 2FA-login
+      text_configuration: 'Bemærk: Værdierne viser den nuværende konfiguration for hele programmet. Du kan ikke deaktivere indstillinger, som konfigurationen gennemtvinger, eller ændre de aktive strategier, fordi det kræver en genstart af serveren.
+
+        '
+      text_configuration_guide: Se konfigurationsvejledningen for flere oplysninger.
+      text_enforced: Slå indstillingen til for at kræve, at alle brugere registrerer en 2FA-enhed ved næste login. Kan kun slås fra, når konfigurationen ikke gennemtvinger den.
+      text_remember: |
+        Angiv en værdi over nul for at lade brugerne huske deres 2FA-godkendelse i det angivne antal dage.
+        I den periode skal de ikke angive den igen. Kan kun angives, når konfigurationen ikke gennemtvinger den.
+      title: Indstillinger for 2FA
+    sns:
+      delivery_failed: 'Levering via SNS mislykkedes:'
+    strategies:
+      resdt: SMS REST API
+      sns: Amazon SNS
+      totp: Godkendelsesapp
+      webauthn: WebAuthn
+    text_2fa_disabled: Brug knappen nedenfor til at registrere en ny 2FA-enhed for at slå to-faktor-godkendelse til. Hvis du allerede har en enhed, skal du gøre den til standard.
+    text_2fa_enabled: Ved hvert login skal du angive en engangskode fra din standard-2FA-enhed.
+    text_otp_delivery_message_sms: Din engangsadgangskode til %{app_title} er %{token}
+    text_otp_delivery_message_voice: 'Din engangsadgangskode til %{app_title} er: %{pause} %{token}. %{pause} Jeg gentager: %{pause} %{token}'
